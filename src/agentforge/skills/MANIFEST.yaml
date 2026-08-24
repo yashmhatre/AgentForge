@@ -1,0 +1,100 @@
+# Vendored skills. Third-party content, tracked deliberately.
+#
+# Nothing in `agentforge` imports this directory. Markdown is read as text;
+# Python is invoked as a subprocess with `sys.executable` by absolute path.
+# See docs/adr/0006 for why this is vendored rather than depended upon.
+#
+# To refresh a skill: re-copy from upstream at a new commit, update `commit`
+# and `vendored_at`, and re-run the tests. Never edit vendored files in place —
+# a local edit that upstream does not know about turns every future refresh
+# into a manual merge.
+
+version: 1
+
+upstreams:
+  mattpocock-skills:
+    repo: https://github.com/mattpocock/skills
+    commit: 5b15a47f2d7150f545fbcacbfe381787fc0230dc
+    license: MIT
+    license_source: LICENSE file in upstream repository
+    copyright: Copyright (c) 2026 Matt Pocock
+    vendored_at: 2026-08-24
+
+  unslop:
+    repo: https://github.com/theclaymethod/unslop
+    commit: d81f5196167ded24f46fced04958c0c12d681798
+    license: MIT
+    license_source: >-
+      README.md only ("Python 3.8+ and any supported coding agent. Licensed
+      MIT."). The repository has no LICENSE file and the GitHub licence API
+      reports null. The grant is unambiguous in prose but names no copyright
+      holder and includes no warranty disclaimer. Tracked as an open item —
+      ask upstream to add a LICENSE file before AgentForge is distributed
+      publicly.
+    copyright: "Unstated upstream; attributed to the theclaymethod/unslop authors"
+    vendored_at: 2026-08-24
+
+skills:
+  grilling:
+    upstream: mattpocock-skills
+    consumer: orchestrator
+    stage: plan
+    purpose: Interview the human until the plan is shared understanding.
+
+  domain-modeling:
+    upstream: mattpocock-skills
+    consumer: orchestrator
+    stage: plan
+    purpose: >-
+      Maintain the target repository's CONTEXT.md glossary and ADRs as the
+      interview resolves terms and decisions.
+
+  to-spec:
+    upstream: mattpocock-skills
+    consumer: orchestrator
+    stage: plan
+    purpose: >-
+      Synthesise the interview into a spec without further questioning. Also
+      publishes to an issue tracker and applies a `ready-for-agent` label,
+      which overlaps AgentForge's own issue handling — reconcile in M3.
+
+  to-tickets:
+    upstream: mattpocock-skills
+    consumer: orchestrator
+    stage: plan
+    purpose: Break the spec into the frozen plan and Roster that ADR-0003 requires.
+
+  unslop:
+    upstream: unslop
+    consumer: reviewer
+    stage: runtime
+    purpose: >-
+      Deterministic prose scanning, exposed as the `agentforge unslop` Command.
+      No inference involved.
+    entrypoints:
+      - scripts/banned_phrase_scan.py
+      - scripts/structure_scan.py
+      - scripts/silhouette_scan.py
+    vendored_partially: true
+    included:
+      - SKILL.md
+      - scripts/            # all 21 scripts; the three scanners import `_lang`
+      - evals/fixtures/silhouette/human_reference.json
+    excluded:
+      - references/         # 220K of skill doctrine; only needed for prompt fragments
+      - presets/            # voice presets; only needed for `teach` and `mimic`
+      - evals/              # except the one fixture above
+      - docs/, plans/, assets/
+    notes: >-
+      silhouette_scan.py resolves
+      `Path(__file__).parent.parent / "evals/fixtures/silhouette/human_reference.json"`,
+      so `scripts/` and `evals/` must stay siblings under `unslop/`. All three
+      scanners call `sys.path.insert(0, HERE)` themselves, so the sibling
+      `_lang` import resolves regardless of working directory. Excluding
+      `references/` is what makes the Command-only decision cheap; restoring
+      prompt fragments means vendoring it.
+
+# Not vendored, deliberately: `implement` and `code-review` from
+# mattpocock-skills. Those stages are what AgentForge's own Implementer and
+# Reviewer Roles exist to do, and shipping both would mean maintaining two
+# competing implementations of the same step.
