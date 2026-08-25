@@ -32,6 +32,10 @@ _Avoid_: Agent, persona, worker, specialist
 A Role in execution — one Provider invocation with a Context Pack, working against a repository. Agents never talk to each other: they read the Issue and write to the Run Log.
 _Avoid_: Role, bot, worker, session
 
+**Agent Result**:
+The structured verdict one Agent hands back: what it did, whether it completed or escalated, and the prose that reaches the Run Log. A Role owns how it fills one in and never how it is transported.
+_Avoid_: Output, response, return value
+
 ### Running it
 
 **Workflow**:
@@ -49,6 +53,18 @@ _Avoid_: Approval, merge, release, acceptance
 **Run**:
 One execution of one Workflow against one Issue. A Run has an identifier, a start, and an end state.
 _Avoid_: Job, execution, session
+
+**Run State**:
+Where a Run has got to — its current step, its status, and the steps already behind it — derived from its Issue and nothing else. There is no local run directory and no database. See ADR-0002.
+_Avoid_: Progress, run status, checkpoint
+
+**Halted**:
+The Run State a Run enters when a Role escalates or a Gate errors: stopped for good, awaiting a human, with completed steps preserved. Halted is not suspended, which is a Run waiting on a Gate it can still clear.
+_Avoid_: Failed, crashed, aborted, cancelled
+
+**Escalation**:
+A Role's report, carried in its Agent Result, that the frozen plan does not match the repository. It is the verdict rather than the state: an Escalation Halts the Run, and how often one fires is the signal of Orchestrator quality. See ADR-0003.
+_Avoid_: Failure, error, rejection, abort
 
 **Run Log**:
 The record of a Run, kept as comments on its Issue, with each Agent appending its result before the next one starts. The Run Log is why a Run survives a lost laptop. See ADR-0002.
