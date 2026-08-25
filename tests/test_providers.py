@@ -1,0 +1,217 @@
+"""Provider adapters, tested at the two places they touch the outside world.
+
+An adapter's whole observable behavior is the argument vector it builds and the
+`AgentResult` it recovers from what the CLI printed. Both are pinned here
+against fixtures recorded from real CLI output, so a version bump breaks one
+adapter's test rather than surfacing later as a confusing Run.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import ClassVar
+
+import pytest
+
+from agentforge.agents.implementer import IMPLEMENTER
+from agentforge.core.contracts import ContextPack, ModelTier, Outcome
+from agentforge.core.process import CommandResult
+from agentforge.providers import PROVIDERS, get_provider
+from agentforge.providers.base import Provider, ProviderError
+from agentforge.providers.claude import ClaudeProvider
+from agentforge.providers.codex import CodexProvider
+
+from .fakes import FakeRunner
+
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def recorded(name: str) -> str:
+    return (FIXTURES / name).read_text(encoding="utf-8")
+
+
+def invoke(provider, tier=ModelTier.STANDARD, cwd=Path("/repo")):
+    return provider.invoke(
+        role=IMPLEMENTER,
+        prompt="do the thing",
+        context=ContextPack(),
+        tier=tier,
+        cwd=cwd,
+    )
+
+
+# --- argument construction -------------------------------------------------
+
+
+def test_claude_runs_headlessly_with_the_prompt_it_was_given():
+    runner = FakeRunner().script("claude", stdout=recorded("claude_completed.json"))
+
+    invoke(ClaudeProvider(runner))
+
+    call = runner.only("claude")
+    assert call[1] == "-p"
+    assert "do the thing" in call
+    assert "--output-format" in call and call[call.index("--output-format") + 1] == "json"
+
+
+@pytest.mark.parametrize(
+    "tier,model",
+    [(ModelTier.DEEP, "opus"), (ModelTier.STANDARD, "sonnet"), (ModelTier.CHEAP, "haiku")],
+)
+def test_a_tier_becomes_a_model_only_inside_the_adapter(tier, model):
+    """ADR-0004: nothing above this line knows a model identifier."""
+    runner = FakeRunner().script("claude", stdout=recorded("claude_completed.json"))
+
+    invoke(ClaudeProvider(runner), tier=tier)
+
+    assert runner.argument_after("--model", "claude") == model
+
+
+def test_the_agent_runs_in_the_repository_it_is_editing():
+    runner = FakeRunner().script("claude", stdout=recorded("claude_completed.json"))
+
+    invoke(ClaudeProvider(runner), cwd=Path("/repo/pipelines"))
+
+    assert runner.cwds[-1] == str(Path("/repo/pipelines"))
+
+
+# --- result parsing --------------------------------------------------------
+
+
+def test_a_completed_run_becomes_a_result_the_runtime_can_act_on():
+    runner = FakeRunner().script("claude", stdout=recorded("claude_completed.json"))
+
+    result = invoke(ClaudeProvider(runner))
+
+    assert result.outcome is Outcome.COMPLETED
+    assert result.role == "implementer"
+    assert result.tier is ModelTier.STANDARD
+    assert result.files_changed == ("src/loader.py", "tests/test_loader.py")
+    assert "bounded retry" in result.summary
+
+
+def test_an_escalation_is_a_result_and_not_an_exception():
+    """ADR-0003 needs the runtime to tell a refusal apart from a crash."""
+    runner = FakeRunner().script("claude", stdout=recorded("claude_escalated.json"))
+
+    result = invoke(ClaudeProvider(runner))
+
+    assert result.escalated
+    assert "src/loader.py" in result.summary
+    assert result.files_changed == ()
+
+
+def test_a_cli_that_reports_its_own_error_is_a_failure_not_a_silent_pass():
+    runner = FakeRunner().script("claude", stdout=recorded("claude_cli_error.json"))
+
+    result = invoke(ClaudeProvider(runner))
+
+    assert result.outcome is Outcome.FAILED
+    assert "Credit balance" in result.summary
+
+
+def test_a_run_that_reports_nothing_fails_rather_than_claiming_success():
+    """Otherwise a Run opens a pull request containing no changes and says it
+    worked."""
+    runner = FakeRunner().script(
+        "claude", stdout='{"type": "result", "is_error": false, "result": "Sure, I had a look."}'
+    )
+
+    result = invoke(ClaudeProvider(runner))
+
+    assert result.outcome is Outcome.FAILED
+    assert "result block" in result.summary
+
+
+def test_an_empty_stdout_names_the_exit_status():
+    runner = FakeRunner().script("claude", stdout="", stderr="killed", returncode=137)
+
+    result = invoke(ClaudeProvider(runner))
+
+    assert result.outcome is Outcome.FAILED
+    assert "killed" in result.summary
+
+
+def test_bare_text_output_still_yields_a_result():
+    """`--output-format text`, or an older CLI. The result block travels in the
+    text either way, so this degrades rather than failing."""
+    runner = FakeRunner().script("claude", stdout=recorded("codex_completed.txt"))
+
+    result = invoke(ClaudeProvider(runner))
+
+    assert result.outcome is Outcome.COMPLETED
+
+
+def test_a_streamed_envelope_is_read_from_its_terminal_record():
+    runner = FakeRunner().script(
+        "claude",
+        stdout='[{"type": "assistant", "text": "working"}, '
+        + recorded("claude_completed.json").replace("\n", " ")
+        + "]",
+    )
+
+    assert invoke(ClaudeProvider(runner)).outcome is Outcome.COMPLETED
+
+
+# --- the port is not Claude-shaped ----------------------------------------
+
+
+def test_a_second_adapter_satisfies_the_same_port():
+    """ADR-0001 claims Providers are interchangeable. This is the check."""
+    runner = FakeRunner().script("codex", stdout=recorded("codex_completed.txt"))
+
+    result = invoke(CodexProvider(runner))
+
+    assert result.outcome is Outcome.COMPLETED
+    assert result.files_changed == ("src/loader.py",)
+    assert runner.only("codex")[1] == "exec"
+
+
+def test_the_second_adapter_reads_failure_from_an_exit_code_rather_than_an_envelope():
+    runner = FakeRunner().script("codex", stdout="", stderr="model not found", returncode=1)
+
+    result = invoke(CodexProvider(runner))
+
+    assert result.outcome is Outcome.FAILED
+    assert "model not found" in result.summary
+
+
+def test_every_adapter_maps_all_three_tiers():
+    for provider in PROVIDERS.values():
+        assert set(provider.models) == set(ModelTier), provider.name
+
+
+def test_every_adapter_implements_the_port():
+    for provider in PROVIDERS.values():
+        assert issubclass(provider, Provider)
+
+
+# --- preconditions ---------------------------------------------------------
+
+
+def test_a_missing_cli_is_named_so_a_user_can_install_it():
+    runner = FakeRunner().uninstall("claude")
+
+    with pytest.raises(ProviderError, match="claude"):
+        ClaudeProvider(runner).preflight()
+
+
+def test_an_unknown_provider_lists_the_ones_that_exist():
+    with pytest.raises(ProviderError, match="claude"):
+        get_provider("aider", FakeRunner())
+
+
+def test_an_adapter_with_no_model_for_a_tier_says_so():
+    class OneTrick(ClaudeProvider):
+        models: ClassVar[dict[ModelTier, str]] = {ModelTier.STANDARD: "sonnet"}
+
+    with pytest.raises(ProviderError, match="deep"):
+        OneTrick(FakeRunner()).model_for(ModelTier.DEEP)
+
+
+def test_a_timeout_is_reported_rather_than_hanging_the_run():
+    result = CommandResult(argv=("claude",), returncode=124, stderr="timed out after 1800.0s")
+
+    output = ClaudeProvider(FakeRunner()).parse_output(result)
+
+    assert output.error and "timed out" in output.error
