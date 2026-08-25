@@ -23,9 +23,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar
 
+from ..core.config import CapabilityTier, Config
 from ..core.contracts import AgentResult, ContextPack, ModelTier, Outcome, Role
 from ..core.plan_format import extract_result_block
 from ..core.process import CommandResult, CommandRunner, MissingBinary, require
+from ..core.skills import read_skill
 
 
 class ProviderError(RuntimeError):
@@ -88,10 +90,12 @@ class CliProvider(Provider):
         runner: CommandRunner,
         timeout: float | None = 1800.0,
         allow_commands: bool = False,
+        config: Config | None = None,
     ) -> None:
         self.runner = runner
         self.timeout = timeout
         self.allow_commands = allow_commands
+        self.capability_tier = (config or Config()).capability_for(self.name)
 
     def preflight(self) -> None:
         try:
@@ -113,7 +117,9 @@ class CliProvider(Provider):
             ) from exc
 
     @abstractmethod
-    def build_argv(self, prompt: str, model: str) -> Sequence[str]: ...
+    def build_argv(
+        self, prompt: str, model: str, native_skills: tuple[str, ...] = ()
+    ) -> Sequence[str]: ...
 
     @abstractmethod
     def parse_output(self, result: CommandResult) -> ProviderOutput: ...
@@ -127,10 +133,29 @@ class CliProvider(Provider):
         tier: ModelTier,
         cwd: Path,
     ) -> AgentResult:
-        argv = self.build_argv(prompt, self.model_for(tier))
+        prompt, native_skills = self._deliver_skills(role, prompt)
+        argv = self.build_argv(prompt, self.model_for(tier), native_skills)
         completed = self.runner.run(argv, cwd=cwd, timeout=self.timeout)
         output = self.parse_output(completed)
         return to_agent_result(role=role, tier=tier, output=output)
+
+    def _deliver_skills(self, role: Role, prompt: str) -> tuple[str, tuple[str, ...]]:
+        """Validate and deliver the Role's skills before the CLI is invoked."""
+        declared = tuple((name, read_skill(name)) for name in role.skills)
+        if not declared:
+            return prompt, ()
+
+        if self.capability_tier is CapabilityTier.NATIVE:
+            commands = ", ".join(f"/agentforge:{name}" for name, _ in declared)
+            instruction = (
+                f"Use the declared native AgentForge skills before doing this work: {commands}."
+            )
+            return f"{instruction}\n\n{prompt}", role.skills
+
+        fragments = []
+        for name, markdown in declared:
+            fragments.append(f"## Vendored Skill: {name}\n\n{markdown.rstrip()}")
+        return f"{prompt}\n\n" + "\n\n".join(fragments) + "\n", ()
 
 
 def to_agent_result(*, role: Role, tier: ModelTier, output: ProviderOutput) -> AgentResult:

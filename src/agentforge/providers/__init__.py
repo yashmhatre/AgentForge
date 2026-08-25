@@ -6,6 +6,7 @@ Everything downstream of `get_provider` speaks in Model Tiers (ADR-0004).
 
 from __future__ import annotations
 
+from ..core.config import Config
 from ..core.process import CommandRunner
 from .base import CliProvider, Provider, ProviderError, ProviderOutput
 from .claude import ClaudeProvider
@@ -19,14 +20,19 @@ PROVIDERS: dict[str, type[CliProvider]] = {
 DEFAULT_PROVIDER = ClaudeProvider.name
 
 
-def get_provider(name: str, runner: CommandRunner, allow_commands: bool = False) -> Provider:
+def get_provider(
+    name: str,
+    runner: CommandRunner,
+    allow_commands: bool = False,
+    config: Config | None = None,
+) -> Provider:
     """Build an adapter. `allow_commands` is ADR-0007's gate, closed by default."""
     try:
         provider = PROVIDERS[name]
     except KeyError as exc:
         known = ", ".join(sorted(PROVIDERS))
         raise ProviderError(f"unknown provider {name!r}; available: {known}") from exc
-    return provider(runner, allow_commands=allow_commands)
+    return provider(runner, allow_commands=allow_commands, config=config)
 
 
 __all__ = [

@@ -19,6 +19,7 @@ from typing import ClassVar
 
 from ..core.contracts import ModelTier
 from ..core.process import CommandResult
+from ..core.skills import SKILLS_ROOT
 from .base import CliProvider, ProviderOutput
 
 
@@ -46,8 +47,10 @@ class ClaudeProvider(CliProvider):
     def permission_mode(self) -> str:
         return self.PERMITTED if self.allow_commands else self.DENIED
 
-    def build_argv(self, prompt: str, model: str) -> Sequence[str]:
-        return (
+    def build_argv(
+        self, prompt: str, model: str, native_skills: tuple[str, ...] = ()
+    ) -> Sequence[str]:
+        argv = (
             self.binary,
             "-p",
             prompt,
@@ -58,6 +61,9 @@ class ClaudeProvider(CliProvider):
             "--permission-mode",
             self.permission_mode,
         )
+        if native_skills:
+            argv += ("--plugin-dir", str(SKILLS_ROOT.parent))
+        return argv
 
     def parse_output(self, result: CommandResult) -> ProviderOutput:
         """Unwrap the JSON envelope.

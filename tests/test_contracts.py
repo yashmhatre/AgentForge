@@ -148,3 +148,13 @@ def test_an_invented_role_says_what_is_available():
 def test_roles_are_frozen_definitions():
     with pytest.raises(FrozenInstanceError):
         Role(name="x", tier=ModelTier.CHEAP).name = "y"  # type: ignore[misc]
+
+
+def test_a_role_declares_the_vendored_skills_its_agent_needs():
+    role = Role(
+        name="architect",
+        tier=ModelTier.DEEP,
+        skills=("domain-modeling", "grilling"),
+    )
+
+    assert role.skills == ("domain-modeling", "grilling")

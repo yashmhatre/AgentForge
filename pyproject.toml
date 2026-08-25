@@ -19,6 +19,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 agentforge = [
+    ".claude-plugin/plugin.json",
     "workflows/*.yaml",
     "skills/**/*",
 ]

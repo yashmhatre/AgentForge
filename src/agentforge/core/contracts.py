@@ -137,7 +137,7 @@ class Plan:
 
 @dataclass(frozen=True)
 class Role:
-    """A named specialization with a fixed job, a model tier, and a prompt.
+    """A named specialization with a fixed job, model tier, prompt, and skills.
 
     A Role is a definition, not a running thing. `instructions` is the standing
     job description; the task-specific prompt is assembled per invocation.
@@ -146,6 +146,7 @@ class Role:
     name: str
     tier: ModelTier
     instructions: str = ""
+    skills: tuple[str, ...] = ()
 
     def at_tier(self, tier: ModelTier) -> Role:
         """The same Role with its tier overridden, per user request or config."""

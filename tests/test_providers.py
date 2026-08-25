@@ -14,8 +14,10 @@ from typing import ClassVar
 import pytest
 
 from agentforge.agents.implementer import IMPLEMENTER
-from agentforge.core.contracts import ContextPack, ModelTier, Outcome
+from agentforge.core.config import CapabilityTier, Config, load_config
+from agentforge.core.contracts import ContextPack, ModelTier, Outcome, Role
 from agentforge.core.process import CommandResult
+from agentforge.core.skills import read_skill
 from agentforge.providers import PROVIDERS, get_provider
 from agentforge.providers.base import Provider, ProviderError
 from agentforge.providers.claude import ClaudeProvider
@@ -52,6 +54,91 @@ def test_claude_runs_headlessly_with_the_prompt_it_was_given():
     assert call[1] == "-p"
     assert "do the thing" in call
     assert "--output-format" in call and call[call.index("--output-format") + 1] == "json"
+
+
+def test_claude_delivers_a_declared_skill_natively_without_inlining_it():
+    runner = FakeRunner().script("claude", stdout=recorded("claude_completed.json"))
+    provider = ClaudeProvider(
+        runner,
+        config=Config(provider_capabilities={"claude": CapabilityTier.NATIVE}),
+    )
+    role = Role("implementer", ModelTier.STANDARD, skills=("grilling",))
+
+    provider.invoke(
+        role=role,
+        prompt="do the thing",
+        context=ContextPack(),
+        tier=role.tier,
+        cwd=Path("/repo"),
+    )
+
+    call = runner.only("claude")
+    prompt = call[call.index("-p") + 1]
+    assert "--plugin-dir" in call
+    assert "/agentforge:grilling" in prompt
+    assert "Grill the user" not in prompt
+
+
+def test_a_non_native_provider_appends_the_same_skill_as_a_fragment():
+    runner = FakeRunner().script("codex", stdout=recorded("codex_completed.txt"))
+    provider = CodexProvider(
+        runner,
+        config=Config(provider_capabilities={"codex": CapabilityTier.FRAGMENT}),
+    )
+    role = Role("implementer", ModelTier.STANDARD, skills=("grilling",))
+
+    provider.invoke(
+        role=role,
+        prompt="do the thing",
+        context=ContextPack(),
+        tier=role.tier,
+        cwd=Path("/repo"),
+    )
+
+    prompt = runner.only("codex")[-1]
+    assert "## Vendored Skill: grilling" in prompt
+    assert read_skill("grilling").rstrip() in prompt
+    assert "--plugin-dir" not in runner.only("codex")
+
+
+def test_an_unknown_declared_skill_fails_before_the_provider_is_invoked():
+    runner = FakeRunner().script("claude", stdout=recorded("claude_completed.json"))
+    role = Role("implementer", ModelTier.STANDARD, skills=("no-such-skill",))
+
+    with pytest.raises(LookupError, match="available"):
+        ClaudeProvider(runner).invoke(
+            role=role,
+            prompt="do the thing",
+            context=ContextPack(),
+            tier=role.tier,
+            cwd=Path("/repo"),
+        )
+
+    assert not runner.ran("claude")
+
+
+def test_provider_selection_uses_the_capability_tier_from_the_shared_loader(tmp_path):
+    config_dir = tmp_path / ".agentforge"
+    config_dir.mkdir()
+    (config_dir / "config.yaml").write_text(
+        "providers:\n  claude:\n    capability_tier: fragment\n",
+        encoding="utf-8",
+    )
+    runner = FakeRunner().script("claude", stdout=recorded("claude_completed.json"))
+    provider = get_provider("claude", runner, config=load_config(tmp_path))
+    role = Role("implementer", ModelTier.STANDARD, skills=("grilling",))
+
+    provider.invoke(
+        role=role,
+        prompt="do the thing",
+        context=ContextPack(),
+        tier=role.tier,
+        cwd=tmp_path,
+    )
+
+    prompt = runner.argument_after("-p", "claude")
+    assert read_skill("grilling").rstrip() in prompt
+    assert "--plugin-dir" not in runner.only("claude")
 
 
 @pytest.mark.parametrize(

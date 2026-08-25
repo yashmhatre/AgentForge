@@ -45,6 +45,26 @@ AgentForge never touches a model API and handles no credentials of its own. What
 
 Both agent commands take `--provider` and `--tier`. A bare `--tier deep` moves every Role; `--tier implementer=deep` moves one.
 
+## Project configuration
+
+AgentForge reads `.agentforge/config.yaml` from the target repository when it
+exists. M3 is read-only: it never creates the directory or writes the file.
+Without a file, the documented Provider capability defaults are Claude
+`native` and every other Provider `fragment`.
+
+```yaml
+providers:
+  claude:
+    capability_tier: native
+  codex:
+    capability_tier: fragment
+```
+
+A Role declares the Vendored Skills it needs. A native Provider receives them
+through its CLI's skill mechanism; a fragment Provider receives the same
+`SKILL.md` text appended to the prompt. Capability Tiers are configuration,
+never the result of probing an installed CLI.
+
 ## Project layout
 
 - `core/` — the contracts, the command runner, the GitHub boundary, the plan format, and the run loop.

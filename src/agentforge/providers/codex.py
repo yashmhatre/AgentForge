@@ -64,7 +64,9 @@ class CodexProvider(CliProvider):
     DENIED: ClassVar[str] = "untrusted"
     PERMITTED: ClassVar[str] = "never"
 
-    def build_argv(self, prompt: str, model: str) -> Sequence[str]:
+    def build_argv(
+        self, prompt: str, model: str, native_skills: tuple[str, ...] = ()
+    ) -> Sequence[str]:
         """Options precede the subcommand: `codex [OPTIONS] <COMMAND> [ARGS]`.
 
         This adapter previously passed `--full-auto` after `exec`, which fails

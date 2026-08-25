@@ -18,6 +18,7 @@ from pathlib import Path
 from ..agents import RUNNERS, resolve_role
 from ..agents.orchestrator import Orchestrator, Planned
 from ..providers import DEFAULT_PROVIDER, get_provider
+from .config import load_config
 from .contracts import (
     AgentResult,
     ContextPack,
@@ -81,7 +82,12 @@ class Forge:
             raise RunFailed(str(exc)) from exc
 
         github = GitHub(self.runner, repo.root)
-        provider = get_provider(self.provider_name, self.runner, allow_commands=allow_commands)
+        provider = get_provider(
+            self.provider_name,
+            self.runner,
+            allow_commands=allow_commands,
+            config=load_config(repo.root),
+        )
         try:
             github.preflight()
             provider.preflight()
