@@ -83,6 +83,14 @@ def test_codex_opens_the_gate_when_asked():
     assert argv[argv.index("--ask-for-approval") + 1] == "never"
 
 
+def test_codex_pins_reasoning_effort_so_a_tier_moves_only_the_model():
+    """`gpt-5.6-sol` defaults to `low` and the rest to `medium`. Unpinned, the
+    deepest tier would be the shallowest-thinking one."""
+    for allow in (True, False):
+        argv = _invoke("codex", allow_commands=allow)
+        assert argv[argv.index("-c") + 1] == "model_reasoning_effort=medium"
+
+
 def test_codex_stays_sandboxed_in_both_postures():
     """ADR-0007 opens a gate; it does not remove the sandbox."""
     for allow in (True, False):
