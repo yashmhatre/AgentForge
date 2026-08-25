@@ -272,7 +272,9 @@ def test_the_glossary_defines_exactly_these_terms():
     "project-specific concepts only" rule and all seventeen survived: each is
     either coined here or given a meaning narrower than its general one, so
     none would mean the same thing in another codebase. Capability Tier,
-    Fragment, and Vendored Skill were added by ADR-0005 and ADR-0006.
+    Fragment, and Vendored Skill were added by ADR-0005 and ADR-0006, and
+    Command Runner because AGENTS.md and ADR-0006 both lean on it while it
+    collides by name with Command.
     """
     assert [t.name for t in _repo_terms()] == [
         "Task",
@@ -290,6 +292,7 @@ def test_the_glossary_defines_exactly_these_terms():
         "Plugin",
         "Command",
         "Project Context",
+        "Command Runner",
         "Provider",
         "Model Tier",
         "Capability Tier",

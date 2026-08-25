@@ -74,6 +74,10 @@ _Avoid_: Config, settings, profile, environment
 
 ### How an Agent is invoked
 
+**Command Runner**:
+The one port every external process routes through — `gh`, `git`, the coding-agent CLIs, and the vendored scanners. Despite the name it does not run Commands; nothing else in the codebase imports `subprocess`.
+_Avoid_: Shell, executor, process wrapper
+
 **Provider**:
 An adapter over one coding-agent CLI — `claude`, `codex`, `aider` — that knows how to invoke it headlessly, pass it a model and a prompt, and parse what comes back. Providers are interchangeable by design. See ADR-0001.
 _Avoid_: Backend, driver, client, engine

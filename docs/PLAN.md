@@ -28,7 +28,7 @@ No Workflow ever merges.
 
 ## M1 — Walking skeleton
 
-One Role, running end to end, proving all four ADRs at once. Nothing here is throwaway.
+One Role, running end to end, proving ADR-0001 through ADR-0004 at once. Nothing here is throwaway.
 
 Restructure to `src/agentforge/` and add a `[project.scripts]` entry pointing at the CLI. Delete the top-level `cli.py` once `agentforge.cli:main` replaces it.
 
