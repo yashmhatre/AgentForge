@@ -165,10 +165,18 @@ def _run_implement(args: argparse.Namespace, runner=None) -> int:
         print("AgentForge stops at Sign-off. A human merges.")
         return 0
 
-    if state.status is RunStatus.ESCALATED:
+    if state.status is RunStatus.HALTED:
         print(
-            f"\nRun halted. Issue #{state.issue} is labelled "
-            f"`{RunStatus.ESCALATED.label}`; correct the plan block and re-run.",
+            f"\nRun halted at step {state.current_step}. Issue #{state.issue} is labelled "
+            f"`{RunStatus.HALTED.label}`; correct the plan block and re-run.",
+            file=sys.stderr,
+        )
+        return 1
+
+    if state.status is RunStatus.SUSPENDED:
+        print(
+            f"\nRun suspended at step {state.current_step}, waiting on a Gate. Issue "
+            f"#{state.issue} is labelled `{RunStatus.SUSPENDED.label}`; re-run once it clears.",
             file=sys.stderr,
         )
         return 1

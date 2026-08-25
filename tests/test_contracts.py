@@ -15,6 +15,8 @@ import pytest
 from agentforge.agents import UnknownRole, resolve_role
 from agentforge.agents.implementer import IMPLEMENTER
 from agentforge.core.contracts import (
+    LEGACY_LABELS,
+    RUN_LABELS,
     AgentResult,
     ContextPack,
     ModelTier,
@@ -102,8 +104,53 @@ def test_tier_overrides_leave_the_role_definition_alone():
 
 
 def test_run_labels_are_namespaced_so_they_do_not_collide_with_a_project_scheme():
-    assert RunStatus.ESCALATED.label == "agentforge:escalated"
+    assert RunStatus.HALTED.label == "agentforge:halted"
     assert all(label.startswith("agentforge:") for label in (s.label for s in RunStatus))
+
+
+def test_suspended_halted_and_failed_are_three_states_and_not_three_words():
+    """The distinction the design session settled, pinned where it is defined.
+
+    A Run waiting on a Gate it can still clear is suspended. A Run an Escalation
+    or an errored Gate stopped is halted. A Run AgentForge could not finish is
+    failed. Collapsing any two of them loses the only question #8 and #9 ask.
+    """
+    three = (RunStatus.SUSPENDED, RunStatus.HALTED, RunStatus.FAILED)
+
+    assert len(set(three)) == 3
+    assert [status.label for status in three] == [
+        "agentforge:suspended",
+        "agentforge:halted",
+        "agentforge:failed",
+    ]
+
+
+def test_the_escalated_label_this_project_already_applied_still_reads():
+    """`agentforge:escalated` predates the vocabulary that made Escalation the
+    verdict and Halted the state. Issues carrying it are still runnable."""
+    assert LEGACY_LABELS["agentforge:escalated"] is RunStatus.HALTED
+    assert "agentforge:escalated" in RUN_LABELS, "a stale label AgentForge cannot clear is a leak"
+    assert "agentforge:escalated" not in [status.label for status in RunStatus]
+
+
+def test_the_current_step_is_derived_from_the_run_log_rather_than_stored():
+    """ADR-0002: a stored cursor is a second answer to a question the Run Log
+    already answers, and the two drift the first time a human edits the Issue."""
+    planned = RunState(issue=12, plan=a_plan(), roster=Roster((IMPLEMENTER,)))
+
+    assert planned.current_step == 1
+    assert not hasattr(planned, "step") and "current_step" not in vars(planned)
+
+
+def test_a_completed_step_moves_the_run_on_and_an_escalated_one_does_not():
+    def state(*results):
+        return RunState(issue=12, plan=a_plan(), roster=Roster((IMPLEMENTER,)), results=results)
+
+    done = AgentResult("implementer", ModelTier.STANDARD, Outcome.COMPLETED, "done")
+    stopped = AgentResult("tester", ModelTier.STANDARD, Outcome.ESCALATED, "no suite")
+
+    assert state(done).current_step == 2
+    assert state(done, stopped).current_step == 2, "the Role that stopped is still on its Step"
 
 
 def test_a_completed_role_retires_its_roster_entry():
@@ -133,6 +180,23 @@ def test_an_escalated_role_stays_on_the_roster():
 
     assert state.remaining == (IMPLEMENTER,)
     assert state.escalation is not None
+
+
+def test_an_escalation_a_later_run_worked_past_is_not_the_runs_escalation():
+    """The Run Log keeps every attempt, so `escalation` has to mean the live one:
+    the human corrected the plan block, the Role ran again, and the Run moved on."""
+    state = RunState(
+        issue=12,
+        plan=a_plan(),
+        roster=Roster((IMPLEMENTER,)),
+        results=(
+            AgentResult("implementer", ModelTier.STANDARD, Outcome.ESCALATED, "wrong file"),
+            AgentResult("implementer", ModelTier.STANDARD, Outcome.COMPLETED, "fixed now"),
+        ),
+    )
+
+    assert state.escalation is None
+    assert state.done_roles == ("implementer",)
 
 
 def test_an_unimplemented_role_is_named_rather_than_guessed_at():
