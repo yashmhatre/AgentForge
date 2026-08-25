@@ -210,6 +210,41 @@ def test_an_escalation_comment_tells_the_human_what_to_do_next():
     assert "plan block" in body and "agentforge implement" in body
 
 
+def test_an_escalation_comment_names_the_step_the_role_stopped_at():
+    """A human correcting the plan needs the position as well as the Role: a
+    Workflow may name the same Role twice, and "the tester escalated" does not
+    say which tester."""
+    result = AgentResult(
+        role="tester",
+        tier=ModelTier.STANDARD,
+        outcome=Outcome.ESCALATED,
+        summary="Step s2 names tests/test_loader.py, which is not in this repository.",
+    )
+
+    body = render_run_log_comment(result, step=2, of=2)
+
+    assert "### tester — escalated (step 2 of 2)" in body
+    assert "Step s2 names tests/test_loader.py, which is not in this repository." in body
+
+
+def test_a_run_log_comment_still_reads_back_as_data_once_it_carries_a_position():
+    """The position is prose. It must not reach the result block, which later
+    Runs parse to work out which Steps are behind them."""
+    result = AgentResult("implementer", ModelTier.STANDARD, Outcome.COMPLETED, "Added the retry.")
+
+    body = render_run_log_comment(result, step=1, of=2)
+
+    assert parse_run_log(Issue(12, "t", BODY, comments=(Comment("bot", body),))) == (result,)
+
+
+def test_a_result_that_was_not_a_step_names_no_position():
+    """An Agent that reported success and left the tree unchanged fails the Run
+    rather than a Step, so there is no position to name."""
+    result = AgentResult("implementer", ModelTier.STANDARD, Outcome.FAILED, "left no changes")
+
+    assert render_run_log_comment(result).splitlines()[0] == "### implementer — failed"
+
+
 def test_human_comments_are_ignored_by_the_run_log():
     issue = Issue(
         12,
