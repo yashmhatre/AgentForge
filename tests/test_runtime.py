@@ -17,7 +17,15 @@ from pathlib import Path
 import pytest
 
 from agentforge.agents import TESTER
-from agentforge.core.contracts import ModelTier, Outcome, RunStatus
+from agentforge.core.contracts import (
+    GateEntry,
+    GateVerdict,
+    ModelTier,
+    Outcome,
+    RunStatus,
+)
+from agentforge.core.gates import GATES
+from agentforge.core.issues import render_gate_comment
 from agentforge.core.plan_format import (
     RESULT_OPEN,
     parse_issue_body,
@@ -785,6 +793,345 @@ def test_a_definition_naming_an_unrunnable_role_costs_no_provider_call(tmp_path,
 
     assert not runner.ran("claude")
     assert not runner.ran("git", "checkout", "-b"), "a bad definition must not touch the repo"
+
+
+# --- Gates hold the Run ----------------------------------------------------
+
+
+HUMAN_GATED = (
+    "name: feature\nsteps:\n  - role: implementer\n    gate: human\n  - role: tester\n"
+)
+
+
+def _workflow(tmp_path, monkeypatch, text: str) -> None:
+    """A definition of the Run's own making, since only `feature` ships steps."""
+    (tmp_path / "feature.yaml").write_text(text, encoding="utf-8")
+    monkeypatch.setattr("agentforge.core.workflow.WORKFLOWS_ROOT", tmp_path)
+
+
+def entries_on(runner: FakeRunner) -> list[str]:
+    """Run Log comments that are an Agent Result, in order."""
+    return [c for c in comments_on(runner) if RESULT_OPEN in c]
+
+
+def _blocks_once(invalidates: str = ""):
+    """A Gate that blocks the first time it is asked and clears afterwards.
+
+    Registered by a test rather than shipped: what the runtime does with a
+    verdict must not depend on which kinds happen to exist.
+    """
+
+    def check(context):
+        if any(entry.blocked for entry in context.verdicts):
+            return GateEntry("", GateVerdict.CLEARED, summary="cleared")
+        return GateEntry(
+            "", GateVerdict.BLOCKED, invalidates=invalidates, summary="not yet"
+        )
+
+    return check
+
+
+def test_a_step_followed_by_a_human_gate_suspends_the_run_rather_than_failing_it(
+    tmp_path, monkeypatch
+):
+    _workflow(tmp_path, monkeypatch, HUMAN_GATED)
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
+
+    state = forge(runner).implement(12, allow_commands=True)
+
+    assert state.status is RunStatus.SUSPENDED
+    assert len(runner.matching("claude")) == 1, "the Step after the Gate ran anyway"
+    assert not runner.ran("gh", "pr", "create")
+
+
+def test_a_suspended_run_is_labelled_so_a_stalled_run_is_not_a_crashed_one(
+    tmp_path, monkeypatch
+):
+    _workflow(tmp_path, monkeypatch, HUMAN_GATED)
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
+
+    forge(runner).implement(12, allow_commands=True)
+
+    assert labels_applied(runner) == ["agentforge:running", "agentforge:suspended"]
+    last = comments_on(runner)[-1]
+    assert "### Run suspended" in last
+    assert "**Waiting on:** the `human` Gate after step 1" in last
+
+
+def test_the_gate_that_stopped_the_run_says_so_in_the_run_log(tmp_path, monkeypatch):
+    _workflow(tmp_path, monkeypatch, HUMAN_GATED)
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
+
+    forge(runner).implement(12, allow_commands=True)
+
+    gate = [c for c in comments_on(runner) if "Gate —" in c]
+    assert len(gate) == 1
+    assert "### human Gate — blocked (after step 1 of 2)" in gate[0]
+
+
+def test_a_suspended_run_leaves_its_work_committed_on_the_branch(tmp_path, monkeypatch):
+    """A Gate the human has to clear is a Gate the human has to see the work for
+    — and the next invocation refuses to start on a dirty tree, so a Run that
+    suspended without committing could never be resumed."""
+    _workflow(tmp_path, monkeypatch, HUMAN_GATED)
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
+
+    forge(runner).implement(12, allow_commands=True)
+
+    assert runner.ran("git", "commit")
+    assert runner.only("git", "push")[-1] == "agentforge/issue-12"
+    assert not runner.ran("gh", "pr", "create"), "a suspended Run is not a finished one"
+
+
+def test_a_second_invocation_resumes_from_the_suspension_point(tmp_path, monkeypatch):
+    """#9's criterion that matters: two separate Runs, with only the Issue
+    between them. The second one reads the first one's Run Log off the Issue and
+    starts at the Step the Gate stopped in front of."""
+    _workflow(tmp_path, monkeypatch, HUMAN_GATED)
+
+    first = a_runner()
+    first.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    first.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
+
+    suspended = forge(first).implement(12, allow_commands=True)
+    log = comments_on(first)
+
+    second = a_runner()
+    second.script(
+        "gh",
+        "issue",
+        "view",
+        stdout=issue_json(labels=("agentforge:suspended",), comments=tuple(log)),
+    )
+    second.script("git", "status", "--porcelain", stdout=["", " M tests/test_loader.py\n"])
+    second.script("claude", stdout=agent_says("completed", "pytest: 24 passed."))
+
+    resumed = forge(second).implement(12, allow_commands=True)
+
+    assert suspended.status is RunStatus.SUSPENDED
+    assert resumed.status is RunStatus.AWAITING_SIGNOFF
+    assert len(second.matching("claude")) == 1, "the completed Step was run a second time"
+    assert "You are the Tester" in second.argument_after("-p", "claude")
+    assert resumed.done_roles == ("implementer", "tester")
+
+
+def test_resuming_past_a_gate_duplicates_no_run_log_comment(tmp_path, monkeypatch):
+    """The Run Log is replayed by every later Run, so a Step recorded twice is a
+    Step counted twice."""
+    _workflow(tmp_path, monkeypatch, HUMAN_GATED)
+
+    first = a_runner()
+    first.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    first.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
+    forge(first).implement(12, allow_commands=True)
+
+    second = a_runner()
+    second.script(
+        "gh",
+        "issue",
+        "view",
+        stdout=issue_json(labels=("agentforge:suspended",), comments=tuple(comments_on(first))),
+    )
+    second.script("git", "status", "--porcelain", stdout=["", " M tests/test_loader.py\n"])
+    second.script("claude", stdout=agent_says("completed", "pytest: 24 passed."))
+    forge(second).implement(12, allow_commands=True)
+
+    steps = [c.splitlines()[0] for c in entries_on(first) + entries_on(second)]
+    assert steps == [
+        "### implementer — completed (step 1 of 2)",
+        "### tester — completed (step 2 of 2)",
+    ]
+    assert [c for c in comments_on(second) if "Gate —" in c] == [], (
+        "a Gate that cleared posted an entry saying the Run carried on"
+    )
+
+
+def test_a_gate_blocking_on_a_roles_output_re_runs_that_step_on_resume(
+    tmp_path, monkeypatch
+):
+    """The amendment's rule, end to end. Without it the human fixes the code, the
+    Gate re-reads the verdict drawn from the code before the fix, and the Run
+    never moves."""
+    monkeypatch.setitem(GATES, "human", _blocks_once(invalidates="implementer"))
+    _workflow(tmp_path, monkeypatch, HUMAN_GATED)
+
+    first = a_runner()
+    first.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    first.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
+    suspended = forge(first).implement(12, allow_commands=True)
+
+    second = a_runner()
+    second.script(
+        "gh",
+        "issue",
+        "view",
+        stdout=issue_json(labels=("agentforge:suspended",), comments=tuple(comments_on(first))),
+    )
+    second.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    second.script("claude", stdout=agent_says("completed", "Fixed and re-run."))
+
+    resumed = forge(second).implement(12, allow_commands=True)
+
+    assert suspended.done_roles == (), "the Gate did not mark its Step for re-run"
+    assert suspended.current_step == 1
+    prompts = [call[call.index("-p") + 1] for call in second.matching("claude")]
+    assert len(prompts) == 2, "the invalidated Step did not run again"
+    assert "You are the Implementer" in prompts[0]
+    assert "You are the Tester" in prompts[1]
+    assert resumed.status is RunStatus.AWAITING_SIGNOFF
+
+
+def test_an_errored_gate_halts_the_run_rather_than_suspending_it(tmp_path, monkeypatch):
+    """A Gate that cannot evaluate has nothing to clear, so suspending it would
+    invite a resume that suspends again forever."""
+    monkeypatch.setitem(
+        GATES,
+        "human",
+        lambda context: GateEntry("", GateVerdict.ERRORED, summary="no reviewer configured"),
+    )
+    _workflow(tmp_path, monkeypatch, HUMAN_GATED)
+
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
+
+    state = forge(runner).implement(12, allow_commands=True)
+
+    assert state.status is RunStatus.HALTED
+    assert labels_applied(runner) == ["agentforge:running", "agentforge:halted"]
+    assert not runner.ran("gh", "pr", "create")
+    assert "no reviewer configured" in next(c for c in comments_on(runner) if "Gate —" in c)
+
+
+def test_a_gate_kind_this_version_cannot_evaluate_halts_rather_than_passing_quietly(
+    tmp_path, monkeypatch
+):
+    """`security` is registered so a Workflow may name it, and #11 has not built
+    it. A declared check that silently never runs is the worst of the options."""
+    _workflow(
+        tmp_path,
+        monkeypatch,
+        "name: feature\nsteps:\n  - role: implementer\n    gate: security\n",
+    )
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
+
+    state = forge(runner).implement(12, allow_commands=True)
+
+    assert state.status is RunStatus.HALTED
+    assert not runner.ran("gh", "pr", "create")
+
+
+def test_a_gated_workflow_still_ends_in_a_draft_pull_request_and_never_a_merge(
+    tmp_path, monkeypatch
+):
+    """Sign-off is terminal and not configurable: no arrangement of Gates makes a
+    Workflow merge."""
+    _workflow(tmp_path, monkeypatch, HUMAN_GATED)
+    runner = a_runner()
+    runner.script(
+        "gh",
+        "issue",
+        "view",
+        stdout=issue_json(
+            labels=("agentforge:suspended",),
+            comments=(
+                render_result_block(
+                    {
+                        "role": "implementer",
+                        "tier": "standard",
+                        "outcome": "completed",
+                        "summary": "done",
+                    }
+                ),
+                render_gate_comment(GateEntry("human", GateVerdict.BLOCKED, step=1), of=2),
+            ),
+        ),
+    )
+    runner.script("git", "status", "--porcelain", stdout=["", " M tests/test_loader.py\n"])
+    runner.script("claude", stdout=agent_says("completed", "pytest: 24 passed."))
+
+    forge(runner).implement(12, allow_commands=True)
+
+    assert "--draft" in runner.only("gh", "pr", "create")
+    assert not runner.ran("gh", "pr", "merge")
+
+
+def test_a_gate_after_the_last_step_suspends_before_the_pull_request(
+    tmp_path, monkeypatch
+):
+    """A Gate is a Gate wherever it sits. One after the final Step holds the Run
+    in front of Sign-off, and the resume opens the pull request."""
+    _workflow(
+        tmp_path,
+        monkeypatch,
+        "name: feature\nsteps:\n  - role: implementer\n    gate: human\n",
+    )
+
+    first = a_runner()
+    first.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    first.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
+    suspended = forge(first).implement(12, allow_commands=True)
+
+    second = a_runner()
+    second.script(
+        "gh",
+        "issue",
+        "view",
+        stdout=issue_json(labels=("agentforge:suspended",), comments=tuple(comments_on(first))),
+    )
+    # The work is committed already: this Run has a Gate to clear and no Step to run.
+    second.script("git", "status", "--porcelain", stdout="")
+    resumed = forge(second).implement(12, allow_commands=True)
+
+    assert suspended.status is RunStatus.SUSPENDED
+    assert not first.ran("gh", "pr", "create")
+    assert not second.ran("claude"), "a Run with no outstanding Step invoked a Role"
+    assert resumed.status is RunStatus.AWAITING_SIGNOFF
+    assert "--draft" in second.only("gh", "pr", "create")
+
+
+def test_a_suspended_run_whose_gate_is_gone_finishes_rather_than_staying_suspended(
+    tmp_path, monkeypatch
+):
+    """Suspended means a Run that can still go on. Somebody who removes the Gate
+    from the definition has cleared it in the bluntest way there is."""
+    _workflow(tmp_path, monkeypatch, "name: feature\nsteps:\n  - role: implementer\n")
+    runner = a_runner()
+    runner.script(
+        "gh",
+        "issue",
+        "view",
+        stdout=issue_json(
+            labels=("agentforge:suspended",),
+            comments=(
+                render_result_block(
+                    {
+                        "role": "implementer",
+                        "tier": "standard",
+                        "outcome": "completed",
+                        "summary": "done",
+                    }
+                ),
+                render_gate_comment(GateEntry("human", GateVerdict.BLOCKED, step=1), of=1),
+            ),
+        ),
+    )
+    runner.script("git", "status", "--porcelain", stdout="")
+
+    state = forge(runner).implement(12, allow_commands=True)
+
+    assert state.status is RunStatus.AWAITING_SIGNOFF
+    assert not runner.ran("claude")
 
 
 def test_the_runtime_names_no_role():

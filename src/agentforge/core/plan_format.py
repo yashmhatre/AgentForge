@@ -31,6 +31,12 @@ PLAN_CLOSE = "<!-- /agentforge:plan -->"
 RESULT_OPEN = "<!-- agentforge:result -->"
 RESULT_CLOSE = "<!-- /agentforge:result -->"
 
+#: A Gate's verdict travels in a marker of its own rather than in a result
+#: block, because a Gate is not an Agent and `parse_run_log` must keep returning
+#: Agent Results only. See ADR-0008.
+GATE_OPEN = "<!-- agentforge:gate -->"
+GATE_CLOSE = "<!-- /agentforge:gate -->"
+
 
 class PlanFormatError(ValueError):
     """An Issue body does not carry a plan AgentForge can execute."""
@@ -177,6 +183,30 @@ def extract_result_block(text: str) -> dict | None:
     return data if isinstance(data, dict) else None
 
 
+def render_gate_block(payload: dict) -> str:
+    """The block a Gate ends its Run Log entry with. Written by AgentForge only.
+
+    A Role is asked for a result block; nobody is asked for one of these. The
+    Gate that evaluated writes it, so the next Run can read back which Gate
+    spoke and what it said.
+    """
+    return "\n".join(
+        [GATE_OPEN, "```json", json.dumps(payload, indent=2), "```", GATE_CLOSE]
+    )
+
+
+def extract_gate_block(text: str) -> dict | None:
+    """Pull a Gate's verdict out of a Run Log comment, if it carries one."""
+    payload = _extract_block(text, GATE_OPEN, GATE_CLOSE)
+    if payload is None:
+        return None
+    try:
+        data = json.loads(payload)
+    except json.JSONDecodeError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
 def _extract_block(text: str, open_marker: str, close_marker: str) -> str | None:
     """The JSON inside a delimited, fenced block. Last one wins.
 
@@ -201,6 +231,8 @@ def _extract_block(text: str, open_marker: str, close_marker: str) -> str | None
 
 
 __all__ = [
+    "GATE_CLOSE",
+    "GATE_OPEN",
     "PLAN_CLOSE",
     "PLAN_OPEN",
     "RESULT_CLOSE",
@@ -210,9 +242,11 @@ __all__ = [
     "PlanDocument",
     "PlanFormatError",
     "Roster",
+    "extract_gate_block",
     "extract_plan_payload",
     "extract_result_block",
     "parse_issue_body",
+    "render_gate_block",
     "render_issue_body",
     "render_issue_title",
     "render_result_block",

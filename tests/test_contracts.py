@@ -19,6 +19,8 @@ from agentforge.core.contracts import (
     RUN_LABELS,
     AgentResult,
     ContextPack,
+    GateEntry,
+    GateVerdict,
     ModelTier,
     Outcome,
     Plan,
@@ -28,6 +30,8 @@ from agentforge.core.contracts import (
     Roster,
     RunState,
     RunStatus,
+    outstanding,
+    retirement,
 )
 
 
@@ -197,6 +201,118 @@ def test_an_escalation_a_later_run_worked_past_is_not_the_runs_escalation():
 
     assert state.escalation is None
     assert state.done_roles == ("implementer",)
+
+
+# --- a Gate's verdict, and what it does to a completed Step ------------------
+
+
+def _completed(role: str = "implementer") -> AgentResult:
+    return AgentResult(role, ModelTier.STANDARD, Outcome.COMPLETED, "done")
+
+
+def _gated(*gates: GateEntry, results=(), roster=None) -> RunState:
+    return RunState(
+        issue=12,
+        plan=a_plan(),
+        roster=roster or Roster((IMPLEMENTER,)),
+        results=results,
+        gates=gates,
+    )
+
+
+def test_a_gate_verdict_round_trips_through_its_serialized_form():
+    """It is written to a comment on one machine and read back on another."""
+    entry = GateEntry(
+        kind="security",
+        verdict=GateVerdict.BLOCKED,
+        step=2,
+        invalidates="security",
+        summary="a hard-coded credential in src/loader.py",
+    )
+
+    assert GateEntry.from_dict(entry.to_dict()) == entry
+
+
+def test_a_blocking_gate_un_retires_the_step_whose_output_it_judged():
+    """The amendment's rule. Without it the Gate re-reads the same stale verdict
+    on every resume and the Run never moves."""
+    state = _gated(
+        GateEntry("security", GateVerdict.BLOCKED, step=1, invalidates="implementer"),
+        results=(_completed(),),
+    )
+
+    assert state.done_roles == ()
+    assert state.remaining == (IMPLEMENTER,)
+
+
+def test_the_step_a_gate_un_retired_is_the_step_the_run_is_back_on():
+    """`current_step` is derived from the retired Steps, so invalidating one has
+    to move the Run back rather than leave the count where it was."""
+    before = _gated(results=(_completed(),))
+    after = _gated(
+        GateEntry("security", GateVerdict.BLOCKED, step=1, invalidates="implementer"),
+        results=(_completed(),),
+    )
+
+    assert before.current_step == 2
+    assert after.current_step == 1
+
+
+def test_a_gate_that_judged_no_role_leaves_every_step_behind_it_retired():
+    """A human Gate blocks on nobody's output. Invalidating the Step it follows
+    would re-run a Role whose work was never in question — and the Gate would
+    block again, forever."""
+    state = _gated(
+        GateEntry("human", GateVerdict.BLOCKED, step=1),
+        results=(_completed(),),
+    )
+
+    assert state.done_roles == ("implementer",)
+    assert state.current_step == 2
+
+
+def test_a_gate_that_cleared_or_errored_retires_nothing_and_un_retires_nothing():
+    for verdict in (GateVerdict.CLEARED, GateVerdict.ERRORED):
+        state = _gated(
+            GateEntry("security", verdict, step=1, invalidates="implementer"),
+            results=(_completed(),),
+        )
+
+        assert state.done_roles == ("implementer",), verdict
+
+
+def test_a_re_run_step_a_gate_then_cleared_counts_once():
+    """The Run Log keeps every attempt: one completed result, one block, one more
+    completed result is a Role that is done, not a Role that is done twice."""
+    state = _gated(
+        GateEntry("security", GateVerdict.BLOCKED, step=1, invalidates="implementer"),
+        results=(_completed(), _completed()),
+    )
+
+    assert state.done_roles == ("implementer",)
+
+
+def test_a_gate_naming_a_role_that_never_completed_changes_nothing():
+    """A hand-edited Issue must not make the derivation throw."""
+    state = _gated(
+        GateEntry("security", GateVerdict.BLOCKED, step=1, invalidates="architect"),
+        results=(_completed(),),
+    )
+
+    assert state.done_roles == ("implementer",)
+
+
+def test_retirement_and_outstanding_are_two_views_of_one_rule():
+    """The Workflow asks which Steps are behind it and which are still to run.
+    Two answers derived separately would disagree the first time one changed."""
+    roles = ("implementer", "tester", "implementer")
+
+    flags = retirement(roles, ("implementer",), lambda role: role)
+
+    assert flags == (True, False, False), "one done-entry retires one item, in order"
+    assert tuple(
+        role for role, retired in zip(roles, flags, strict=True) if not retired
+    ) == outstanding(roles, ("implementer",), lambda role: role)
 
 
 def test_an_unimplemented_role_is_named_rather_than_guessed_at():

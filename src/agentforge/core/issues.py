@@ -21,11 +21,19 @@ from .contracts import (
     RUN_LABELS,
     AgentResult,
     ContextPack,
+    GateEntry,
+    GateVerdict,
     Outcome,
     RunState,
     RunStatus,
 )
-from .plan_format import extract_result_block, parse_issue_body, render_result_block
+from .plan_format import (
+    extract_gate_block,
+    extract_result_block,
+    parse_issue_body,
+    render_gate_block,
+    render_result_block,
+)
 from .process import CommandRunner, MissingBinary, require
 
 GH_HINT = "Install the GitHub CLI (https://cli.github.com) and run `gh auth login`."
@@ -240,6 +248,61 @@ def render_run_log_comment(
     return "\n".join(lines) + "\n"
 
 
+#: What each verdict means for the Run, in the words the Run Log uses.
+_GATE_ENDINGS: dict[GateVerdict, str] = {
+    GateVerdict.BLOCKED: (
+        "The Run is suspended here. Nothing is wrong with the plan — this Gate can "
+        "still clear."
+    ),
+    GateVerdict.ERRORED: (
+        "The Run is halted here. A Gate that cannot evaluate has nothing to clear, "
+        "so waiting would not help."
+    ),
+}
+
+
+def render_gate_comment(entry: GateEntry, *, of: int | None = None) -> str:
+    """One Run Log entry for a Gate's verdict. See ADR-0008.
+
+    It carries a Gate block rather than a result block, because `parse_run_log`
+    returns Agent Results and a Gate is not an Agent — one counted as a Step
+    would retire the Step it had just refused.
+
+    Only a Gate that stopped the Run writes one. A Gate that cleared has nothing
+    to tell the human and nothing the next Run needs, and posting one on every
+    resume would fill the Issue with entries that say a Run carried on.
+    """
+    lines = [
+        f"### {entry.kind} Gate — {entry.verdict}{_after(entry.step, of)}",
+        "",
+        entry.summary.strip() or "_no reason reported_",
+    ]
+
+    if entry.blocked and entry.invalidates:
+        lines += [
+            "",
+            (
+                f"This verdict was drawn from the **{entry.invalidates}** Step's own output, "
+                "so that Step is marked for re-run: the next `agentforge implement` runs it "
+                "again rather than reading this verdict back."
+            ),
+        ]
+
+    ending = _GATE_ENDINGS.get(entry.verdict)
+    if ending:
+        lines += ["", ending]
+
+    lines += ["", render_gate_block(entry.to_dict())]
+    return "\n".join(lines) + "\n"
+
+
+def _after(step: int, of: int | None) -> str:
+    """Which Step this Gate stands behind, if the caller knew the total."""
+    if not step:
+        return ""
+    return f" (after step {step} of {of})" if of else f" (after step {step})"
+
+
 def _position(step: int | None, of: int | None) -> str:
     """Where in the Workflow this entry sits, if the caller knew."""
     if step is None:
@@ -283,8 +346,12 @@ def render_terminal_comment(state: RunState) -> str:
         f"- **Escalated:** {_escalated_line(state)}",
         f"- **Steps completed:** {', '.join(state.done_roles) or 'none'}",
         f"- **Workflow:** `{state.workflow}`",
-        "",
     ]
+
+    waiting = _waiting_on(state)
+    if waiting:
+        lines.append(f"- **Waiting on:** {waiting}")
+    lines.append("")
 
     last = state.results[-1] if state.results else None
     if last is not None and not last.ok:
@@ -295,6 +362,21 @@ def render_terminal_comment(state: RunState) -> str:
 
     lines += [_what_next(state), ""]
     return "\n".join(lines)
+
+
+def _waiting_on(state: RunState) -> str:
+    """The Gate that stopped this Run, if one did.
+
+    The label says a Run is suspended; it does not say what would clear it, and
+    "waiting" without "on what" is what makes a stalled Run look like a crashed
+    one. The last entry rather than the first: a Run that cleared one Gate and
+    stopped at the next is waiting on the next.
+    """
+    stopped = [entry for entry in state.gates if entry.blocked or entry.errored]
+    if not stopped:
+        return ""
+    last = stopped[-1]
+    return f"the `{last.kind}` Gate after step {last.step}"
 
 
 def _escalated_line(state: RunState) -> str:
@@ -355,6 +437,25 @@ def parse_run_log(issue: Issue) -> tuple[AgentResult, ...]:
     return tuple(results)
 
 
+def parse_gate_log(issue: Issue) -> tuple[GateEntry, ...]:
+    """Recover every Gate verdict the Run Log carries, in order.
+
+    Kept apart from `parse_run_log` rather than merged into it: the two answer
+    different questions, and a single sequence of both would make every caller
+    of the Run Log ask what kind of entry it was holding.
+    """
+    entries = []
+    for comment in issue.comments:
+        payload = extract_gate_block(comment.body)
+        if not payload or "kind" not in payload or "verdict" not in payload:
+            continue
+        try:
+            entries.append(GateEntry.from_dict(payload))
+        except (KeyError, ValueError):
+            continue
+    return tuple(entries)
+
+
 def run_state(issue: Issue, resolve=None) -> RunState:
     """Derive a Run's entire state from the Issue. This is ADR-0002's claim.
 
@@ -364,6 +465,7 @@ def run_state(issue: Issue, resolve=None) -> RunState:
     """
     document = parse_issue_body(issue.body, resolve)
     results = parse_run_log(issue)
+    gates = parse_gate_log(issue)
 
     status = _status_from_labels(issue.labels)
     if status is None:
@@ -380,6 +482,7 @@ def run_state(issue: Issue, resolve=None) -> RunState:
         roster=document.roster,
         context=document.context or ContextPack(),
         results=results,
+        gates=gates,
         status=status,
         workflow=document.workflow,
     )
@@ -408,7 +511,9 @@ __all__ = [
     "GitHub",
     "Issue",
     "IssueError",
+    "parse_gate_log",
     "parse_run_log",
+    "render_gate_comment",
     "render_run_log_comment",
     "render_terminal_comment",
     "run_state",

@@ -19,8 +19,10 @@ from agentforge.core.plan_format import (
     PLAN_CLOSE,
     PLAN_OPEN,
     PlanFormatError,
+    extract_gate_block,
     extract_result_block,
     parse_issue_body,
+    render_gate_block,
     render_issue_body,
     render_issue_title,
     render_result_block,
@@ -112,6 +114,29 @@ def test_the_last_block_wins_when_an_agent_quotes_its_own_instructions():
 
 def test_a_reply_with_no_result_block_reads_as_absent_not_as_success():
     assert extract_result_block("I had a go at it and it seems fine.") is None
+
+
+# --- a Gate's verdict is its own block, not an Agent Result ------------------
+
+
+def test_a_gate_block_round_trips():
+    payload = {"kind": "human", "verdict": "blocked", "step": 1, "invalidates": ""}
+
+    assert extract_gate_block(render_gate_block(payload)) == payload
+
+
+def test_a_gate_block_is_not_read_as_an_agent_result():
+    """ADR-0008: a Gate is not an Agent, so `parse_run_log` must not see one.
+    A Gate verdict counted as a Step would retire the Step it was judging."""
+    block = render_gate_block({"kind": "human", "verdict": "blocked", "step": 1})
+
+    assert extract_result_block(block) is None
+
+
+def test_an_agent_result_is_not_read_as_a_gate_verdict():
+    block = render_result_block({"outcome": "completed", "summary": "done"})
+
+    assert extract_gate_block(block) is None
 
 
 def test_a_long_task_becomes_a_title_a_human_can_scan():

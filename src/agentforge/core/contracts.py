@@ -50,6 +50,69 @@ class Outcome(StrEnum):
     FAILED = "failed"
 
 
+class GateVerdict(StrEnum):
+    """What a Gate says when it is asked.
+
+    Deliberately not an ``Outcome``. An Outcome is a Role's verdict on its own
+    work; a Gate is not an Agent and judges somebody else's. ``ERRORED`` is the
+    Gate that could not decide — which is not the same as deciding no, because a
+    Gate with nothing to clear cannot be cleared by waiting.
+    """
+
+    CLEARED = "cleared"
+    BLOCKED = "blocked"
+    ERRORED = "errored"
+
+
+@dataclass(frozen=True)
+class GateEntry:
+    """One Gate's verdict, as the Run Log carries it. See ADR-0008.
+
+    `step` is the 1-based position of the Step this Gate follows. Unlike a
+    result's position — which `current_step` derives — a Gate's is the only thing
+    that says which Gate spoke, so it is recorded rather than re-derived.
+
+    `invalidates` names the Role whose output this verdict was drawn from, and is
+    empty when the Gate judged nobody's: a Security Gate reads the Security
+    Agent's findings, while a human Gate reads a human. A blocked verdict naming
+    a Role un-retires that Role's Step, which is what stops the next Run from
+    re-reading a verdict the human has already acted on.
+    """
+
+    kind: str
+    verdict: GateVerdict
+    step: int = 0
+    invalidates: str = ""
+    summary: str = ""
+
+    @property
+    def blocked(self) -> bool:
+        return self.verdict is GateVerdict.BLOCKED
+
+    @property
+    def errored(self) -> bool:
+        return self.verdict is GateVerdict.ERRORED
+
+    def to_dict(self) -> dict:
+        return {
+            "kind": self.kind,
+            "verdict": str(self.verdict),
+            "step": self.step,
+            "invalidates": self.invalidates,
+            "summary": self.summary,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> GateEntry:
+        return cls(
+            kind=str(data["kind"]),
+            verdict=GateVerdict(data["verdict"]),
+            step=int(data.get("step") or 0),
+            invalidates=str(data.get("invalidates") or ""),
+            summary=str(data.get("summary") or ""),
+        )
+
+
 class RunStatus(StrEnum):
     """Where a Run stands. Carried on the Issue as a label, per ADR-0002.
 
@@ -287,25 +350,47 @@ class AgentResult:
         )
 
 
+def retirement(
+    items: Sequence[T], done: Sequence[str], name_of: Callable[[T], str]
+) -> tuple[bool, ...]:
+    """Which items a completed result has already retired, in order.
+
+    One completed result retires one entry, so a sequence naming the same Role
+    twice resumes into the second occurrence rather than skipping both.
+
+    This is the rule; `outstanding` is the view of it the Roster and the Workflow
+    ask for. The runtime asks for the flags instead, because it walks every Step
+    — a Step behind the Run still has a Gate the Run has to pass through.
+    """
+    unclaimed = list(done)
+    flags = []
+    for item in items:
+        name = name_of(item)
+        retired = name in unclaimed
+        if retired:
+            unclaimed.remove(name)
+        flags.append(retired)
+    return tuple(flags)
+
+
 def outstanding(
     items: Sequence[T], done: Sequence[str], name_of: Callable[[T], str]
 ) -> tuple[T, ...]:
     """Items not yet retired by a completed result, in order.
 
     Shared by the Roster and the Workflow because both ask the same question of
-    the same Run Log. One completed result retires one entry, so a sequence
-    naming the same Role twice resumes into the second occurrence rather than
-    skipping both.
+    the same Run Log.
     """
-    unclaimed = list(done)
-    pending = []
-    for item in items:
-        name = name_of(item)
-        if name in unclaimed:
-            unclaimed.remove(name)
-            continue
-        pending.append(item)
-    return tuple(pending)
+    flags = retirement(items, done, name_of)
+    return tuple(item for item, retired in zip(items, flags, strict=True) if not retired)
+
+
+def _drop_last(names: list[str], name: str) -> None:
+    """Remove the most recent occurrence, which is the one a Gate just judged."""
+    for index in range(len(names) - 1, -1, -1):
+        if names[index] == name:
+            del names[index]
+            return
 
 
 @dataclass(frozen=True)
@@ -322,6 +407,7 @@ class RunState:
     roster: Roster
     context: ContextPack = ContextPack()
     results: tuple[AgentResult, ...] = ()
+    gates: tuple[GateEntry, ...] = ()
     status: RunStatus = RunStatus.PLANNED
     branch: str = ""
     pull_request: str = ""
@@ -334,8 +420,19 @@ class RunState:
         An escalation is not done. A human corrects the plan block and runs
         `agentforge implement` again, and the Role that escalated is the one
         that has to run — so only completed results retire a Roster entry.
+
+        A Gate that blocked on a Role's output un-retires it again: the verdict
+        was drawn from work a human has since changed, and a Run that resumed
+        past it would re-read the same stale finding forever. The Gate entries
+        are counted rather than interleaved with the results, because a Gate's
+        verdict always trails the Step it judged — the last matching entry is
+        the one it was drawn from, and no cursor is needed to say so.
         """
-        return tuple(result.role for result in self.results if result.ok)
+        done = [result.role for result in self.results if result.ok]
+        for entry in self.gates:
+            if entry.blocked and entry.invalidates in done:
+                _drop_last(done, entry.invalidates)
+        return tuple(done)
 
     @property
     def remaining(self) -> tuple[Role, ...]:

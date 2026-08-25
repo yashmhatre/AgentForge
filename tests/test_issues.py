@@ -15,6 +15,8 @@ import pytest
 from agentforge.agents.implementer import IMPLEMENTER
 from agentforge.core.contracts import (
     AgentResult,
+    GateEntry,
+    GateVerdict,
     ModelTier,
     Outcome,
     Plan,
@@ -27,7 +29,9 @@ from agentforge.core.issues import (
     GitHub,
     Issue,
     IssueError,
+    parse_gate_log,
     parse_run_log,
+    render_gate_comment,
     render_run_log_comment,
     render_terminal_comment,
     run_state,
@@ -327,6 +331,118 @@ def test_the_step_a_run_reached_is_derived_from_the_issue_and_nothing_else():
     assert state.escalation is not None and state.escalation.role == "tester"
 
 
+# --- a Gate's verdict in the Run Log ---------------------------------------
+
+
+def test_a_gate_comment_reads_as_prose_and_parses_as_data():
+    """Both readers again: a human sees why the Run stopped, and the next Run
+    reads back which Gate said so."""
+    entry = GateEntry(
+        kind="human",
+        verdict=GateVerdict.BLOCKED,
+        step=1,
+        summary="a human Gate follows the implementer Step.",
+    )
+
+    body = render_gate_comment(entry, of=2)
+
+    assert "### human Gate — blocked (after step 1 of 2)" in body
+    assert "a human Gate follows the implementer Step." in body
+    assert parse_gate_log(Issue(12, "t", BODY, comments=(Comment("bot", body),))) == (entry,)
+
+
+def test_a_gate_comment_is_not_read_back_as_an_agent_result():
+    """A Gate is not an Agent. Counted as one, its verdict would retire the very
+    Step it was judging."""
+    body = render_gate_comment(GateEntry("human", GateVerdict.BLOCKED, step=1), of=2)
+
+    assert parse_run_log(Issue(12, "t", BODY, comments=(Comment("bot", body),))) == ()
+
+
+def test_a_gate_comment_that_invalidates_a_step_says_so_in_prose():
+    """The human reading the Issue has to know the Step is going to run again."""
+    entry = GateEntry(
+        kind="security",
+        verdict=GateVerdict.BLOCKED,
+        step=2,
+        invalidates="security",
+        summary="a hard-coded credential in src/loader.py",
+    )
+
+    body = render_gate_comment(entry, of=3)
+
+    assert "security" in body
+    assert "re-run" in body.lower()
+
+
+def test_an_agent_result_is_not_read_back_as_a_gate_verdict():
+    body = render_run_log_comment(
+        AgentResult("implementer", ModelTier.STANDARD, Outcome.COMPLETED, "done")
+    )
+
+    assert parse_gate_log(Issue(12, "t", BODY, comments=(Comment("bot", body),))) == ()
+
+
+def test_a_run_state_carries_the_gate_verdicts_the_run_log_holds():
+    """The Gate half of ADR-0002: a verdict written by one Run is read back by
+    the next one from the Issue and nothing else."""
+    done = render_run_log_comment(
+        AgentResult("implementer", ModelTier.STANDARD, Outcome.COMPLETED, "Added the retry.")
+    )
+    blocked = render_gate_comment(GateEntry("human", GateVerdict.BLOCKED, step=1), of=2)
+    issue = Issue(
+        12,
+        "add a retry",
+        BODY,
+        labels=("agentforge:suspended",),
+        comments=(Comment("bot", done), Comment("bot", blocked)),
+    )
+
+    state = run_state(issue)
+
+    assert state.gates == (GateEntry("human", GateVerdict.BLOCKED, step=1),)
+    assert state.done_roles == ("implementer",), "a human Gate judged nobody's output"
+    assert state.status is RunStatus.SUSPENDED
+
+
+def test_a_gate_that_blocked_on_a_roles_output_reads_back_as_a_step_to_re_run():
+    """The amendment's rule, end to end through the Issue: what one Run wrote,
+    the next Run's derivation acts on."""
+    done = render_run_log_comment(
+        AgentResult("implementer", ModelTier.STANDARD, Outcome.COMPLETED, "Added the retry.")
+    )
+    blocked = render_gate_comment(
+        GateEntry("security", GateVerdict.BLOCKED, step=1, invalidates="implementer"), of=2
+    )
+    issue = Issue(
+        12,
+        "add a retry",
+        BODY,
+        labels=("agentforge:suspended",),
+        comments=(Comment("bot", done), Comment("bot", blocked)),
+    )
+
+    state = run_state(issue)
+
+    assert state.done_roles == ()
+    assert state.current_step == 1
+    assert state.remaining == (IMPLEMENTER,)
+
+
+def test_a_human_comment_is_not_mistaken_for_a_gate_verdict():
+    issue = Issue(
+        12,
+        "t",
+        BODY,
+        comments=(
+            Comment("a-human", "I'm happy with this, carry on."),
+            Comment("a-human", '```json\n{"kind": "human", "verdict": "cleared"}\n```'),
+        ),
+    )
+
+    assert parse_gate_log(issue) == ()
+
+
 # --- the terminal comment --------------------------------------------------
 
 
@@ -409,6 +525,24 @@ def test_a_suspended_run_reads_differently_from_a_halted_one():
     assert "### Run halted" in halted
     assert "`agentforge:halted`" in halted
     assert suspended != halted
+
+
+def test_a_suspended_run_names_the_gate_it_is_waiting_on():
+    """#9's second criterion: a stalled Run has to be distinguishable from a
+    crashed one, and the label alone does not say what would clear it."""
+    state = a_state(
+        RunStatus.SUSPENDED,
+        IMPLEMENTED,
+        gates=(GateEntry("human", GateVerdict.BLOCKED, step=1),),
+    )
+
+    body = render_terminal_comment(state)
+
+    assert "**Waiting on:** the `human` Gate after step 1" in body
+
+
+def test_a_run_that_stopped_at_no_gate_names_none():
+    assert "Waiting on" not in render_terminal_comment(a_state(RunStatus.HALTED, IMPLEMENTED))
 
 
 def test_a_run_that_is_still_going_has_no_ending_to_post():

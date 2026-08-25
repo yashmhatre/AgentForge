@@ -15,8 +15,8 @@ from __future__ import annotations
 import pytest
 
 from agentforge.core.contracts import ModelTier
+from agentforge.core.gates import GATES
 from agentforge.core.workflow import (
-    GATE_KINDS,
     WORKFLOWS_ROOT,
     WorkflowError,
     load_workflow,
@@ -167,7 +167,19 @@ def test_every_shipped_definition_loads(name):
 
 
 def test_the_gate_kinds_are_the_three_m3_ships():
-    assert GATE_KINDS == frozenset({"tests", "security", "human"})
+    assert set(GATES) == {"tests", "security", "human"}
+
+
+def test_a_definition_is_validated_against_the_registry_rather_than_a_list(monkeypatch):
+    """The kinds a Workflow may name are the kinds something is registered to
+    evaluate. Two lists would let a definition name a Gate nothing answers for."""
+    monkeypatch.setitem(GATES, "moonphase", lambda context: None)
+
+    workflow = parse_workflow(
+        "name: feature\nsteps:\n  - role: implementer\n    gate: moonphase\n", name="feature"
+    )
+
+    assert workflow.steps[0].gate == "moonphase"
 
 
 # --- resume bookkeeping ------------------------------------------------------
