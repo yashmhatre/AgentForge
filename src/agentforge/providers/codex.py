@@ -11,11 +11,12 @@ The posture flags and model slugs below are read off a real install — `codex
 ADR-0004's whole point: tier names outlive model names, and a pinned
 identifier goes stale inside a release.
 
-One axis is deliberately unhandled. This CLI carries reasoning effort
-separately from model choice (`model_reasoning_effort`, low through ultra),
-and `gpt-5.6-sol` defaults to `low` — so `deep` currently buys the frontier
-model at its shallowest setting. Fixing that means `build_argv` seeing the
-Model Tier, which it does not; see the note in that method.
+This CLI carries reasoning effort separately from model choice, and the
+per-model defaults disagree: `gpt-5.6-sol` starts at `low` while the rest
+start at `medium`. Left alone, `deep` would buy the frontier model and ask it
+to think as little as possible. The adapter pins one value across all three
+tiers instead, so the Model Tier chooses the model and nothing else shifts
+underneath it.
 
 Per the note on Issue #1: the useful version of this file is one written by
 somebody who has not read `claude.py`. This one was not, so treat its shape as a
@@ -64,6 +65,14 @@ class CodexProvider(CliProvider):
     DENIED: ClassVar[str] = "untrusted"
     PERMITTED: ClassVar[str] = "never"
 
+    #: Pinned across every tier, because the per-model defaults disagree —
+    #: `gpt-5.6-sol` starts at `low`, the others at `medium`. Setting it here
+    #: keeps a Model Tier meaning one thing: it picks the model, and the
+    #: reasoning depth stays where the maintainer put it. `low` through `ultra`
+    #: are available; raising it is a configuration change under ADR-0004
+    #: rather than an edit here.
+    REASONING_EFFORT: ClassVar[str] = "medium"
+
     def build_argv(
         self, prompt: str, model: str, native_skills: tuple[str, ...] = ()
     ) -> Sequence[str]:
@@ -73,18 +82,16 @@ class CodexProvider(CliProvider):
         twice over: that flag does not exist in the current CLI, and options
         placed after the subcommand are rejected regardless.
 
-        Reasoning effort is missing here and should not be. It is a second axis
-        this CLI exposes (`-c model_reasoning_effort=...`), and `gpt-5.6-sol`
-        defaults to `low`, so `deep` currently pays for the frontier model and
-        asks it to think as little as possible. Setting it needs the Model Tier,
-        which the port hands to `model_for` and not to this method. Widening the
-        signature is the fix and it touches every adapter, so it wants doing on
-        its own rather than folded in here.
+        Reasoning effort is pinned rather than derived from the tier, which is
+        what lets it be set here at all: a per-tier value would need the Model
+        Tier, and the port hands that to `model_for` and not to this method.
         """
         return (
             self.binary,
             "--model",
             model,
+            "-c",
+            f"model_reasoning_effort={self.REASONING_EFFORT}",
             "--sandbox",
             self.SANDBOX,
             "--ask-for-approval",
