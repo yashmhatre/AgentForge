@@ -51,11 +51,23 @@ class Outcome(StrEnum):
 
 
 class RunStatus(StrEnum):
-    """Where a Run stands. Carried on the Issue as a label, per ADR-0002."""
+    """Where a Run stands. Carried on the Issue as a label, per ADR-0002.
+
+    Three of these are ways for a Run to stop, and CONTEXT.md keeps them apart
+    because the reader's next move differs in each. ``SUSPENDED`` is a Gate the
+    Run can still clear, and nobody need do anything. ``HALTED`` is what an
+    Escalation or an errored Gate produces: the completed steps stand and a
+    human decides. ``FAILED`` is a Run AgentForge could not finish at all.
+
+    ``HALTED`` was ``ESCALATED`` until the glossary settled that an Escalation
+    is the verdict a Role reports and Halted the state it produces. The old
+    label is still read; see ``LEGACY_LABELS``.
+    """
 
     PLANNED = "planned"
     RUNNING = "running"
-    ESCALATED = "escalated"
+    SUSPENDED = "suspended"
+    HALTED = "halted"
     AWAITING_SIGNOFF = "awaiting-signoff"
     FAILED = "failed"
 
@@ -64,9 +76,16 @@ class RunStatus(StrEnum):
         return f"agentforge:{self.value}"
 
 
-#: Every label AgentForge may apply to an Issue, so a caller can reconcile them
-#: without knowing the naming scheme.
-RUN_LABELS = tuple(status.label for status in RunStatus)
+#: Labels an earlier AgentForge applied, and what they mean now. Read, never
+#: written: issues labelled `agentforge:escalated` were open when the rename
+#: landed, and a Run that cannot read its own state back is the one thing
+#: ADR-0002 does not survive.
+LEGACY_LABELS: dict[str, RunStatus] = {"agentforge:escalated": RunStatus.HALTED}
+
+#: Every status label AgentForge may find on an Issue, so a caller can reconcile
+#: them without knowing the naming scheme. Retired labels are in here so that a
+#: Run clears them rather than leaving an Issue wearing two answers.
+RUN_LABELS = tuple(status.label for status in RunStatus) + tuple(LEGACY_LABELS)
 
 
 @dataclass(frozen=True)
@@ -324,8 +343,28 @@ class RunState:
         return outstanding(tuple(self.roster), self.done_roles, lambda role: role.name)
 
     @property
+    def current_step(self) -> int:
+        """The 1-based position of the Step the Run is on. Derived, never stored.
+
+        A cursor kept alongside the Run Log would be a second answer to a
+        question the Run Log already answers, and the two would disagree the
+        first time a human edited the Issue — so the count of retired Steps is
+        the only answer there is. A Role that escalated or failed did not retire
+        its Step, which is why a halted Run is still standing on the Step that
+        halted it, and why re-running resumes there.
+        """
+        return len(self.done_roles) + 1
+
+    @property
     def escalation(self) -> AgentResult | None:
-        return next((result for result in self.results if result.escalated), None)
+        """The Escalation that stopped this Run, if one did.
+
+        The last entry rather than the first: the Run Log keeps every attempt,
+        and a Role that escalated, had its plan block corrected, and then
+        completed did not stop anything.
+        """
+        last = self.results[-1] if self.results else None
+        return last if last is not None and last.escalated else None
 
 
 @dataclass(frozen=True)

@@ -18,7 +18,11 @@ import pytest
 
 from agentforge.agents import TESTER
 from agentforge.core.contracts import ModelTier, Outcome, RunStatus
-from agentforge.core.plan_format import parse_issue_body, render_result_block
+from agentforge.core.plan_format import (
+    RESULT_OPEN,
+    parse_issue_body,
+    render_result_block,
+)
 from agentforge.core.runtime import Forge, RunFailed
 
 from .fakes import FakeRunner, github_repository
@@ -173,11 +177,8 @@ def test_each_result_is_posted_to_the_issue_before_the_run_moves_on():
 
     forge(runner).implement(12, allow_commands=True)
 
-    comments = [
-        c[c.index("--body") + 1]
-        for c in runner.matching("gh", "issue", "comment")
-        if "###" in c[c.index("--body") + 1]
-    ]
+    # Agent Results only: the Run's terminal comment is an ending, not a Step.
+    comments = [c for c in comments_on(runner) if RESULT_OPEN in c]
     assert "### implementer — completed" in comments[0]
     assert "### tester — completed" in comments[1]
     assert all("**Model Tier:** `standard`" in comment for comment in comments)
@@ -229,7 +230,9 @@ def test_opening_a_denied_run_resumes_at_the_tester():
         "issue",
         "view",
         stdout=issue_json(
-            labels=("agentforge:escalated",), comments=(implemented, denied)
+            # The label an older AgentForge applied: still read, no longer written.
+            labels=("agentforge:escalated",),
+            comments=(implemented, denied),
         ),
     )
     runner.script("git", "status", "--porcelain", stdout=["", " M tests/test_loader.py\n"])
@@ -287,6 +290,113 @@ def test_a_role_can_be_moved_up_a_tier_for_a_task_the_user_knows_is_hard():
     assert runner.argument_after("--model", "claude") == "opus"
 
 
+# --- every Run ends by saying how it ended ---------------------------------
+
+
+def comments_on(runner: FakeRunner) -> list[str]:
+    return [c[c.index("--body") + 1] for c in runner.matching("gh", "issue", "comment")]
+
+
+def test_a_run_that_reaches_sign_off_ends_with_a_terminal_comment():
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
+
+    forge(runner).implement(12, allow_commands=True)
+
+    last = comments_on(runner)[-1]
+    assert "### Run complete" in last
+    assert "**Escalated:** no" in last
+    assert "/pull/13" in last
+
+
+def labels_applied(runner: FakeRunner) -> list[str]:
+    return [
+        c[c.index("--add-label") + 1]
+        for c in runner.matching("gh", "issue", "edit")
+        if "--add-label" in c
+    ]
+
+
+def test_a_run_moves_from_planned_through_running_to_how_it_ended():
+    """The transitions, read where a person reads them: the Issue's labels."""
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
+
+    forge(runner).implement(12, allow_commands=True)
+
+    assert labels_applied(runner) == ["agentforge:running", "agentforge:awaiting-signoff"]
+    removed = [
+        c[c.index("--remove-label") + 1]
+        for c in runner.matching("gh", "issue", "edit")
+        if "--remove-label" in c
+    ]
+    assert removed == ["agentforge:planned", "agentforge:running"], "one status label at a time"
+
+
+def test_a_run_that_halts_ends_labelled_halted_rather_than_running():
+    runner = a_runner()
+    runner.script("claude", stdout=agent_says("escalated", "Step s1 names a file that is gone.", ()))
+
+    forge(runner).implement(12, allow_commands=True)
+
+    assert labels_applied(runner) == ["agentforge:running", "agentforge:halted"]
+
+
+def test_a_halted_run_ends_with_a_terminal_comment_naming_the_step_that_escalated():
+    """#7's reason for existing: escalation frequency has to be countable from
+    the tracker, which needs the Run to say so on its way out."""
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script(
+        "claude",
+        stdout=[
+            agent_says("completed", "Implemented the change."),
+            agent_says("escalated", "There is no suite in this repository.", ()),
+        ],
+    )
+
+    forge(runner).implement(12, allow_commands=True)
+
+    last = comments_on(runner)[-1]
+    assert "### Run halted" in last
+    assert "**Escalated:** yes, at step 2 (tester)" in last
+
+
+def test_a_failed_run_ends_with_a_terminal_comment_too():
+    runner = a_runner()
+    runner.script("claude", stdout="", stderr="rate limited", returncode=1)
+
+    forge(runner).implement(12)
+
+    last = comments_on(runner)[-1]
+    assert "### Run failed" in last
+    assert "**Escalated:** no" in last
+
+
+def test_a_run_with_nothing_left_to_do_says_nothing():
+    """The terminal comment ends a Run. An `implement` that finds every Step
+    behind it never started one, and must not post a second ending."""
+    implementer = render_result_block(
+        {"role": "implementer", "tier": "standard", "outcome": "completed", "summary": "done"}
+    )
+    tester = render_result_block(
+        {"role": "tester", "tier": "standard", "outcome": "completed", "summary": "passed"}
+    )
+    runner = a_runner()
+    runner.script(
+        "gh",
+        "issue",
+        "view",
+        stdout=issue_json(labels=("agentforge:awaiting-signoff",), comments=(implementer, tester)),
+    )
+
+    forge(runner).implement(12)
+
+    assert comments_on(runner) == []
+
+
 # --- escalation ------------------------------------------------------------
 
 
@@ -296,7 +406,7 @@ def test_an_escalation_halts_the_run_before_a_pull_request_exists():
 
     state = forge(runner).implement(12, allow_commands=True)
 
-    assert state.status is RunStatus.ESCALATED
+    assert state.status is RunStatus.HALTED
     assert not runner.ran("gh", "pr", "create")
     assert not runner.ran("git", "push")
 
@@ -312,8 +422,8 @@ def test_an_escalation_labels_the_issue_and_states_the_reason():
         for c in runner.matching("gh", "issue", "edit")
         if "--add-label" in c
     ]
-    assert "agentforge:escalated" in labels
-    comments = [c[c.index("--body") + 1] for c in runner.matching("gh", "issue", "comment")]
+    assert "agentforge:halted" in labels
+    comments = comments_on(runner)
     assert any("Step s1 names a file that is gone." in c for c in comments)
 
 
@@ -324,7 +434,7 @@ def test_an_escalated_run_re_runs_the_role_that_escalated():
     )
     runner = a_runner()
     runner.script(
-        "gh", "issue", "view", stdout=issue_json(labels=("agentforge:escalated",), comments=(escalated,))
+        "gh", "issue", "view", stdout=issue_json(labels=("agentforge:halted",), comments=(escalated,))
     )
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "Fixed now."))

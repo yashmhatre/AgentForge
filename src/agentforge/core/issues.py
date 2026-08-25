@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .contracts import (
+    LEGACY_LABELS,
     RUN_LABELS,
     AgentResult,
     ContextPack,
@@ -135,11 +136,19 @@ class GitHub:
         self._gh("issue", "edit", str(number), "--remove-label", label, check=False)
 
     def set_status(self, issue: Issue | int, status: RunStatus) -> None:
-        """One status label at a time, so a Run's state stays unambiguous."""
+        """One status label at a time, so a Run's state stays unambiguous.
+
+        The Issue is a snapshot taken when the Run started, so its labels only
+        say what was there before. Once this Run has set a status of its own,
+        that label is what the Issue is actually wearing and the snapshot is
+        stale — which is why the second transition of a Run clears one label
+        rather than firing a removal for the first one all over again.
+        """
         number = issue.number if isinstance(issue, Issue) else int(issue)
-        known = set(issue.labels) if isinstance(issue, Issue) else set()
         if number in self._applied:
-            known.add(self._applied[number])
+            known = {self._applied[number]}
+        else:
+            known = set(issue.labels) if isinstance(issue, Issue) else set()
 
         for stale in sorted(known & set(RUN_LABELS) - {status.label}):
             self.remove_label(number, stale)
@@ -217,6 +226,100 @@ def render_run_log_comment(result: AgentResult) -> str:
     return "\n".join(lines) + "\n"
 
 
+#: How each way of ending a Run reads in the Run Log. A Run that is still moving
+#: has no ending, so `PLANNED` and `RUNNING` are deliberately absent.
+_ENDINGS: dict[RunStatus, str] = {
+    RunStatus.AWAITING_SIGNOFF: "Run complete — awaiting Sign-off",
+    RunStatus.SUSPENDED: "Run suspended",
+    RunStatus.HALTED: "Run halted",
+    RunStatus.FAILED: "Run failed",
+}
+
+
+def render_terminal_comment(state: RunState) -> str:
+    """The last entry in a Run Log: how the Run ended and how far it got.
+
+    Every Run that starts posts exactly one of these. That is what makes
+    escalation frequency countable off the tracker, which ADR-0003 calls the
+    signal of Orchestrator quality — a Run that merely stops posting leaves a
+    reader to infer why from the absence of a comment, and nobody counts an
+    absence.
+
+    It carries no result block. The Run Log is replayed to work out which Steps
+    are behind a Run, and an ending is not a Step.
+    """
+    ending = _ENDINGS.get(state.status)
+    if ending is None:
+        raise IssueError(
+            f"a Run in {state.status} has not ended, so there is nothing to conclude"
+        )
+
+    complete = state.status is RunStatus.AWAITING_SIGNOFF
+    lines = [
+        f"### {ending}" if complete else f"### {ending}{_stopped_at(state)}",
+        "",
+        f"- **Final state:** `{state.status.label}`",
+        f"- **Escalated:** {_escalated_line(state)}",
+        f"- **Steps completed:** {', '.join(state.done_roles) or 'none'}",
+        f"- **Workflow:** `{state.workflow}`",
+        "",
+    ]
+
+    last = state.results[-1] if state.results else None
+    if last is not None and not last.ok:
+        lines += [f"> {last.summary.strip() or 'no summary reported'}", ""]
+
+    if complete and state.pull_request:
+        lines += [f"Draft pull request: {state.pull_request}", ""]
+
+    lines += [_what_next(state), ""]
+    return "\n".join(lines)
+
+
+def _escalated_line(state: RunState) -> str:
+    """Whether this Run escalated, and where — the countable half of the comment."""
+    escalation = state.escalation
+    if escalation is None:
+        return "no"
+    return f"yes, at step {state.current_step} ({escalation.role})"
+
+
+def _stopped_at(state: RunState) -> str:
+    """The Step the Run stopped on, as a position and a Role.
+
+    A Role that escalated or failed did not retire its Step, so the Run is still
+    standing on it. A Role that completed retired its Step, and a Run that stops
+    after one — at a Gate — stopped on the Step behind it.
+    """
+    if not state.results:
+        return ""
+    last = state.results[-1]
+    return f" at step {state.current_step - (1 if last.ok else 0)} — {last.role}"
+
+
+def _what_next(state: RunState) -> str:
+    """The reader's move. It differs for each way of stopping, which is the
+    whole reason suspended, halted, and failed are three states and not one."""
+    rerun = f"`agentforge implement {state.issue}`"
+    if state.status is RunStatus.AWAITING_SIGNOFF:
+        return "AgentForge stops here. Sign-off is a human Gate; no Workflow merges."
+    if state.status is RunStatus.SUSPENDED:
+        return (
+            "The Run is waiting on a Gate it can still clear. Nothing is wrong with the "
+            f"plan: re-run {rerun} once the Gate passes."
+        )
+    if state.status is RunStatus.HALTED:
+        return (
+            "Halted is not failed — the completed Steps above stand. Per ADR-0003 a Role "
+            "that finds the plan wrong stops rather than improvising, so correct the plan "
+            f"block in the issue body and re-run {rerun}."
+        )
+    return (
+        "AgentForge could not finish this Run. The Run Log entry above carries the detail; "
+        f"re-run {rerun} once the cause is gone."
+    )
+
+
 def parse_run_log(issue: Issue) -> tuple[AgentResult, ...]:
     """Recover every Agent Result the Run Log carries, in order."""
     results = []
@@ -243,8 +346,8 @@ def run_state(issue: Issue, resolve=None) -> RunState:
 
     status = _status_from_labels(issue.labels)
     if status is None:
-        if any(result.escalated for result in results):
-            status = RunStatus.ESCALATED
+        if results and results[-1].escalated:
+            status = RunStatus.HALTED
         elif results:
             status = RunStatus.RUNNING
         else:
@@ -265,6 +368,9 @@ def _status_from_labels(labels: tuple[str, ...]) -> RunStatus | None:
     for status in RunStatus:
         if status.label in labels:
             return status
+    for label, status in LEGACY_LABELS.items():
+        if label in labels:
+            return status
     return None
 
 
@@ -283,5 +389,6 @@ __all__ = [
     "IssueError",
     "parse_run_log",
     "render_run_log_comment",
+    "render_terminal_comment",
     "run_state",
 ]

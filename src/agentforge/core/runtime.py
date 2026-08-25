@@ -30,7 +30,14 @@ from .contracts import (
     RunStatus,
     Task,
 )
-from .issues import GitHub, Issue, IssueError, render_run_log_comment, run_state
+from .issues import (
+    GitHub,
+    Issue,
+    IssueError,
+    render_run_log_comment,
+    render_terminal_comment,
+    run_state,
+)
 from .plan_format import PlanFormatError, render_issue_body, render_issue_title
 from .process import CommandRunner, SubprocessRunner
 from .repo import PreconditionFailed, Repository, branch_for_issue, open_repository
@@ -159,6 +166,9 @@ class Forge:
 
         remaining = workflow.remaining(state.done_roles)
         if not remaining:
+            # Nothing to run is not a Run: no branch, no status change, and no
+            # terminal comment, which would otherwise post a second ending every
+            # time someone re-read a finished Issue.
             return state
 
         branch = branch_for_issue(number)
@@ -177,11 +187,10 @@ class Forge:
             results.append(result)
 
             if result.outcome is not Outcome.COMPLETED:
-                status = (
-                    RunStatus.ESCALATED if result.escalated else RunStatus.FAILED
+                status = RunStatus.HALTED if result.escalated else RunStatus.FAILED
+                return _end(
+                    github, issue, _with(state, results=results, status=status, branch=branch)
                 )
-                github.set_status(issue, status)
-                return _with(state, results=results, status=status, branch=branch)
 
         changed = repo.changed_files()
         if not repo.commit_all(f"{issue.title}\n\nImplements #{number} via AgentForge."):
@@ -195,9 +204,12 @@ class Forge:
                 ),
             )
             github.post_comment(number, render_run_log_comment(failure))
-            github.set_status(issue, RunStatus.FAILED)
             results.append(failure)
-            return _with(state, results=results, status=RunStatus.FAILED, branch=branch)
+            return _end(
+                github,
+                issue,
+                _with(state, results=results, status=RunStatus.FAILED, branch=branch),
+            )
 
         repo.push(branch)
         url = github.open_draft_pr(
@@ -206,19 +218,17 @@ class Forge:
             head=branch,
             base=github.default_branch(),
         )
-        github.post_comment(
-            number,
-            f"Draft pull request opened: {url}\n\n"
-            "AgentForge stops here. Sign-off is a human Gate; no Workflow merges.\n",
-        )
-        github.set_status(issue, RunStatus.AWAITING_SIGNOFF)
 
-        return _with(
-            state,
-            results=results,
-            status=RunStatus.AWAITING_SIGNOFF,
-            branch=branch,
-            pull_request=url,
+        return _end(
+            github,
+            issue,
+            _with(
+                state,
+                results=results,
+                status=RunStatus.AWAITING_SIGNOFF,
+                branch=branch,
+                pull_request=url,
+            ),
         )
 
 
@@ -247,6 +257,18 @@ def _run_step(role: Role, provider, state: RunState, cwd: Path) -> AgentResult:
         role=role,
         tier=role.tier,
     )
+
+
+def _end(github: GitHub, issue: Issue, state: RunState) -> RunState:
+    """Every way out of a Run, in one place.
+
+    The comment first, then the label: a reader who sees the label knows the
+    reason is already on the Issue, and a Run that dies between the two leaves
+    the ending recorded rather than only asserted.
+    """
+    github.post_comment(state.issue, render_terminal_comment(state))
+    github.set_status(issue, state.status)
+    return state
 
 
 def _pr_body(number: int, state: RunState, results, changed) -> str:
@@ -285,6 +307,7 @@ def _with(state: RunState, **changes) -> RunState:
         status=changes.pop("status", state.status),
         branch=changes.pop("branch", state.branch),
         pull_request=changes.pop("pull_request", state.pull_request),
+        workflow=changes.pop("workflow", state.workflow),
     )
 
 

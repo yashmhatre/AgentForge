@@ -63,8 +63,12 @@ Where a Run has got to — its current step, its status, and the steps already b
 _Avoid_: Progress, run status, checkpoint
 
 **Halted**:
-The Run State a Run enters when a Role escalates or a Gate errors: stopped for good, awaiting a human, with completed steps preserved. Halted is not suspended, which is a Run waiting on a Gate it can still clear.
+The Run State a Run enters when a Role escalates or a Gate errors: stopped for good, awaiting a human, with completed steps preserved. Halted is not Suspended, which is a Run waiting on a Gate it can still clear.
 _Avoid_: Failed, crashed, aborted, cancelled
+
+**Suspended**:
+The Run State of a Run stopped at a Gate that can still clear on its own — a suite that will pass on the next commit, a human who has not looked yet. Nothing is wrong with the plan, which is what separates it from Halted.
+_Avoid_: Paused, blocked, waiting, stalled
 
 **Escalation**:
 A Role's report, carried in its Agent Result, that the frozen plan does not match the repository. It is the verdict rather than the state: an Escalation Halts the Run, and how often one fires is the signal of Orchestrator quality. See ADR-0003.

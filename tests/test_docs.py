@@ -275,6 +275,10 @@ def test_the_glossary_defines_exactly_these_terms():
     Fragment, and Vendored Skill were added by ADR-0005 and ADR-0006, and
     Command Runner because AGENTS.md and ADR-0006 both lean on it while it
     collides by name with Command.
+
+    Suspended earned its place alongside Halted once both became labels a person
+    reads off an Issue: the two are the same word in ordinary usage and opposite
+    instructions here.
     """
     assert [t.name for t in _repo_terms()] == [
         "Task",
@@ -291,6 +295,7 @@ def test_the_glossary_defines_exactly_these_terms():
         "Run",
         "Run State",
         "Halted",
+        "Suspended",
         "Escalation",
         "Run Log",
         "Context Pack",

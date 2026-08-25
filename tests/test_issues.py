@@ -13,7 +13,15 @@ from pathlib import Path
 import pytest
 
 from agentforge.agents.implementer import IMPLEMENTER
-from agentforge.core.contracts import AgentResult, ModelTier, Outcome, RunStatus
+from agentforge.core.contracts import (
+    AgentResult,
+    ModelTier,
+    Outcome,
+    Plan,
+    Roster,
+    RunState,
+    RunStatus,
+)
 from agentforge.core.issues import (
     Comment,
     GitHub,
@@ -21,6 +29,7 @@ from agentforge.core.issues import (
     IssueError,
     parse_run_log,
     render_run_log_comment,
+    render_terminal_comment,
     run_state,
 )
 from agentforge.core.plan_format import PlanFormatError
@@ -99,6 +108,33 @@ def test_one_status_label_at_a_time_so_a_run_is_never_ambiguous():
 
     assert removed == ["agentforge:planned"]
     assert added == ["agentforge:running"]
+
+
+def test_a_label_that_already_exists_does_not_stop_the_run():
+    """Creation is idempotent because it is unconditional: `gh label create`
+    fails on the second Run of the repository's life, and that is not an error."""
+    runner = FakeRunner().script(
+        "gh", "label", "create", stderr="label already exists", returncode=1
+    )
+
+    github(runner).set_status(Issue(12, "t", BODY), RunStatus.RUNNING)
+
+    assert runner.ran("gh", "label", "create")
+    assert runner.argument_after("--add-label", "gh", "issue", "edit") == "agentforge:running"
+
+
+def test_the_label_this_project_already_applied_is_cleared_when_the_run_moves_on():
+    """Renaming `agentforge:escalated` to `agentforge:halted` leaves the old label
+    on issues that are still open. A Run that touches one takes it off."""
+    runner = FakeRunner()
+    issue = Issue(number=12, title="t", body=BODY, labels=("agentforge:escalated",))
+
+    github(runner).set_status(issue, RunStatus.RUNNING)
+
+    edits = runner.matching("gh", "issue", "edit")
+    removed = [c[c.index("--remove-label") + 1] for c in edits if "--remove-label" in c]
+
+    assert removed == ["agentforge:escalated"]
 
 
 def test_a_pull_request_is_opened_as_a_draft_against_the_run_branch():
@@ -224,7 +260,156 @@ def test_status_falls_back_to_the_run_log_when_a_label_was_removed_by_hand():
     )
     issue = Issue(12, "add a retry", BODY, labels=(), comments=(Comment("bot", escalated),))
 
-    assert run_state(issue).status is RunStatus.ESCALATED
+    assert run_state(issue).status is RunStatus.HALTED
+
+
+def test_an_issue_labelled_by_an_older_agentforge_still_reads_as_a_run():
+    """`agentforge:escalated` was the label before Halted was the state's name."""
+    issue = Issue(12, "add a retry", BODY, labels=("agentforge:escalated",))
+
+    assert run_state(issue).status is RunStatus.HALTED
+
+
+def test_the_step_a_run_reached_is_derived_from_the_issue_and_nothing_else():
+    done = render_run_log_comment(
+        AgentResult("implementer", ModelTier.STANDARD, Outcome.COMPLETED, "Added the retry.")
+    )
+    stopped = render_run_log_comment(
+        AgentResult("tester", ModelTier.STANDARD, Outcome.ESCALATED, "There is no suite here.")
+    )
+    issue = Issue(
+        12,
+        "add a retry",
+        BODY,
+        labels=("agentforge:halted",),
+        comments=(Comment("bot", done), Comment("bot", stopped)),
+    )
+
+    state = run_state(issue)
+
+    assert state.done_roles == ("implementer",)
+    assert state.current_step == 2
+    assert state.escalation is not None and state.escalation.role == "tester"
+
+
+# --- the terminal comment --------------------------------------------------
+
+
+def a_state(status: RunStatus, *results: AgentResult, **fields) -> RunState:
+    """A Run that got as far as `results` and ended in `status`."""
+    return RunState(
+        issue=12,
+        plan=Plan(summary="Add a retry to the loader."),
+        roster=Roster((IMPLEMENTER,)),
+        results=results,
+        status=status,
+        **fields,
+    )
+
+
+IMPLEMENTED = AgentResult("implementer", ModelTier.STANDARD, Outcome.COMPLETED, "Added the retry.")
+TESTED = AgentResult("tester", ModelTier.STANDARD, Outcome.COMPLETED, "pytest: 24 passed.")
+
+
+def test_a_finished_run_ends_by_stating_where_it_got_to():
+    state = a_state(
+        RunStatus.AWAITING_SIGNOFF,
+        IMPLEMENTED,
+        TESTED,
+        pull_request="https://github.com/acme/pipelines/pull/13",
+    )
+
+    body = render_terminal_comment(state)
+
+    assert "### Run complete" in body
+    assert "`agentforge:awaiting-signoff`" in body
+    assert "**Escalated:** no" in body
+    assert "implementer, tester" in body
+    assert "/pull/13" in body
+
+
+def test_a_halted_run_names_the_escalation_and_the_step_it_stopped_on():
+    """ADR-0003 makes escalation frequency the signal of Orchestrator quality,
+    which is only true if a person can count it off the tracker."""
+    escalated = AgentResult(
+        "tester", ModelTier.STANDARD, Outcome.ESCALATED, "There is no suite here."
+    )
+
+    body = render_terminal_comment(a_state(RunStatus.HALTED, IMPLEMENTED, escalated))
+
+    assert "### Run halted" in body
+    assert "`agentforge:halted`" in body
+    assert "**Escalated:** yes, at step 2 (tester)" in body
+    assert "There is no suite here." in body
+    assert "agentforge implement 12" in body
+
+
+def test_a_failed_run_says_it_failed_rather_than_that_it_escalated():
+    failed = AgentResult("tester", ModelTier.STANDARD, Outcome.FAILED, "claude: rate limited")
+
+    body = render_terminal_comment(a_state(RunStatus.FAILED, IMPLEMENTED, failed))
+
+    assert "### Run failed" in body
+    assert "`agentforge:failed`" in body
+    assert "**Escalated:** no" in body
+    assert "claude: rate limited" in body
+
+
+def test_a_suspended_run_reads_differently_from_a_halted_one():
+    """Suspended is a Gate a Run can still clear; halted is a human's move. A
+    person reading the Issue has to be able to tell which one they are looking at."""
+    suspended = render_terminal_comment(a_state(RunStatus.SUSPENDED, IMPLEMENTED))
+    halted = render_terminal_comment(
+        a_state(
+            RunStatus.HALTED,
+            AgentResult("implementer", ModelTier.STANDARD, Outcome.ESCALATED, "wrong file"),
+        )
+    )
+
+    assert "### Run suspended" in suspended
+    assert "`agentforge:suspended`" in suspended
+    assert "**Escalated:** no" in suspended
+    assert "Gate" in suspended
+
+    assert "### Run halted" in halted
+    assert "`agentforge:halted`" in halted
+    assert suspended != halted
+
+
+def test_a_run_that_is_still_going_has_no_ending_to_post():
+    with pytest.raises(IssueError, match="has not ended"):
+        render_terminal_comment(a_state(RunStatus.RUNNING, IMPLEMENTED))
+
+
+def test_the_terminal_comment_is_not_read_back_as_an_agent_result():
+    """It ends the Run Log; a Run that resumed past it would count it as a Step."""
+    body = render_terminal_comment(a_state(RunStatus.HALTED, IMPLEMENTED))
+
+    assert parse_run_log(Issue(12, "t", BODY, comments=(Comment("bot", body),))) == ()
+
+
+def test_a_run_state_costs_one_gh_call_and_touches_no_local_state(tmp_path):
+    """ADR-0002 has no run directory and no database, so the whole traffic of
+    reading a Run's state is one `gh issue view` and the whole input is its JSON."""
+    stopped = render_run_log_comment(
+        AgentResult("implementer", ModelTier.STANDARD, Outcome.ESCALATED, "wrong file")
+    )
+    runner = FakeRunner().script(
+        "gh",
+        "issue",
+        "view",
+        stdout=issue_json(
+            labels=[{"name": "agentforge:halted"}],
+            comments=[{"author": {"login": "bot"}, "body": stopped}],
+        ),
+    )
+
+    state = run_state(GitHub(runner, tmp_path).read_issue(12))
+
+    assert [call[:3] for call in runner.calls] == [("gh", "issue", "view")]
+    assert list(tmp_path.iterdir()) == [], "a Run that writes state locally does not survive a laptop"
+    assert state.status is RunStatus.HALTED
+    assert state.current_step == 1
 
 
 def test_an_issue_nobody_planned_is_refused_with_a_reason():

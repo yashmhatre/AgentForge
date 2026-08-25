@@ -93,14 +93,14 @@ def test_implement_prints_the_run_log_and_the_pull_request(runner, capsys):
     assert "A human merges." in out
 
 
-def test_an_escalated_run_exits_one_and_points_at_the_label(runner, capsys):
+def test_a_halted_run_exits_one_and_points_at_the_label(runner, capsys):
     runner.script("claude", stdout=agent_says("escalated", "Step s1 names a file that is gone.", ()))
 
     assert run(["implement", "12"], runner) == 1
 
     captured = capsys.readouterr()
     assert "[escalated] implementer" in captured.out
-    assert "agentforge:escalated" in captured.err
+    assert "agentforge:halted" in captured.err
 
 
 def test_a_tier_override_reaches_the_provider(runner):
