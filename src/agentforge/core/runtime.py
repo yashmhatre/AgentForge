@@ -182,8 +182,15 @@ class Forge:
         for step in remaining:
             role = resolve_role(step.role)
             at = overrides.get(role.name, tier or step.tier or role.tier)
+            # Derived from the Run Log rather than enumerated over `remaining`,
+            # which restarts at 1 on a resumed Run and would tell a human that a
+            # Role escalated at step 1 of a Run whose step 1 is behind it.
+            position = _with(state, results=results).current_step
             result = _run_step(role.at_tier(at), provider, state, repo.root)
-            github.post_comment(number, render_run_log_comment(result))
+            github.post_comment(
+                number,
+                render_run_log_comment(result, step=position, of=len(workflow.steps)),
+            )
             results.append(result)
 
             if result.outcome is not Outcome.COMPLETED:

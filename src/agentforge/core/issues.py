@@ -189,8 +189,22 @@ class GitHub:
 # --- the Run Log ----------------------------------------------------------
 
 
-def render_run_log_comment(result: AgentResult) -> str:
-    """One Run Log entry: prose a human reads, and a block a Run resumes from."""
+def render_run_log_comment(
+    result: AgentResult, *, step: int | None = None, of: int | None = None
+) -> str:
+    """One Run Log entry: prose a human reads, and a block a Run resumes from.
+
+    `step` is the 1-based position of the Step this result retired or stopped on,
+    and `of` how many the Workflow declares. A Role name alone does not locate an
+    Escalation — a Workflow may name the same Role twice, and the human who has
+    to correct the plan is looking for one Step in it. Both are optional because
+    not every result is a Step: a Run that fails after every Step has run is
+    failing the Run, and naming a position there would invent one.
+
+    The position stays in the prose. The result block is what later Runs parse to
+    work out which Steps are behind them, and a position recorded there would be
+    a second answer to a question `current_step` already derives.
+    """
     heading = {
         Outcome.COMPLETED: "completed",
         Outcome.ESCALATED: "escalated",
@@ -198,7 +212,7 @@ def render_run_log_comment(result: AgentResult) -> str:
     }[result.outcome]
 
     lines = [
-        f"### {result.role} — {heading}",
+        f"### {result.role} — {heading}{_position(step, of)}",
         "",
         f"**Model Tier:** `{result.tier}`",
         "",
@@ -224,6 +238,13 @@ def render_run_log_comment(result: AgentResult) -> str:
 
     lines += ["", render_result_block(result.to_dict())]
     return "\n".join(lines) + "\n"
+
+
+def _position(step: int | None, of: int | None) -> str:
+    """Where in the Workflow this entry sits, if the caller knew."""
+    if step is None:
+        return ""
+    return f" (step {step} of {of})" if of else f" (step {step})"
 
 
 #: How each way of ending a Run reads in the Run Log. A Run that is still moving

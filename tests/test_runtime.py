@@ -427,6 +427,111 @@ def test_an_escalation_labels_the_issue_and_states_the_reason():
     assert any("Step s1 names a file that is gone." in c for c in comments)
 
 
+def test_an_escalation_stops_the_run_before_the_next_step_is_invoked():
+    """Halting is worth nothing if the rest of the Roster runs anyway: the
+    Steps after an Escalation were planned against a plan now known to be wrong."""
+    runner = a_runner()
+    runner.script("claude", stdout=agent_says("escalated", "Step s1 names a file that is gone.", ()))
+
+    forge(runner).implement(12, allow_commands=True)
+
+    assert len(runner.matching("claude")) == 1, "the tester ran on a plan known to be wrong"
+    entries = [c for c in comments_on(runner) if RESULT_OPEN in c]
+    assert len(entries) == 1
+    assert "### implementer — escalated (step 1 of 2)" in entries[0]
+
+
+def test_the_escalating_roles_own_comment_names_its_step_and_the_mismatch():
+    """The terminal comment counts the escalation; this is the entry that says
+    what did not match, and #8 wants both halves findable in one place."""
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script(
+        "claude",
+        stdout=[
+            agent_says("completed", "Implemented the change."),
+            agent_says("escalated", "Step s2 names tests/test_loader.py; it is not here.", ()),
+        ],
+    )
+
+    forge(runner).implement(12, allow_commands=True)
+
+    entries = [c for c in comments_on(runner) if RESULT_OPEN in c]
+    assert "### implementer — completed (step 1 of 2)" in entries[0]
+    assert "### tester — escalated (step 2 of 2)" in entries[1]
+    assert "Step s2 names tests/test_loader.py; it is not here." in entries[1]
+
+
+def test_a_hand_edited_plan_naming_a_module_that_is_not_there_halts_rather_than_improvising():
+    """#8's last criterion, end to end. A human edits the frozen block to name a
+    module that does not exist; the Role is handed exactly that and reports the
+    mismatch, and the Run stops with a label instead of a pull request full of
+    invented work."""
+    hand_edited = BODY.replace("src/loader.py", "src/nowhere/loader_v2.py")
+    runner = a_runner()
+    runner.script("gh", "issue", "view", stdout=issue_json(hand_edited))
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script(
+        "claude",
+        stdout=agent_says(
+            "escalated", "Step s1 names src/nowhere/loader_v2.py, which is not here.", ()
+        ),
+    )
+
+    state = forge(runner).implement(12, allow_commands=True)
+
+    assert "src/nowhere/loader_v2.py" in runner.argument_after("-p", "claude")
+    assert state.status is RunStatus.HALTED
+    assert labels_applied(runner)[-1] == "agentforge:halted"
+
+    entry = [c for c in comments_on(runner) if RESULT_OPEN in c][-1]
+    assert "### implementer — escalated (step 1 of 2)" in entry
+    assert "src/nowhere/loader_v2.py" in entry
+
+    assert not runner.ran("git", "commit"), "a halted Run improvised work and committed it"
+    assert not runner.ran("git", "push")
+    assert not runner.ran("gh", "pr", "create")
+
+
+def test_a_corrected_plan_resumes_rather_than_restarting_the_completed_steps():
+    """Halting costs the remaining Steps, not the whole Run. The second Run reads
+    the first Run's own Run Log back off the Issue, which is the only reason the
+    completed Step is still worth anything."""
+    first = a_runner()
+    first.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    first.script(
+        "claude",
+        stdout=[
+            agent_says("completed", "Implemented the change."),
+            agent_says("escalated", "Step s2 names a suite that is not here.", ()),
+        ],
+    )
+
+    forge(first).implement(12, allow_commands=True)
+    log = comments_on(first)
+
+    second = a_runner()
+    second.script(
+        "gh",
+        "issue",
+        "view",
+        stdout=issue_json(labels=("agentforge:halted",), comments=tuple(log)),
+    )
+    second.script("git", "status", "--porcelain", stdout=["", " M tests/test_loader.py\n"])
+    second.script("claude", stdout=agent_says("completed", "pytest: 24 passed."))
+
+    state = forge(second).implement(12, allow_commands=True)
+
+    # The escalated attempt stays in the log beside the completed one; only
+    # completed results retire a Step.
+    assert [result.role for result in state.results] == ["implementer", "tester", "tester"]
+    assert state.done_roles == ("implementer", "tester")
+    assert state.results[0].summary == "Implemented the change."
+    assert len(second.matching("claude")) == 1, "the completed Step was run a second time"
+    assert "You are the Tester" in second.argument_after("-p", "claude")
+    assert state.status is RunStatus.AWAITING_SIGNOFF
+
+
 def test_an_escalated_run_re_runs_the_role_that_escalated():
     """The human corrects the plan block and runs the same command again."""
     escalated = render_result_block(
