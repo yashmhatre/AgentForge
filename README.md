@@ -4,6 +4,10 @@ AgentForge is a standalone Python framework for coordinating specialized softwar
 
 A human states a Task. The Orchestrator files a GitHub issue carrying a frozen plan and the Roster of Roles that will execute it. `agentforge implement <n>` runs the Issue's Workflow and opens a draft pull request for a human to sign off. No workflow ever merges.
 
+![An Issue carries the frozen plan and the Roster; each Agent appends its result to the Issue as the Run Log; the Workflow ends at a draft pull request awaiting a human.](docs/assets/one-issue-number.png)
+
+<sub>Illustrative. The Roles pictured are indicative rather than the shipped set — see Status below for what M3 actually runs, and `CONTEXT.md` for the six Role names.</sub>
+
 ## Status
 
 The M3 runtime now runs multiple Roles in Workflow order. The default `feature`
