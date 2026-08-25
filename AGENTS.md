@@ -20,7 +20,7 @@ Single-context: one `CONTEXT.md` and one `docs/adr/` at the repo root. See [`doc
 
 ## Working in this repo
 
-**Decisions are recorded, not re-litigated.** [`docs/adr/`](./docs/adr/) holds the architectural decisions. Four of them constrain almost everything: agents run as coding-agent CLI subprocesses (0001), GitHub Issues carry both the handoff contract and the Run Log (0002), the plan freezes once the Orchestrator writes it (0003), and Roles declare a Model Tier rather than a model (0004). If your work contradicts one, say so explicitly rather than quietly working around it.
+**Decisions are recorded, not re-litigated.** [`docs/adr/`](./docs/adr/) holds the architectural decisions. Six of them constrain almost everything: agents run as coding-agent CLI subprocesses (0001), GitHub Issues carry both the handoff contract and the Run Log (0002), the plan freezes once the Orchestrator writes it (0003), Roles declare a Model Tier rather than a model (0004), skill delivery follows a declared Capability Tier (0005), and third-party skills ship as vendored package data (0006). If your work contradicts one, say so explicitly rather than quietly working around it.
 
 **Everything external is a subprocess, behind one seam.** `gh`, the coding-agent CLIs, and the vendored unslop scanners all route through a single Command Runner port. Add a new external dependency by going through that port, never by calling `subprocess` directly.
 
