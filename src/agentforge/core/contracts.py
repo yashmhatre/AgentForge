@@ -10,12 +10,20 @@ Terms are defined in `CONTEXT.md`. This file is where they acquire a shape.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
+from typing import TypeVar
+
+T = TypeVar("T")
 
 #: Bumped when a field is removed or its meaning changes. Added fields with
 #: defaults do not require a bump, because an older Issue still parses.
 PLAN_FORMAT_VERSION = 1
+
+#: The Workflow an Issue runs when its plan block names none. Every Issue filed
+#: before Workflows existed reads as `feature`, which is what those Runs did.
+DEFAULT_WORKFLOW = "feature"
 
 
 class ModelTier(StrEnum):
@@ -259,6 +267,27 @@ class AgentResult:
         )
 
 
+def outstanding(
+    items: Sequence[T], done: Sequence[str], name_of: Callable[[T], str]
+) -> tuple[T, ...]:
+    """Items not yet retired by a completed result, in order.
+
+    Shared by the Roster and the Workflow because both ask the same question of
+    the same Run Log. One completed result retires one entry, so a sequence
+    naming the same Role twice resumes into the second occurrence rather than
+    skipping both.
+    """
+    unclaimed = list(done)
+    pending = []
+    for item in items:
+        name = name_of(item)
+        if name in unclaimed:
+            unclaimed.remove(name)
+            continue
+        pending.append(item)
+    return tuple(pending)
+
+
 @dataclass(frozen=True)
 class RunState:
     """One execution of one Roster against one Issue.
@@ -276,6 +305,7 @@ class RunState:
     status: RunStatus = RunStatus.PLANNED
     branch: str = ""
     pull_request: str = ""
+    workflow: str = DEFAULT_WORKFLOW
 
     @property
     def done_roles(self) -> tuple[str, ...]:
@@ -290,14 +320,7 @@ class RunState:
     @property
     def remaining(self) -> tuple[Role, ...]:
         """Roles that have not yet completed, in Roster order."""
-        done = list(self.done_roles)
-        pending = []
-        for role in self.roster:
-            if role.name in done:
-                done.remove(role.name)
-                continue
-            pending.append(role)
-        return tuple(pending)
+        return outstanding(tuple(self.roster), self.done_roles, lambda role: role.name)
 
     @property
     def escalation(self) -> AgentResult | None:
@@ -317,6 +340,7 @@ class PlanDocument:
     context: ContextPack = ContextPack()
     version: int = PLAN_FORMAT_VERSION
     notes: tuple[str, ...] = field(default=())
+    workflow: str = DEFAULT_WORKFLOW
 
     def to_dict(self) -> dict:
         return {
@@ -325,6 +349,7 @@ class PlanDocument:
             "roster": self.roster.to_dict(),
             "context": self.context.to_dict(),
             "notes": list(self.notes),
+            "workflow": self.workflow,
         }
 
     @classmethod
@@ -335,4 +360,5 @@ class PlanDocument:
             context=ContextPack.from_dict(data.get("context")),
             version=int(data.get("version", PLAN_FORMAT_VERSION)),
             notes=tuple(data.get("notes") or ()),
+            workflow=str(data.get("workflow") or DEFAULT_WORKFLOW),
         )

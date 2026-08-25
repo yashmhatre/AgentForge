@@ -12,13 +12,24 @@ them is recognized as premature rather than as nonsense.
 from __future__ import annotations
 
 from ..core.contracts import ModelTier, Role
-from .implementer import IMPLEMENTER
+from .implementer import IMPLEMENTER, Implementer
 from .orchestrator import ORCHESTRATOR
 
 #: Roles that can actually run today.
 ROLES: dict[str, Role] = {
     ORCHESTRATOR.name: ORCHESTRATOR,
     IMPLEMENTER.name: IMPLEMENTER,
+}
+
+#: How to run each Role, keyed the same way. A runner takes a Provider and
+#: exposes `run(plan=, context=, cwd=, role=, tier=)`.
+#:
+#: This registry is why the Workflow runtime names no Role: it looks a runner up
+#: by the name the Workflow step declared. Adding a Role is an entry here and a
+#: line of YAML, never an edit to the engine. The Orchestrator is absent
+#: deliberately — it produces Issues rather than running inside a Workflow.
+RUNNERS: dict[str, type] = {
+    IMPLEMENTER.name: Implementer,
 }
 
 #: The full cast from CONTEXT.md, with ADR-0004's default tiers. Roles absent
@@ -51,4 +62,12 @@ def resolve_role(name: str) -> Role:
     raise UnknownRole(f"no Role named {name!r}; available: {', '.join(sorted(ROLES))}")
 
 
-__all__ = ["IMPLEMENTER", "KNOWN_TIERS", "ORCHESTRATOR", "ROLES", "UnknownRole", "resolve_role"]
+__all__ = [
+    "IMPLEMENTER",
+    "KNOWN_TIERS",
+    "ORCHESTRATOR",
+    "ROLES",
+    "RUNNERS",
+    "UnknownRole",
+    "resolve_role",
+]
