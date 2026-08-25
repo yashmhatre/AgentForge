@@ -15,8 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..agents import ROLES
-from ..agents.implementer import IMPLEMENTER, Implementer
+from ..agents import RUNNERS, resolve_role
 from ..agents.orchestrator import Orchestrator, Planned
 from ..providers import DEFAULT_PROVIDER, get_provider
 from .contracts import (
@@ -34,6 +33,7 @@ from .issues import GitHub, Issue, IssueError, render_run_log_comment, run_state
 from .plan_format import PlanFormatError, render_issue_body, render_issue_title
 from .process import CommandRunner, SubprocessRunner
 from .repo import PreconditionFailed, Repository, branch_for_issue, open_repository
+from .workflow import WorkflowError, load_workflow
 
 
 class RunFailed(RuntimeError):
@@ -134,7 +134,18 @@ class Forge:
         except LookupError as exc:
             raise RunFailed(f"issue #{number} names a Role that cannot run: {exc}") from exc
 
-        remaining = state.remaining
+        try:
+            workflow = load_workflow(state.workflow)
+        except WorkflowError as exc:
+            raise RunFailed(f"issue #{number} cannot be implemented: {exc}") from exc
+
+        if not workflow.steps:
+            raise RunFailed(
+                f"the {workflow.name!r} Workflow declares no steps, so there is nothing "
+                "to run. Name a Workflow that does, or fill this one in."
+            )
+
+        remaining = workflow.remaining(state.done_roles)
         if not remaining:
             return state
 
@@ -144,10 +155,12 @@ class Forge:
 
         results = list(state.results)
         overrides = tier_overrides or {}
+        last_role = remaining[-1].role
 
-        for role in remaining:
-            at = overrides.get(role.name, tier or role.tier)
-            result = _run_role(role.at_tier(at), provider, state, repo.root)
+        for step in remaining:
+            role = resolve_role(step.role)
+            at = overrides.get(role.name, tier or step.tier or role.tier)
+            result = _run_step(role.at_tier(at), provider, state, repo.root)
             github.post_comment(number, render_run_log_comment(result))
             results.append(result)
 
@@ -161,8 +174,8 @@ class Forge:
         changed = repo.changed_files()
         if not repo.commit_all(f"{issue.title}\n\nImplements #{number} via AgentForge."):
             failure = AgentResult(
-                role=results[-1].role if results else IMPLEMENTER.name,
-                tier=results[-1].tier if results else IMPLEMENTER.tier,
+                role=results[-1].role if results else last_role,
+                tier=results[-1].tier if results else resolve_role(last_role).tier,
                 outcome=Outcome.FAILED,
                 summary=(
                     "the Roster reported success but left no changes in the working tree, "
@@ -200,21 +213,27 @@ class Forge:
 # --- role dispatch ---------------------------------------------------------
 
 
-def _run_role(role: Role, provider, state: RunState, cwd: Path) -> AgentResult:
-    if role.name == IMPLEMENTER.name:
-        return Implementer(provider).run(
-            plan=state.plan,
-            context=state.context or ContextPack(),
-            cwd=cwd,
-            role=role,
-            tier=role.tier,
+def _run_step(role: Role, provider, state: RunState, cwd: Path) -> AgentResult:
+    """Invoke whatever runner is registered for this Role.
+
+    The lookup is the whole point: the runtime names no Role, so a Workflow
+    naming a seventh one needs an entry in `RUNNERS` and nothing here.
+    """
+    runner = RUNNERS.get(role.name)
+    if runner is None:
+        # Unreachable through a validated Workflow — `parse_workflow` refuses
+        # unrunnable names at load time — but a Workflow built in code can land here.
+        raise RunFailed(
+            f"the {role.name!r} Role has no runner in this version; "
+            f"available: {', '.join(sorted(RUNNERS))}"
         )
 
-    # Unreachable via a Roster parsed from an Issue — `resolve_role` refuses
-    # unimplemented names first — but a Roster built in code could get here.
-    raise RunFailed(
-        f"the {role.name!r} Role has no runner in this version; M1 runs "
-        f"{', '.join(sorted(ROLES))}"
+    return runner(provider).run(
+        plan=state.plan,
+        context=state.context or ContextPack(),
+        cwd=cwd,
+        role=role,
+        tier=role.tier,
     )
 
 

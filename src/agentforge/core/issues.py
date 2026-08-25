@@ -257,6 +257,7 @@ def run_state(issue: Issue, resolve=None) -> RunState:
         context=document.context or ContextPack(),
         results=results,
         status=status,
+        workflow=document.workflow,
     )
 
 

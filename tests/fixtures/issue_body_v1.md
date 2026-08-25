@@ -84,7 +84,8 @@ Add a retry to the loader.
       "tier": "standard"
     }
   ],
-  "version": 1
+  "version": 1,
+  "workflow": "feature"
 }
 ```
 <!-- /agentforge:plan -->

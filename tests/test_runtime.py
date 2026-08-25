@@ -380,3 +380,112 @@ def test_an_issue_naming_an_unbuilt_role_says_which_one():
 
     with pytest.raises(RunFailed, match="tester"):
         forge(runner).implement(12)
+
+
+# --- the Workflow drives the Run -------------------------------------------
+
+
+def _body_naming_workflow(name: str) -> str:
+    """The recorded body with its plan block's Workflow swapped."""
+    return BODY.replace('"workflow": "feature"', f'"workflow": "{name}"')
+
+
+def test_a_workflow_that_does_not_exist_is_refused_before_any_agent_is_invoked():
+    runner = a_runner()
+    runner.script("gh", "issue", "view", stdout=issue_json(_body_naming_workflow("nonesuch")))
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+
+    with pytest.raises(RunFailed, match="nonesuch"):
+        forge(runner).implement(12)
+
+    assert not runner.ran("claude"), "a bad Workflow name must cost nothing"
+
+
+def test_a_workflow_with_no_steps_is_refused_before_any_agent_is_invoked():
+    """`bugfix` and `review` ship empty until #14. Running one is a no-op, not a Run."""
+    runner = a_runner()
+    runner.script("gh", "issue", "view", stdout=issue_json(_body_naming_workflow("review")))
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+
+    with pytest.raises(RunFailed, match="review"):
+        forge(runner).implement(12)
+
+    assert not runner.ran("claude")
+
+
+def test_an_issue_filed_before_workflows_existed_still_runs():
+    """The plan block's `workflow` key is additive: absent means `feature`."""
+    runner = a_runner()
+    older = BODY.replace(',\n  "workflow": "feature"', "")
+    runner.script("gh", "issue", "view", stdout=issue_json(older))
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
+
+    forge(runner).implement(12)
+
+    assert runner.ran("claude")
+    assert "--draft" in runner.only("gh", "pr", "create")
+
+
+def test_a_step_tier_override_moves_the_role_without_a_command_line_flag(tmp_path, monkeypatch):
+    """The step's `tier:` is the second of the four fields to become real."""
+    (tmp_path / "feature.yaml").write_text(
+        "name: feature\nsteps:\n  - role: implementer\n    tier: deep\n", encoding="utf-8"
+    )
+    monkeypatch.setattr("agentforge.core.workflow.WORKFLOWS_ROOT", tmp_path)
+
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=agent_says("completed", "done"))
+
+    forge(runner).implement(12)
+
+    assert runner.argument_after("--model", "claude") == "opus"
+
+
+def test_a_command_line_tier_still_beats_the_step_override(tmp_path, monkeypatch):
+    """Precedence: explicit user request, then the step, then the Role's ADR-0004 default."""
+    (tmp_path / "feature.yaml").write_text(
+        "name: feature\nsteps:\n  - role: implementer\n    tier: deep\n", encoding="utf-8"
+    )
+    monkeypatch.setattr("agentforge.core.workflow.WORKFLOWS_ROOT", tmp_path)
+
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=agent_says("completed", "done"))
+
+    forge(runner).implement(12, tier_overrides={"implementer": ModelTier.CHEAP})
+
+    assert runner.argument_after("--model", "claude") == "haiku"
+
+
+def test_a_definition_naming_an_unrunnable_role_costs_no_provider_call(tmp_path, monkeypatch):
+    """#3 puts the bar at "before any Provider is invoked" — `gh` has necessarily run,
+    since the Workflow name comes from the Issue."""
+    (tmp_path / "feature.yaml").write_text(
+        "name: feature\nsteps:\n  - role: dramaturge\n", encoding="utf-8"
+    )
+    monkeypatch.setattr("agentforge.core.workflow.WORKFLOWS_ROOT", tmp_path)
+
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+
+    with pytest.raises(RunFailed, match="dramaturge"):
+        forge(runner).implement(12)
+
+    assert not runner.ran("claude")
+    assert not runner.ran("git", "checkout", "-b"), "a bad definition must not touch the repo"
+
+
+def test_the_runtime_names_no_role():
+    """#4: adding a seventh Role must not require editing the engine.
+
+    Asserted against the source because that is where the property lives. A
+    `RUNNERS` lookup keyed by the Workflow step is the only dispatch there is.
+    """
+    source = (
+        Path(__file__).parent.parent / "src" / "agentforge" / "core" / "runtime.py"
+    ).read_text(encoding="utf-8")
+
+    for role in ("implementer", "tester", "reviewer", "security", "architect"):
+        assert role not in source.lower(), f"runtime.py names the {role!r} Role"
