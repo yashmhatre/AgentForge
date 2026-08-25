@@ -5,7 +5,7 @@ A Role is a definition — a name, a default Model Tier, and standing instructio
 per Run on the command line, and per project in configuration once
 `agentforge init` exists.
 
-M1 implements two of the six. The rest are named so that a Roster mentioning
+Three of the six Roles can run. The rest are named so that a Roster mentioning
 them is recognized as premature rather than as nonsense.
 """
 
@@ -14,11 +14,13 @@ from __future__ import annotations
 from ..core.contracts import ModelTier, Role
 from .implementer import IMPLEMENTER, Implementer
 from .orchestrator import ORCHESTRATOR
+from .tester import TESTER, Tester
 
 #: Roles that can actually run today.
 ROLES: dict[str, Role] = {
     ORCHESTRATOR.name: ORCHESTRATOR,
     IMPLEMENTER.name: IMPLEMENTER,
+    TESTER.name: TESTER,
 }
 
 #: How to run each Role, keyed the same way. A runner takes a Provider and
@@ -30,10 +32,11 @@ ROLES: dict[str, Role] = {
 #: deliberately — it produces Issues rather than running inside a Workflow.
 RUNNERS: dict[str, type] = {
     IMPLEMENTER.name: Implementer,
+    TESTER.name: Tester,
 }
 
 #: The full cast from CONTEXT.md, with ADR-0004's default tiers. Roles absent
-#: from `ROLES` are M2 work; naming them here lets the Orchestrator recognize a
+#: from `ROLES` are later work; naming them here lets the Orchestrator recognize a
 #: reasonable-but-unavailable choice and say so.
 KNOWN_TIERS: dict[str, ModelTier] = {
     "orchestrator": ModelTier.DEEP,
@@ -57,7 +60,7 @@ def resolve_role(name: str) -> Role:
     if key in KNOWN_TIERS:
         raise UnknownRole(
             f"the {key!r} Role is not implemented in this version of AgentForge; "
-            f"M1 runs only: {', '.join(sorted(ROLES))}"
+            f"runnable Roles: {', '.join(sorted(ROLES))}"
         )
     raise UnknownRole(f"no Role named {name!r}; available: {', '.join(sorted(ROLES))}")
 
@@ -68,6 +71,7 @@ __all__ = [
     "ORCHESTRATOR",
     "ROLES",
     "RUNNERS",
+    "TESTER",
     "UnknownRole",
     "resolve_role",
 ]

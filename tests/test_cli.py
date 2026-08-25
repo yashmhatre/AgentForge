@@ -48,12 +48,12 @@ def test_plan_reports_the_issue_and_how_to_run_it(runner, capsys):
 
 def test_plan_surfaces_dropped_roles_where_the_user_will_read_them(runner, capsys):
     runner.script(
-        "claude", stdout=orchestrator_output([{"role": "implementer"}, {"role": "tester"}])
+        "claude", stdout=orchestrator_output([{"role": "implementer"}, {"role": "security"}])
     )
 
     run(["plan", "add a retry"], runner)
 
-    assert "Note: The Orchestrator asked for the `tester` Role" in capsys.readouterr().out
+    assert "Note: The Orchestrator asked for the `security` Role" in capsys.readouterr().out
 
 
 def test_an_ambiguous_task_exits_one_and_says_what_is_needed(runner, capsys):
@@ -85,7 +85,7 @@ def test_implement_prints_the_run_log_and_the_pull_request(runner, capsys):
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
 
-    assert run(["implement", "12"], runner) == 0
+    assert run(["implement", "12", "--allow-commands"], runner) == 0
 
     out = capsys.readouterr().out
     assert "[ok] implementer (standard) — Added a bounded retry." in out

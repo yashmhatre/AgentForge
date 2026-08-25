@@ -10,10 +10,9 @@ that cannot run, a Gate kind that does not exist, or a tier that was never a
 tier is refused at load time, so a typo in a Workflow costs nothing rather than
 costing a deep-tier planning pass.
 
-A step declares four things and this milestone acts on one. The Role is
-resolved and run; the tier override, the Gate, and the skip condition are parsed
-and carried, waiting for #6, #9, and the conditional-step work respectively.
-Parsing them now means the shipped definitions do not change shape later.
+A Step declares four things. The Role is resolved and run, and the Model Tier
+override is applied for that invocation. The Gate and skip condition are parsed
+and carried, waiting for #9 and the conditional-step work respectively.
 """
 
 from __future__ import annotations
@@ -45,7 +44,7 @@ class Step:
 
     `tier` overrides the Role's ADR-0004 default for this step alone. `gate`
     must clear before the next step begins. `when` is the condition under which
-    the step is skipped. Only `role` is acted on today.
+    the step is skipped. Gates and conditions are not acted on yet.
     """
 
     role: str

@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 
+from agentforge.agents import TESTER
 from agentforge.core.contracts import ModelTier, Outcome, RunStatus
 from agentforge.core.plan_format import parse_issue_body, render_result_block
 from agentforge.core.runtime import Forge, RunFailed
@@ -146,11 +147,11 @@ def test_an_issue_number_is_the_whole_input():
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
 
-    state = forge(runner).implement(12)
+    state = forge(runner).implement(12, allow_commands=True)
 
     assert state.status is RunStatus.AWAITING_SIGNOFF
     assert state.pull_request.endswith("/pull/13")
-    assert [r.outcome for r in state.results] == [Outcome.COMPLETED]
+    assert [r.outcome for r in state.results] == [Outcome.COMPLETED, Outcome.COMPLETED]
 
 
 def test_the_agent_works_on_a_branch_named_for_the_issue():
@@ -158,7 +159,7 @@ def test_the_agent_works_on_a_branch_named_for_the_issue():
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
 
-    forge(runner).implement(12)
+    forge(runner).implement(12, allow_commands=True)
 
     assert runner.ran("git", "checkout", "-b")
     assert runner.only("git", "checkout", "-b")[3] == "agentforge/issue-12"
@@ -170,11 +171,75 @@ def test_each_result_is_posted_to_the_issue_before_the_run_moves_on():
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
 
-    forge(runner).implement(12)
+    forge(runner).implement(12, allow_commands=True)
 
-    comments = [c[c.index("--body") + 1] for c in runner.matching("gh", "issue", "comment")]
-    assert any("### implementer — completed" in c for c in comments)
-    assert any("Added a bounded retry." in c for c in comments)
+    comments = [
+        c[c.index("--body") + 1]
+        for c in runner.matching("gh", "issue", "comment")
+        if "###" in c[c.index("--body") + 1]
+    ]
+    assert "### implementer — completed" in comments[0]
+    assert "### tester — completed" in comments[1]
+    assert all("**Model Tier:** `standard`" in comment for comment in comments)
+
+    first_agent, second_agent = [
+        index for index, call in enumerate(runner.calls) if call[0] == "claude"
+    ]
+    first_comment = next(
+        index
+        for index, call in enumerate(runner.calls)
+        if call[:3] == ("gh", "issue", "comment")
+    )
+    assert first_agent < first_comment < second_agent
+
+
+def test_a_denied_feature_run_records_the_tester_denial_and_halts():
+    runner = a_runner()
+    runner.script("claude", stdout=agent_says("completed", "Implemented the change."))
+
+    state = forge(runner).implement(12)
+
+    assert [result.role for result in state.results] == ["implementer", "tester"]
+    assert state.results[-1].outcome is Outcome.ESCALATED
+    assert "denied" in state.results[-1].summary
+    assert len(runner.matching("claude")) == 1
+    assert not runner.ran("gh", "pr", "create")
+
+
+def test_opening_a_denied_run_resumes_at_the_tester():
+    implemented = render_result_block(
+        {
+            "role": "implementer",
+            "tier": "standard",
+            "outcome": "completed",
+            "summary": "implemented",
+        }
+    )
+    denied = render_result_block(
+        {
+            "role": "tester",
+            "tier": "standard",
+            "outcome": "escalated",
+            "summary": "command execution denied",
+        }
+    )
+    runner = a_runner()
+    runner.script(
+        "gh",
+        "issue",
+        "view",
+        stdout=issue_json(
+            labels=("agentforge:escalated",), comments=(implemented, denied)
+        ),
+    )
+    runner.script("git", "status", "--porcelain", stdout=["", " M tests/test_loader.py\n"])
+    runner.script("claude", stdout=agent_says("completed", "pytest: 24 passed"))
+
+    state = forge(runner).implement(12, allow_commands=True)
+
+    assert state.status is RunStatus.AWAITING_SIGNOFF
+    assert len(runner.matching("claude")) == 1
+    assert "You are the Tester" in runner.argument_after("-p", "claude")
 
 
 def test_the_run_ends_in_a_draft_pull_request_and_never_a_merge():
@@ -182,7 +247,7 @@ def test_the_run_ends_in_a_draft_pull_request_and_never_a_merge():
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
 
-    forge(runner).implement(12)
+    forge(runner).implement(12, allow_commands=True)
 
     assert "--draft" in runner.only("gh", "pr", "create")
     assert not runner.ran("gh", "pr", "merge")
@@ -229,7 +294,7 @@ def test_an_escalation_halts_the_run_before_a_pull_request_exists():
     runner = a_runner()
     runner.script("claude", stdout=agent_says("escalated", "Step s1 names a file that is gone.", ()))
 
-    state = forge(runner).implement(12)
+    state = forge(runner).implement(12, allow_commands=True)
 
     assert state.status is RunStatus.ESCALATED
     assert not runner.ran("gh", "pr", "create")
@@ -264,22 +329,27 @@ def test_an_escalated_run_re_runs_the_role_that_escalated():
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "Fixed now."))
 
-    state = forge(runner).implement(12)
+    state = forge(runner).implement(12, allow_commands=True)
 
     assert state.status is RunStatus.AWAITING_SIGNOFF
     assert runner.ran("claude")
 
 
 def test_a_finished_run_does_not_run_again():
-    completed = render_result_block(
+    implementer = render_result_block(
         {"role": "implementer", "tier": "standard", "outcome": "completed", "summary": "done"}
+    )
+    tester = render_result_block(
+        {"role": "tester", "tier": "standard", "outcome": "completed", "summary": "passed"}
     )
     runner = a_runner()
     runner.script(
         "gh",
         "issue",
         "view",
-        stdout=issue_json(labels=("agentforge:awaiting-signoff",), comments=(completed,)),
+        stdout=issue_json(
+            labels=("agentforge:awaiting-signoff",), comments=(implementer, tester)
+        ),
     )
 
     state = forge(runner).implement(12)
@@ -294,7 +364,7 @@ def test_an_agent_that_claims_success_but_changed_nothing_fails_loudly():
     runner.script("git", "status", "--porcelain", stdout="")
     runner.script("claude", stdout=agent_says("completed", "All good!", ()))
 
-    state = forge(runner).implement(12)
+    state = forge(runner).implement(12, allow_commands=True)
 
     assert state.status is RunStatus.FAILED
     assert not runner.ran("gh", "pr", "create")
@@ -374,11 +444,11 @@ def test_an_issue_with_no_plan_block_is_refused_with_a_reason():
 
 
 def test_an_issue_naming_an_unbuilt_role_says_which_one():
-    body = plan_block([{"role": "tester"}], plan=a_plan())
+    body = plan_block([{"role": "security"}], plan=a_plan())
     runner = a_runner()
     runner.script("gh", "issue", "view", stdout=issue_json(body=body))
 
-    with pytest.raises(RunFailed, match="tester"):
+    with pytest.raises(RunFailed, match="security"):
         forge(runner).implement(12)
 
 
@@ -421,7 +491,7 @@ def test_an_issue_filed_before_workflows_existed_still_runs():
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
 
-    forge(runner).implement(12)
+    forge(runner).implement(12, allow_commands=True)
 
     assert runner.ran("claude")
     assert "--draft" in runner.only("gh", "pr", "create")
@@ -457,6 +527,31 @@ def test_a_command_line_tier_still_beats_the_step_override(tmp_path, monkeypatch
     forge(runner).implement(12, tier_overrides={"implementer": ModelTier.CHEAP})
 
     assert runner.argument_after("--model", "claude") == "haiku"
+
+
+def test_a_tester_step_override_leaves_the_roles_default_unchanged(tmp_path, monkeypatch):
+    (tmp_path / "feature.yaml").write_text(
+        "name: feature\nsteps:\n  - role: implementer\n  - role: tester\n    tier: deep\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("agentforge.core.workflow.WORKFLOWS_ROOT", tmp_path)
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=agent_says("completed", "done"))
+
+    forge(runner).implement(12, allow_commands=True)
+
+    assert [call[call.index("--model") + 1] for call in runner.matching("claude")] == [
+        "sonnet",
+        "opus",
+    ]
+    comments = [
+        call[call.index("--body") + 1]
+        for call in runner.matching("gh", "issue", "comment")
+        if "### tester" in call[call.index("--body") + 1]
+    ]
+    assert "**Model Tier:** `deep`" in comments[0]
+    assert TESTER.tier is ModelTier.STANDARD
 
 
 def test_a_definition_naming_an_unrunnable_role_costs_no_provider_call(tmp_path, monkeypatch):

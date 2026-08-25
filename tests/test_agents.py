@@ -61,17 +61,14 @@ def test_a_roster_the_orchestrator_asked_for_is_kept_in_order():
     assert notes == ()
 
 
-def test_a_role_that_does_not_exist_yet_is_dropped_and_the_human_is_told():
-    """A model planning a schema migration will reach for a Tester, and it is
-    right to. Dropping it silently would leave a human believing work is
-    scheduled that never runs."""
+def test_roles_that_do_not_exist_yet_are_dropped_and_the_human_is_told():
     roster, notes = select_roster(
         [{"role": "implementer"}, {"role": "tester"}, {"role": "security"}]
     )
 
-    assert roster.names() == ("implementer",)
-    assert len(notes) == 2
-    assert any("tester" in note and "M2" in note for note in notes)
+    assert roster.names() == ("implementer", "tester")
+    assert len(notes) == 1
+    assert "security" in notes[0]
 
 
 def test_an_invented_role_is_dropped_as_unknown_rather_than_as_deferred():

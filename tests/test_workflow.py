@@ -46,8 +46,8 @@ def test_a_step_names_a_role():
     assert [step.role for step in workflow.steps] == ["implementer"]
 
 
-def test_the_three_optional_fields_are_carried_even_though_nothing_acts_on_them():
-    """Tier, Gate, and condition are #6, #9, and later. Parsing them is this ticket."""
+def test_the_three_optional_fields_are_carried_by_a_step():
+    """Tier is active; Gate and condition remain definitions for later tickets."""
     workflow = parse_workflow(
         "name: feature\nsteps:\n"
         "  - role: implementer\n    tier: deep\n    gate: tests\n    when: always\n",
@@ -81,10 +81,10 @@ def test_an_unknown_role_is_refused_and_named():
         parse_workflow("name: feature\nsteps:\n  - role: dramaturge\n", name="feature")
 
 
-def test_a_role_that_exists_but_cannot_run_yet_is_refused():
-    """`tester` is in KNOWN_TIERS but has no runner. A Workflow naming it is premature."""
-    with pytest.raises(WorkflowError, match="tester"):
-        parse_workflow("name: feature\nsteps:\n  - role: tester\n", name="feature")
+def test_the_tester_is_a_runnable_workflow_role():
+    workflow = parse_workflow("name: feature\nsteps:\n  - role: tester\n", name="feature")
+
+    assert workflow.steps[0].role == "tester"
 
 
 def test_an_unknown_gate_kind_is_refused_and_named():
@@ -155,10 +155,10 @@ def test_a_broken_definition_on_disk_names_the_workflow(tmp_path):
 # --- the shipped definitions -------------------------------------------------
 
 
-def test_feature_runs_the_implementer():
+def test_feature_runs_the_implementer_then_the_tester():
     workflow = load_workflow("feature")
 
-    assert [step.role for step in workflow.steps] == ["implementer"]
+    assert [step.role for step in workflow.steps] == ["implementer", "tester"]
 
 
 @pytest.mark.parametrize("name", ["feature", "bugfix", "review"])

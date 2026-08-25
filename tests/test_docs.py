@@ -285,6 +285,7 @@ def test_the_glossary_defines_exactly_these_terms():
         "Agent",
         "Agent Result",
         "Workflow",
+        "Step",
         "Gate",
         "Sign-off",
         "Run",

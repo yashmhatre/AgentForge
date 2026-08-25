@@ -136,8 +136,8 @@ def test_an_escalated_role_stays_on_the_roster():
 
 
 def test_an_unimplemented_role_is_named_rather_than_guessed_at():
-    with pytest.raises(UnknownRole, match="tester"):
-        resolve_role("tester")
+    with pytest.raises(UnknownRole, match="security"):
+        resolve_role("security")
 
 
 def test_an_invented_role_says_what_is_available():

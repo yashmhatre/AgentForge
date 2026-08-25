@@ -42,6 +42,10 @@ _Avoid_: Output, response, return value
 A YAML-declared sequence of Roles with Gates between them. `feature`, `bugfix`, and `review` ship with AgentForge; projects may add their own.
 _Avoid_: Pipeline, process, sequence, playbook
 
+**Step**:
+One ordered unit of a Workflow, pairing a Role invocation with the Gate that follows it.
+_Avoid_: Stage, phase, task
+
 **Gate**:
 A point in a Workflow where execution stops until a condition is met — a passing test suite, a clean security pass, or a human.
 _Avoid_: Checkpoint, guard, stage, barrier

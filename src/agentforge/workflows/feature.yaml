@@ -1,7 +1,8 @@
 # The default Workflow: build something that was not there before.
 #
-# One step today. #6 adds the Tester, #11 the Security Role, #12 the Reviewer,
-# and the Gates between them arrive with #9.
+# #11 adds the Security Role, #12 the Reviewer, and the Gates between them
+# arrive with #9.
 name: feature
 steps:
   - role: implementer
+  - role: tester

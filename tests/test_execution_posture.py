@@ -155,7 +155,9 @@ def test_a_run_opens_the_gate_when_the_human_asks():
 
     Forge(cwd=ROOT, provider="claude", runner=runner).implement(12, allow_commands=True)
 
-    assert runner.argument_after("--permission-mode", "claude") == "bypassPermissions"
+    calls = runner.matching("claude")
+    assert calls
+    assert all(call[call.index("--permission-mode") + 1] == "bypassPermissions" for call in calls)
 
 
 def test_opening_the_gate_is_refused_on_a_dirty_tree():
@@ -205,5 +207,4 @@ def test_a_permitted_role_is_not_told_it_is_denied():
 
     Forge(cwd=ROOT, provider="claude", runner=runner).implement(12, allow_commands=True)
 
-    prompt = runner.only("claude")[2]
-    assert "cannot run commands" not in prompt.lower()
+    assert all("cannot run commands" not in call[2].lower() for call in runner.matching("claude"))
