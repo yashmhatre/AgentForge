@@ -49,7 +49,7 @@ PROMPT = """\
 
 You are on a branch created for this work. Commit nothing; AgentForge commits \
 what you leave in the working tree.
-
+{execution}
 ## Required output
 
 End your reply with this block and nothing after it:
@@ -88,7 +88,28 @@ def render_steps(plan: Plan) -> str:
     return "\n".join(lines)
 
 
-def build_prompt(plan: Plan, context: ContextPack, cwd: Path, role: Role = IMPLEMENTER) -> str:
+#: What a Role is told when ADR-0007's gate is shut. The posture itself lives in
+#: the argument vector; this is only what to do on hitting it. Without it the
+#: Agent does what the M1 acceptance run did -- trace the tests by hand and
+#: report `completed`, which is the one failure a Run cannot detect.
+DENIED_COMMANDS = """
+## Commands
+
+You cannot run commands in this Run. You may read and edit files, and nothing \
+else. If a step's acceptance criterion asks you to run something, do not \
+substitute reading for running: state in `detail` which criterion you could \
+not verify, and escalate if that leaves the step unfinished. Reporting \
+`completed` on a criterion you could not check is worse than stopping.
+"""
+
+
+def build_prompt(
+    plan: Plan,
+    context: ContextPack,
+    cwd: Path,
+    role: Role = IMPLEMENTER,
+    allow_commands: bool = False,
+) -> str:
     constraints = ""
     if plan.constraints:
         constraints = "\n### Constraints\n\n" + "\n".join(f"- {c}" for c in plan.constraints) + "\n"
@@ -112,6 +133,7 @@ def build_prompt(plan: Plan, context: ContextPack, cwd: Path, role: Role = IMPLE
         constraints=constraints,
         context=context_block,
         cwd=cwd,
+        execution="" if allow_commands else DENIED_COMMANDS,
         result_open=RESULT_OPEN,
         result_close=RESULT_CLOSE,
     )
@@ -133,9 +155,10 @@ class Implementer:
         tier: ModelTier | None = None,
     ) -> AgentResult:
         tier = tier or role.tier
+        allow_commands = getattr(self.provider, "allow_commands", False)
         return self.provider.invoke(
             role=role,
-            prompt=build_prompt(plan, context, cwd, role),
+            prompt=build_prompt(plan, context, cwd, role, allow_commands=allow_commands),
             context=context,
             tier=tier,
             cwd=cwd,

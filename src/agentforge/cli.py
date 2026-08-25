@@ -34,6 +34,14 @@ def build_parser() -> argparse.ArgumentParser:
     implement.add_argument("--provider", default=None, help="coding-agent CLI to drive")
     implement.add_argument("--tier", action="append", default=[], help=TIER_HELP)
     implement.add_argument("-C", "--directory", default=".", help="repository to work in")
+    implement.add_argument(
+        "--allow-commands",
+        action="store_true",
+        help=(
+            "let Agents run commands, not just edit files (ADR-0007). Off by default, "
+            "and granted for this Run only -- never persisted to configuration"
+        ),
+    )
 
     init = subcommands.add_parser(
         "init", help="configure AgentForge for the repository in the working directory"
@@ -135,7 +143,10 @@ def _run_implement(args: argparse.Namespace, runner=None) -> int:
 
     try:
         state = forge.implement(
-            args.issue, tier_overrides=per_role or None, tier=default_tier
+            args.issue,
+            tier_overrides=per_role or None,
+            tier=default_tier,
+            allow_commands=args.allow_commands,
         )
     except (RunFailed, IssueError) as exc:
         print(f"agentforge: {exc}", file=sys.stderr)

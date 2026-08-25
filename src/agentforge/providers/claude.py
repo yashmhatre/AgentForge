@@ -32,9 +32,19 @@ class ClaudeProvider(CliProvider):
         ModelTier.CHEAP: "haiku",
     }
 
-    #: An Agent that has to ask before every edit cannot run unattended. The
-    #: blast radius is bounded by the branch the runtime creates first.
-    permission_mode: ClassVar[str] = "acceptEdits"
+    #: ADR-0007's two postures, mapped onto this CLI's permission modes.
+    #: `acceptEdits` lets an Agent write files and nothing else; commands still
+    #: need a confirmation that headless mode cannot give, which is the whole
+    #: bug in #18. `bypassPermissions` is the open gate. An Agent that has to
+    #: ask before every edit cannot run unattended at all, so there is no
+    #: third, stricter posture — the blast radius is bounded by the branch the
+    #: runtime creates before any Agent is invoked.
+    DENIED: ClassVar[str] = "acceptEdits"
+    PERMITTED: ClassVar[str] = "bypassPermissions"
+
+    @property
+    def permission_mode(self) -> str:
+        return self.PERMITTED if self.allow_commands else self.DENIED
 
     def build_argv(self, prompt: str, model: str) -> Sequence[str]:
         return (

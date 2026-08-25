@@ -68,7 +68,7 @@ class Forge:
 
     # --- preconditions -----------------------------------------------------
 
-    def _prepare(self) -> tuple[Repository, GitHub, object]:
+    def _prepare(self, allow_commands: bool = False) -> tuple[Repository, GitHub, object]:
         """Every check that can fail for free, before anything is spent.
 
         Absent git, absent remote, absent `gh`, absent coding-agent CLI. A Run
@@ -81,7 +81,7 @@ class Forge:
             raise RunFailed(str(exc)) from exc
 
         github = GitHub(self.runner, repo.root)
-        provider = get_provider(self.provider_name, self.runner)
+        provider = get_provider(self.provider_name, self.runner, allow_commands=allow_commands)
         try:
             github.preflight()
             provider.preflight()
@@ -115,9 +115,15 @@ class Forge:
         number: int,
         tier_overrides: dict[str, ModelTier] | None = None,
         tier: ModelTier | None = None,
+        allow_commands: bool = False,
     ) -> RunState:
-        """Run the Issue's Roster. `tier` moves every Role; `tier_overrides` moves one."""
-        repo, github, provider = self._prepare()
+        """Run the Issue's Workflow. `tier` moves every Role; `tier_overrides` moves one.
+
+        `allow_commands` is ADR-0007's gate. It is per-Run rather than
+        configuration on purpose: a config key would persist a standing grant
+        across every future Run in the repository.
+        """
+        repo, github, provider = self._prepare(allow_commands=allow_commands)
 
         if repo.is_dirty():
             raise RunFailed(
