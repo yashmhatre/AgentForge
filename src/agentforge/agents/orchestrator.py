@@ -74,6 +74,13 @@ Order matters: the Roster runs in the order you write it.
 
 End your reply with these two blocks, in this order, and nothing after them.
 
+Write acceptance criteria a Role can check by reading the repository. Agents \
+run no commands unless a human opens that gate for a Run (ADR-0007), so a \
+criterion phrased as "run the suite and paste the output" is one the executing \
+Role will have to report it could not verify. If a step genuinely cannot be \
+judged without running something, say so in the criterion itself rather than \
+assuming it will be run.
+
 First the plan:
 
 {plan_open}
@@ -87,7 +94,7 @@ First the plan:
         "id": "s1",
         "intent": "what changes and why",
         "files": ["path/one.py"],
-        "acceptance": "how this step is known to be done"
+        "acceptance": "how this step is known to be done, checkable by reading the repository"
       }}
     ],
     "constraints": ["anything the executing Role must not do"]

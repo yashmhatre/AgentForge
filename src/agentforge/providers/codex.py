@@ -36,14 +36,18 @@ class CodexProvider(CliProvider):
     }
 
     def build_argv(self, prompt: str, model: str) -> Sequence[str]:
-        return (
-            self.binary,
-            "exec",
-            "--model",
-            model,
-            "--full-auto",
-            prompt,
-        )
+        """ADR-0007's two postures, mapped onto this CLI.
+
+        `--full-auto` is the most permissive thing codex offers, and passing it
+        unconditionally is what made this adapter contradict both ADR-0007 and
+        the `claude` adapter beside it. The denied posture omits it rather than
+        naming a stricter flag: removing a permissive switch is safe against a
+        CLI this suite cannot exercise, whereas guessing at the name of a
+        sandbox flag is exactly the version-bump breakage ADR-0001 warns about.
+        Verify against a real `codex` before relying on the denied path.
+        """
+        posture = ("--full-auto",) if self.allow_commands else ()
+        return (self.binary, "exec", "--model", model, *posture, prompt)
 
     def parse_output(self, result: CommandResult) -> ProviderOutput:
         """No envelope. The transcript is the output and the exit code is the verdict."""

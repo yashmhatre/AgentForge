@@ -19,13 +19,14 @@ PROVIDERS: dict[str, type[CliProvider]] = {
 DEFAULT_PROVIDER = ClaudeProvider.name
 
 
-def get_provider(name: str, runner: CommandRunner) -> Provider:
+def get_provider(name: str, runner: CommandRunner, allow_commands: bool = False) -> Provider:
+    """Build an adapter. `allow_commands` is ADR-0007's gate, closed by default."""
     try:
         provider = PROVIDERS[name]
     except KeyError as exc:
         known = ", ".join(sorted(PROVIDERS))
         raise ProviderError(f"unknown provider {name!r}; available: {known}") from exc
-    return provider(runner)
+    return provider(runner, allow_commands=allow_commands)
 
 
 __all__ = [

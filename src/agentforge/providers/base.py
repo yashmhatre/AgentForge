@@ -38,6 +38,12 @@ class Provider(ABC):
     name: ClassVar[str] = "provider"
     binary: ClassVar[str] = ""
 
+    #: Whether an Agent may run commands, not merely edit files. Default-deny
+    #: per ADR-0007: opened for one Run by an explicit flag, and expressed in
+    #: the argument vector rather than in prompt text, because a permission
+    #: written as an instruction is one the model can talk itself out of.
+    allow_commands: bool = False
+
     @abstractmethod
     def invoke(
         self,
@@ -77,9 +83,15 @@ class CliProvider(Provider):
     #: Tier to model identifier. Nothing outside an adapter knows these strings.
     models: ClassVar[dict[ModelTier, str]] = {}
 
-    def __init__(self, runner: CommandRunner, timeout: float | None = 1800.0) -> None:
+    def __init__(
+        self,
+        runner: CommandRunner,
+        timeout: float | None = 1800.0,
+        allow_commands: bool = False,
+    ) -> None:
         self.runner = runner
         self.timeout = timeout
+        self.allow_commands = allow_commands
 
     def preflight(self) -> None:
         try:
