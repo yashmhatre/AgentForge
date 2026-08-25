@@ -1,0 +1,10 @@
+{
+  "type": "result",
+  "subtype": "error_during_execution",
+  "is_error": true,
+  "duration_ms": 1204,
+  "num_turns": 1,
+  "result": "Credit balance is too low to run this request.",
+  "session_id": "9b8a7c6d-5e4f-3a2b-1c0d-9e8f7a6b5c4d",
+  "total_cost_usd": 0.0
+}

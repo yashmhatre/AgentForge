@@ -1,16 +1,18 @@
 """Access to the vendored skill bundle.
 
 Skills ship as package data, never as importable modules. Markdown is read as
-text; Python is invoked as a subprocess. See docs/adr/0006.
+text; Python is invoked as a subprocess through the Command Runner, which is the
+one process boundary in the codebase.
 """
 
 from __future__ import annotations
 
 import json
-import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from .process import CommandRunner, SubprocessRunner
 
 SKILLS_ROOT = Path(__file__).resolve().parent.parent / "skills"
 
@@ -136,12 +138,17 @@ def _describe(result: ScanResult) -> list[str]:
     return lines
 
 
-def run_unslop(path: str | Path, scanners: tuple[str, ...] = UNSLOP_SCANNERS) -> UnslopReport:
+def run_unslop(
+    path: str | Path,
+    scanners: tuple[str, ...] = UNSLOP_SCANNERS,
+    runner: CommandRunner | None = None,
+) -> UnslopReport:
     """Scan a file for machine-writing tells. Deterministic: no model involved."""
     target = Path(path).resolve()
     if not target.is_file():
         raise FileNotFoundError(target)
 
+    runner = runner or SubprocessRunner()
     scripts = skill_path("unslop") / "scripts"
     results: list[ScanResult] = []
 
@@ -153,13 +160,7 @@ def run_unslop(path: str | Path, scanners: tuple[str, ...] = UNSLOP_SCANNERS) ->
             )
             continue
 
-        completed = subprocess.run(
-            [sys.executable, str(script), str(target)],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
+        completed = runner.run([sys.executable, str(script), str(target)])
 
         try:
             report = json.loads(completed.stdout)
