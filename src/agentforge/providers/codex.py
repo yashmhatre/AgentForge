@@ -5,10 +5,13 @@ differs from `claude -p` in the two places that matter: it prints a transcript
 rather than a JSON envelope, so success has to be read from the exit status, and
 its model identifiers are its own.
 
-It is not a shipping adapter. The tier mapping below is a placeholder — it names
-models by intent-adjacent size rather than from verified CLI documentation — and
-it should be checked against a real `codex` install before anyone relies on it.
-ADR-0004 makes that a configuration change rather than a code change.
+The posture flags below are taken from `codex --help` on a real install. The
+tier mapping is not: `gpt-5-codex*` does not exist on the account this was
+checked against, whose picker offers GPT-5.6 Sol, Terra, and Luna, GPT-5.5,
+GPT-5.4, and GPT-5.4 Mini. Those are display names rather than `--model`
+strings, so the mapping stays wrong until someone reads the identifiers out of
+`~/.codex/config.toml`. ADR-0004 anticipated exactly this — tier names outlive
+model names — and makes the fix a configuration change.
 
 Per the note on Issue #1: the useful version of this file is one written by
 somebody who has not read `claude.py`. This one was not, so treat its shape as a
@@ -35,19 +38,40 @@ class CodexProvider(CliProvider):
         ModelTier.CHEAP: "gpt-5-codex-mini",
     }
 
-    def build_argv(self, prompt: str, model: str) -> Sequence[str]:
-        """ADR-0007's two postures, mapped onto this CLI.
+    #: ADR-0007's two postures, on the two axes `codex --help` documents.
+    #:
+    #: The sandbox never changes: an Agent writes in the workspace and nowhere
+    #: else, in both postures. What the gate moves is the approval policy.
+    #: `untrusted` auto-runs only reads (`ls`, `cat`, `sed`) and escalates
+    #: anything else, which is this CLI's nearest analogue to the `claude`
+    #: adapter's `acceptEdits`. `never` stops asking.
+    #:
+    #: `danger-full-access` and `--dangerously-bypass-approvals-and-sandbox`
+    #: are deliberately unused. ADR-0007 opens a gate; it does not remove the
+    #: sandbox, and an unattended Role is the last thing that should be outside
+    #: one.
+    SANDBOX: ClassVar[str] = "workspace-write"
+    DENIED: ClassVar[str] = "untrusted"
+    PERMITTED: ClassVar[str] = "never"
 
-        `--full-auto` is the most permissive thing codex offers, and passing it
-        unconditionally is what made this adapter contradict both ADR-0007 and
-        the `claude` adapter beside it. The denied posture omits it rather than
-        naming a stricter flag: removing a permissive switch is safe against a
-        CLI this suite cannot exercise, whereas guessing at the name of a
-        sandbox flag is exactly the version-bump breakage ADR-0001 warns about.
-        Verify against a real `codex` before relying on the denied path.
+    def build_argv(self, prompt: str, model: str) -> Sequence[str]:
+        """Options precede the subcommand: `codex [OPTIONS] <COMMAND> [ARGS]`.
+
+        This adapter previously passed `--full-auto` after `exec`, which fails
+        twice over: that flag does not exist in the current CLI, and options
+        placed after the subcommand are rejected regardless.
         """
-        posture = ("--full-auto",) if self.allow_commands else ()
-        return (self.binary, "exec", "--model", model, *posture, prompt)
+        return (
+            self.binary,
+            "--model",
+            model,
+            "--sandbox",
+            self.SANDBOX,
+            "--ask-for-approval",
+            self.PERMITTED if self.allow_commands else self.DENIED,
+            "exec",
+            prompt,
+        )
 
     def parse_output(self, result: CommandResult) -> ProviderOutput:
         """No envelope. The transcript is the output and the exit code is the verdict."""

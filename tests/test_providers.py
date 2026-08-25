@@ -164,7 +164,10 @@ def test_a_second_adapter_satisfies_the_same_port():
 
     assert result.outcome is Outcome.COMPLETED
     assert result.files_changed == ("src/loader.py",)
-    assert runner.only("codex")[1] == "exec"
+    # `exec` rather than argv[1]: this CLI takes its options before the
+    # subcommand, and where in the vector it lands is pinned by
+    # test_execution_posture.test_codex_options_precede_the_subcommand.
+    assert "exec" in runner.only("codex")
 
 
 def test_the_second_adapter_reads_failure_from_an_exit_code_rather_than_an_envelope():

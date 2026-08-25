@@ -69,14 +69,44 @@ def test_claude_opens_the_gate_when_asked():
     assert argv[argv.index("--permission-mode") + 1] == "bypassPermissions"
 
 
-def test_codex_does_not_ship_full_auto_by_default():
-    """`--full-auto` is the most permissive posture codex offers. ADR-0007 says not
-    by default, and it must not be the one adapter that disagrees with the others."""
-    assert "--full-auto" not in _invoke("codex", allow_commands=False)
+def test_codex_denies_commands_by_default():
+    """`untrusted` auto-runs only reads and escalates the rest — this CLI's
+    nearest analogue to the `claude` adapter's `acceptEdits`."""
+    argv = _invoke("codex", allow_commands=False)
+
+    assert argv[argv.index("--ask-for-approval") + 1] == "untrusted"
 
 
 def test_codex_opens_the_gate_when_asked():
-    assert "--full-auto" in _invoke("codex", allow_commands=True)
+    argv = _invoke("codex", allow_commands=True)
+
+    assert argv[argv.index("--ask-for-approval") + 1] == "never"
+
+
+def test_codex_stays_sandboxed_in_both_postures():
+    """ADR-0007 opens a gate; it does not remove the sandbox."""
+    for allow in (True, False):
+        argv = _invoke("codex", allow_commands=allow)
+        assert argv[argv.index("--sandbox") + 1] == "workspace-write"
+        assert "danger-full-access" not in argv
+        assert "--dangerously-bypass-approvals-and-sandbox" not in argv
+
+
+def test_codex_options_precede_the_subcommand():
+    """`codex [OPTIONS] <COMMAND>`. Options after `exec` are rejected by the CLI,
+    which is how the previous `--full-auto` placement failed."""
+    argv = _invoke("codex", allow_commands=False)
+    exec_at = argv.index("exec")
+
+    for flag in ("--model", "--sandbox", "--ask-for-approval"):
+        assert argv.index(flag) < exec_at, f"{flag} must precede `exec`"
+    assert argv[-1] != "exec", "the prompt is the subcommand's argument"
+
+
+def test_codex_no_longer_passes_a_flag_the_cli_does_not_have():
+    """`--full-auto` does not exist in the current CLI, in any position."""
+    for allow in (True, False):
+        assert "--full-auto" not in _invoke("codex", allow_commands=allow)
 
 
 def test_every_adapter_denies_by_default():
