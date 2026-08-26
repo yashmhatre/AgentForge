@@ -42,15 +42,12 @@ BODY = (FIXTURES / "issue_body_v1.md").read_text(encoding="utf-8")
 ROOT = Path("/repo/pipelines")
 
 
-def agent_says(outcome: str, summary: str, files=("src/loader.py",)) -> str:
+def agent_says(outcome: str, summary: str, files=("src/loader.py",), findings=()) -> str:
+    payload = {"outcome": outcome, "summary": summary, "files_changed": list(files)}
+    if findings:
+        payload["findings"] = list(findings)
     return json.dumps(
-        {
-            "type": "result",
-            "is_error": False,
-            "result": render_result_block(
-                {"outcome": outcome, "summary": summary, "files_changed": list(files)}
-            ),
-        }
+        {"type": "result", "is_error": False, "result": render_result_block(payload)}
     )
 
 
@@ -163,7 +160,7 @@ def test_an_issue_number_is_the_whole_input():
 
     assert state.status is RunStatus.AWAITING_SIGNOFF
     assert state.pull_request.endswith("/pull/13")
-    assert [r.outcome for r in state.results] == [Outcome.COMPLETED, Outcome.COMPLETED]
+    assert [r.outcome for r in state.results] == [Outcome.COMPLETED] * 3
 
 
 def test_the_agent_works_on_a_branch_named_for_the_issue():
@@ -189,11 +186,14 @@ def test_each_result_is_posted_to_the_issue_before_the_run_moves_on():
     comments = [c for c in comments_on(runner) if RESULT_OPEN in c]
     assert "### implementer — completed" in comments[0]
     assert "### tester — completed" in comments[1]
-    assert all("**Model Tier:** `standard`" in comment for comment in comments)
+    assert "### security — completed" in comments[2]
+    # Each entry names what it cost: two standard Steps and one deep audit.
+    assert all("**Model Tier:**" in comment for comment in comments)
+    assert "**Model Tier:** `deep`" in comments[2]
 
     first_agent, second_agent = [
         index for index, call in enumerate(runner.calls) if call[0] == "claude"
-    ]
+    ][:2]
     first_comment = next(
         index
         for index, call in enumerate(runner.calls)
@@ -248,9 +248,12 @@ def test_opening_a_denied_run_resumes_at_the_tester():
 
     state = forge(runner).implement(12, allow_commands=True)
 
+    prompts = [call[call.index("-p") + 1] for call in runner.matching("claude")]
+
     assert state.status is RunStatus.AWAITING_SIGNOFF
-    assert len(runner.matching("claude")) == 1
-    assert "You are the Tester" in runner.argument_after("-p", "claude")
+    assert len(prompts) == 2, "the completed implementer Step was run a second time"
+    assert "You are the Tester" in prompts[0]
+    assert "You are the Security Role" in prompts[1]
 
 
 def test_the_run_ends_in_a_draft_pull_request_and_never_a_merge():
@@ -392,12 +395,17 @@ def test_a_run_with_nothing_left_to_do_says_nothing():
     tester = render_result_block(
         {"role": "tester", "tier": "standard", "outcome": "completed", "summary": "passed"}
     )
+    audit = render_result_block(
+        {"role": "security", "tier": "deep", "outcome": "completed", "summary": "clean"}
+    )
     runner = a_runner()
     runner.script(
         "gh",
         "issue",
         "view",
-        stdout=issue_json(labels=("agentforge:awaiting-signoff",), comments=(implementer, tester)),
+        stdout=issue_json(
+            labels=("agentforge:awaiting-signoff",), comments=(implementer, tester, audit)
+        ),
     )
 
     forge(runner).implement(12)
@@ -446,7 +454,7 @@ def test_an_escalation_stops_the_run_before_the_next_step_is_invoked():
     assert len(runner.matching("claude")) == 1, "the tester ran on a plan known to be wrong"
     entries = [c for c in comments_on(runner) if RESULT_OPEN in c]
     assert len(entries) == 1
-    assert "### implementer — escalated (step 1 of 2)" in entries[0]
+    assert "### implementer — escalated (step 1 of 3)" in entries[0]
 
 
 def test_the_escalating_roles_own_comment_names_its_step_and_the_mismatch():
@@ -465,8 +473,8 @@ def test_the_escalating_roles_own_comment_names_its_step_and_the_mismatch():
     forge(runner).implement(12, allow_commands=True)
 
     entries = [c for c in comments_on(runner) if RESULT_OPEN in c]
-    assert "### implementer — completed (step 1 of 2)" in entries[0]
-    assert "### tester — escalated (step 2 of 2)" in entries[1]
+    assert "### implementer — completed (step 1 of 3)" in entries[0]
+    assert "### tester — escalated (step 2 of 3)" in entries[1]
     assert "Step s2 names tests/test_loader.py; it is not here." in entries[1]
 
 
@@ -493,7 +501,7 @@ def test_a_hand_edited_plan_naming_a_module_that_is_not_there_halts_rather_than_
     assert labels_applied(runner)[-1] == "agentforge:halted"
 
     entry = [c for c in comments_on(runner) if RESULT_OPEN in c][-1]
-    assert "### implementer — escalated (step 1 of 2)" in entry
+    assert "### implementer — escalated (step 1 of 3)" in entry
     assert "src/nowhere/loader_v2.py" in entry
 
     assert not runner.ran("git", "commit"), "a halted Run improvised work and committed it"
@@ -532,11 +540,17 @@ def test_a_corrected_plan_resumes_rather_than_restarting_the_completed_steps():
 
     # The escalated attempt stays in the log beside the completed one; only
     # completed results retire a Step.
-    assert [result.role for result in state.results] == ["implementer", "tester", "tester"]
-    assert state.done_roles == ("implementer", "tester")
+    assert [result.role for result in state.results] == [
+        "implementer",
+        "tester",
+        "tester",
+        "security",
+    ]
+    assert state.done_roles == ("implementer", "tester", "security")
     assert state.results[0].summary == "Implemented the change."
-    assert len(second.matching("claude")) == 1, "the completed Step was run a second time"
-    assert "You are the Tester" in second.argument_after("-p", "claude")
+    prompts = [call[call.index("-p") + 1] for call in second.matching("claude")]
+    assert len(prompts) == 2, "the completed Step was run a second time"
+    assert "You are the Tester" in prompts[0]
     assert state.status is RunStatus.AWAITING_SIGNOFF
 
 
@@ -565,13 +579,16 @@ def test_a_finished_run_does_not_run_again():
     tester = render_result_block(
         {"role": "tester", "tier": "standard", "outcome": "completed", "summary": "passed"}
     )
+    audit = render_result_block(
+        {"role": "security", "tier": "deep", "outcome": "completed", "summary": "clean"}
+    )
     runner = a_runner()
     runner.script(
         "gh",
         "issue",
         "view",
         stdout=issue_json(
-            labels=("agentforge:awaiting-signoff",), comments=(implementer, tester)
+            labels=("agentforge:awaiting-signoff",), comments=(implementer, tester, audit)
         ),
     )
 
@@ -667,11 +684,11 @@ def test_an_issue_with_no_plan_block_is_refused_with_a_reason():
 
 
 def test_an_issue_naming_an_unbuilt_role_says_which_one():
-    body = plan_block([{"role": "security"}], plan=a_plan())
+    body = plan_block([{"role": "architect"}], plan=a_plan())
     runner = a_runner()
     runner.script("gh", "issue", "view", stdout=issue_json(body=body))
 
-    with pytest.raises(RunFailed, match="security"):
+    with pytest.raises(RunFailed, match="architect"):
         forge(runner).implement(12)
 
 
@@ -1011,11 +1028,12 @@ def test_an_errored_gate_halts_the_run_rather_than_suspending_it(tmp_path, monke
     assert "no reviewer configured" in next(c for c in comments_on(runner) if "Gate —" in c)
 
 
-def test_a_gate_kind_this_version_cannot_evaluate_halts_rather_than_passing_quietly(
+def test_a_gate_with_nothing_to_read_halts_rather_than_passing_quietly(
     tmp_path, monkeypatch
 ):
-    """`security` is registered so a Workflow may name it, and #11 has not built
-    it. A declared check that silently never runs is the worst of the options."""
+    """A clean-pass Gate behind a Workflow with no Security Step has no audit to
+    read, and no later invocation produces one. A declared check that silently
+    never runs is the worst of the options."""
     _workflow(
         tmp_path,
         monkeypatch,
@@ -1230,6 +1248,147 @@ def test_a_resumed_run_re_runs_the_suite_and_re_runs_no_step(tmp_path, monkeypat
     assert second.ran("pytest"), "the Run read the old verdict back instead of re-running"
     assert resumed.status is RunStatus.AWAITING_SIGNOFF
     assert "--draft" in second.only("gh", "pr", "create")
+
+
+# --- the clean-pass Gate, from inside a Run ---------------------------------
+
+
+SECURITY_GATED = (
+    "name: feature\nsteps:\n  - role: implementer\n  - role: security\n    gate: security\n"
+)
+
+INTERPOLATED_SQL = {
+    "location": "src/loader.py:42",
+    "risk": "The order id is interpolated into the SQL string.",
+    "rationale": "The loader runs against production Unity Catalog.",
+}
+
+
+def _audited(*findings) -> list[str]:
+    """An Implementer that changed something, then an audit of what it changed."""
+    return [
+        agent_says("completed", "Added a bounded retry."),
+        agent_says("completed", "Audit complete.", (), findings=findings),
+    ]
+
+
+def test_findings_hold_the_run_rather_than_reaching_sign_off_quietly(
+    tmp_path, monkeypatch
+):
+    """The point of the Gate: the audit that would otherwise happen at merge
+    time happens before a human is asked to look."""
+    _workflow(tmp_path, monkeypatch, SECURITY_GATED)
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=_audited(INTERPOLATED_SQL))
+
+    state = forge(runner).implement(12, allow_commands=True)
+
+    assert state.status is RunStatus.SUSPENDED
+    assert labels_applied(runner) == ["agentforge:running", "agentforge:suspended"]
+    assert not runner.ran("gh", "pr", "create")
+
+
+def test_a_finding_reaches_the_run_log_with_somewhere_to_look(tmp_path, monkeypatch):
+    """A location and a rationale, in the Agent's own entry and again in the
+    Gate's. "Potential injection risk" as the whole message sends a human
+    looking for something the Agent has already found."""
+    _workflow(tmp_path, monkeypatch, SECURITY_GATED)
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=_audited(INTERPOLATED_SQL))
+
+    forge(runner).implement(12, allow_commands=True)
+
+    audit = next(c for c in comments_on(runner) if "### security" in c)
+    assert "**Findings (1):**" in audit
+    assert "`src/loader.py:42`" in audit
+    assert "Why it matters: The loader runs against production Unity Catalog." in audit
+
+    gate = next(c for c in comments_on(runner) if "Gate —" in c)
+    assert "### security Gate — blocked (after step 2 of 2)" in gate
+    assert "src/loader.py:42" in gate
+    assert "the **security** Step's own output" in gate, "the entry must say what re-runs"
+
+
+def test_a_clean_audit_clears_the_gate_and_the_run_reaches_sign_off(
+    tmp_path, monkeypatch
+):
+    _workflow(tmp_path, monkeypatch, SECURITY_GATED)
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=_audited())
+
+    state = forge(runner).implement(12, allow_commands=True)
+
+    assert state.status is RunStatus.AWAITING_SIGNOFF
+    assert "--draft" in runner.only("gh", "pr", "create")
+    assert [c for c in comments_on(runner) if "Gate —" in c] == [], (
+        "a Gate that cleared posted an entry saying the Run carried on"
+    )
+
+
+def test_a_resumed_run_re_audits_rather_than_reading_the_finding_back(
+    tmp_path, monkeypatch
+):
+    """ADR-0008 from the other side. The human fixes the finding and commits;
+    the Security Step is un-retired, so the audit runs again on the code as it
+    now is, and the Run goes on when it comes back clean."""
+    _workflow(tmp_path, monkeypatch, SECURITY_GATED)
+
+    first = a_runner()
+    first.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    first.script("claude", stdout=_audited(INTERPOLATED_SQL))
+    suspended = forge(first).implement(12, allow_commands=True)
+
+    second = a_runner()
+    second.script(
+        "gh",
+        "issue",
+        "view",
+        stdout=issue_json(labels=("agentforge:suspended",), comments=tuple(comments_on(first))),
+    )
+    # The fix is committed already; a Run refuses to start on a dirty tree.
+    second.script("git", "status", "--porcelain", stdout="")
+    second.script("claude", stdout=agent_says("completed", "Audit complete.", ()))
+
+    resumed = forge(second).implement(12, allow_commands=True)
+
+    assert suspended.done_roles == ("implementer",), "the Gate did not un-retire its Step"
+    prompts = [call[call.index("-p") + 1] for call in second.matching("claude")]
+    assert len(prompts) == 1, "the implementer Step ran again for a finding about its output"
+    assert "You are the Security Role" in prompts[0]
+    assert resumed.status is RunStatus.AWAITING_SIGNOFF
+    assert "--draft" in second.only("gh", "pr", "create")
+
+
+def test_an_audit_that_writes_nothing_still_opens_the_pull_request(
+    tmp_path, monkeypatch
+):
+    """A Role that changes no files is not a Run that produced nothing. The
+    work was committed by the invocation that suspended, and refusing to open
+    the pull request here would strand it."""
+    _workflow(tmp_path, monkeypatch, SECURITY_GATED)
+
+    first = a_runner()
+    first.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    first.script("claude", stdout=_audited(INTERPOLATED_SQL))
+    forge(first).implement(12, allow_commands=True)
+
+    second = a_runner()
+    second.script(
+        "gh",
+        "issue",
+        "view",
+        stdout=issue_json(labels=("agentforge:suspended",), comments=tuple(comments_on(first))),
+    )
+    second.script("git", "status", "--porcelain", stdout="")
+    second.script("claude", stdout=agent_says("completed", "Audit complete.", ()))
+
+    state = forge(second).implement(12, allow_commands=True)
+
+    assert state.status is RunStatus.AWAITING_SIGNOFF
+    assert not second.ran("git", "commit"), "there was nothing to commit"
 
 
 def test_the_runtime_names_no_role():

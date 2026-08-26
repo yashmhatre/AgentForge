@@ -36,6 +36,10 @@ _Avoid_: Role, bot, worker, session
 The structured verdict one Agent hands back: what it did, whether it completed or escalated, and the prose that reaches the Run Log. A Role owns how it fills one in and never how it is transported.
 _Avoid_: Output, response, return value
 
+**Finding**:
+Something an Agent noticed and did not fix, carried in its Agent Result as a location, a risk, and why that risk matters in this repository. A Finding is not an Escalation: the plan was executable and was executed. Nothing is stopped by a Finding itself — a Gate reads them, and no Findings at all is what a clean pass looks like.
+_Avoid_: Issue, bug, vulnerability, problem
+
 ### Running it
 
 **Workflow**:

@@ -7,8 +7,8 @@ suspending one would invite a resume that suspends again forever.
 
 The registry is the point. `GATES` maps a kind onto its predicate, the Workflow
 parser validates against its keys, and the runtime looks a kind up rather than
-knowing any. Adding the Security Gate (#11) is an entry here and nothing in
-`runtime.py`, exactly as a seventh Role is an entry in `RUNNERS`.
+knowing any. Adding a kind is an entry here and nothing in `runtime.py`, exactly
+as a seventh Role is an entry in `RUNNERS`.
 
 Every Gate is handed the same context, the Command Runner and the working tree
 included, so that one whose verdict comes from executing something has what it
@@ -26,6 +26,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from ..agents.security import SECURITY
 from .config import load_config
 from .contracts import GateEntry, GateVerdict, RunState
 from .process import CommandResult, CommandRunner, MissingBinary
@@ -204,24 +205,67 @@ def _tail(result: CommandResult) -> str:
     return f"````text\n{text}\n````"
 
 
-def _not_built(kind: str, ticket: str) -> GateCheck:
-    """A kind a Workflow may name and this version cannot evaluate.
+def security(context: GateContext) -> GateEntry:
+    """The clean-pass Gate: the Security Agent's Findings, read off the Run Log.
 
-    Erroring rather than clearing is the safe direction: a Security Gate that
-    passed because nobody had written it yet is worse than a Run that stops.
+    The mirror image of the test-suite Gate above. This verdict is drawn from a
+    Role's own output, so it names that Role in `invalidates` (ADR-0008): a human
+    who fixes a finding needs the audit run again, and a Run that resumed past
+    this entry would re-read a finding about code that no longer exists — which
+    is the deadlock the ADR was written about, from the other side.
+
+    An audit that reported nothing clears it. That is why the Security Role is
+    told to escalate rather than report an empty list when it could not look:
+    "audited and clean" and "did not audit" are the same shape here, and only
+    the Role knows which one happened.
+
+    Security not having run at all errors rather than blocks. A Gate waits for
+    something that can still arrive, and a Step that is not in front of this Run
+    never will.
     """
-
-    def check(context: GateContext) -> GateEntry:
+    audits = [
+        result
+        for result in context.state.results
+        if result.role == SECURITY.name and result.ok
+    ]
+    if not audits:
         return GateEntry(
             kind="",
             verdict=GateVerdict.ERRORED,
             summary=(
-                f"the {kind!r} Gate is declared by this Workflow but is not "
-                f"implemented in this version of AgentForge ({ticket})"
+                f"a {SECURITY.name} Gate stands behind the {context.role} Step, and the "
+                f"{SECURITY.name} Role has not completed in this Run. There is no audit "
+                "to read, so there is nothing here to clear: put a `security` Step in "
+                "front of this Gate."
             ),
         )
 
-    return check
+    findings = audits[-1].findings
+    if not findings:
+        return GateEntry(
+            kind="",
+            verdict=GateVerdict.CLEARED,
+            summary=f"the {SECURITY.name} Agent audited the change and reported no findings",
+        )
+
+    listed = "\n".join(
+        f"- `{finding.location or 'no location reported'}` — "
+        f"{finding.risk.strip() or 'no risk described'}"
+        for finding in findings
+    )
+    return GateEntry(
+        kind="",
+        verdict=GateVerdict.BLOCKED,
+        invalidates=SECURITY.name,
+        # No closing instruction here: the comment this verdict travels in
+        # already tells the reader that the Security Step will run again, as
+        # every verdict naming a Role in `invalidates` does.
+        summary=(
+            f"the {SECURITY.name} Agent reported {len(findings)} "
+            f"finding{'' if len(findings) == 1 else 's'}, so the Run holds here rather "
+            f"than carrying them to Sign-off.\n\n{listed}"
+        ),
+    )
 
 
 #: Gate kind to predicate. The Workflow parser validates names against these
@@ -229,7 +273,7 @@ def _not_built(kind: str, ticket: str) -> GateCheck:
 GATES: dict[str, GateCheck] = {
     "human": human,
     "tests": tests,
-    "security": _not_built("security", "#11"),
+    "security": security,
 }
 
 
@@ -257,4 +301,4 @@ def evaluate_gate(kind: str, context: GateContext) -> GateEntry:
     return replace(entry, kind=kind, step=context.step)
 
 
-__all__ = ["GATES", "GateCheck", "GateContext", "evaluate_gate", "human", "tests"]
+__all__ = ["GATES", "GateCheck", "GateContext", "evaluate_gate", "human", "security", "tests"]

@@ -63,12 +63,12 @@ def test_a_roster_the_orchestrator_asked_for_is_kept_in_order():
 
 def test_roles_that_do_not_exist_yet_are_dropped_and_the_human_is_told():
     roster, notes = select_roster(
-        [{"role": "implementer"}, {"role": "tester"}, {"role": "security"}]
+        [{"role": "implementer"}, {"role": "tester"}, {"role": "architect"}]
     )
 
     assert roster.names() == ("implementer", "tester")
     assert len(notes) == 1
-    assert "security" in notes[0]
+    assert "architect" in notes[0]
 
 
 def test_an_invented_role_is_dropped_as_unknown_rather_than_as_deferred():

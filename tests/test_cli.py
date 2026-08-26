@@ -48,12 +48,12 @@ def test_plan_reports_the_issue_and_how_to_run_it(runner, capsys):
 
 def test_plan_surfaces_dropped_roles_where_the_user_will_read_them(runner, capsys):
     runner.script(
-        "claude", stdout=orchestrator_output([{"role": "implementer"}, {"role": "security"}])
+        "claude", stdout=orchestrator_output([{"role": "implementer"}, {"role": "architect"}])
     )
 
     run(["plan", "add a retry"], runner)
 
-    assert "Note: The Orchestrator asked for the `security` Role" in capsys.readouterr().out
+    assert "Note: The Orchestrator asked for the `architect` Role" in capsys.readouterr().out
 
 
 def test_an_ambiguous_task_exits_one_and_says_what_is_needed(runner, capsys):

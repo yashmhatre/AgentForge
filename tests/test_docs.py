@@ -279,6 +279,10 @@ def test_the_glossary_defines_exactly_these_terms():
     Suspended earned its place alongside Halted once both became labels a person
     reads off an Issue: the two are the same word in ordinary usage and opposite
     instructions here.
+
+    Finding arrived with the Security Role: it is what the clean-pass Gate reads,
+    it is deliberately not an Escalation, and "issue" was already taken by the
+    tracker.
     """
     assert [t.name for t in _repo_terms()] == [
         "Task",
@@ -288,6 +292,7 @@ def test_the_glossary_defines_exactly_these_terms():
         "Role",
         "Agent",
         "Agent Result",
+        "Finding",
         "Workflow",
         "Step",
         "Gate",

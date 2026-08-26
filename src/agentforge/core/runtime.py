@@ -253,7 +253,14 @@ class Forge:
 
         changed = repo.changed_files()
         committed = repo.commit_all(f"{issue.title}\n\nImplements #{number} via AgentForge.")
-        if not committed and invoked:
+        # `state.results` is what earlier invocations of this Run posted, before
+        # this one appended anything. An empty working tree means there is
+        # nothing to open only when this Run has produced nothing at all: a Run
+        # that suspended committed and pushed before it stopped, and the
+        # invocation that resumes may legitimately write nothing — an audit
+        # changes no files, and a Step behind a cleared Gate had its changes
+        # committed by the Run that stopped there.
+        if not committed and invoked and not state.results:
             failure = _nothing_to_open(results, workflow)
             github.post_comment(number, render_run_log_comment(failure))
             results.append(failure)

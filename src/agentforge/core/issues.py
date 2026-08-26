@@ -13,6 +13,7 @@ that estimate true.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -21,6 +22,7 @@ from .contracts import (
     RUN_LABELS,
     AgentResult,
     ContextPack,
+    Finding,
     GateEntry,
     GateVerdict,
     Outcome,
@@ -237,6 +239,10 @@ def render_run_log_comment(
             ),
         ]
 
+    if result.findings:
+        lines += ["", f"**Findings ({len(result.findings)}):**", ""]
+        lines += render_findings(result.findings)
+
     if result.files_changed:
         lines += ["", "**Files changed:**", ""]
         lines += [f"- `{path}`" for path in result.files_changed]
@@ -246,6 +252,21 @@ def render_run_log_comment(
 
     lines += ["", render_result_block(result.to_dict())]
     return "\n".join(lines) + "\n"
+
+
+def render_findings(findings: Sequence[Finding]) -> list[str]:
+    """Findings as a human reads them: where, what, and why it matters here.
+
+    Each field on its own line rather than run together, because the reader is
+    scanning for the location first and deciding whether to care second.
+    """
+    lines = []
+    for finding in findings:
+        where = f"`{finding.location}`" if finding.location else "_no location reported_"
+        lines.append(f"- **{where}** — {finding.risk.strip() or '_no risk described_'}")
+        if finding.rationale.strip():
+            lines.append(f"  - Why it matters: {finding.rationale.strip()}")
+    return lines
 
 
 #: What each verdict means for the Run, in the words the Run Log uses.
@@ -513,6 +534,7 @@ __all__ = [
     "IssueError",
     "parse_gate_log",
     "parse_run_log",
+    "render_findings",
     "render_gate_comment",
     "render_run_log_comment",
     "render_terminal_comment",
