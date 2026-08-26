@@ -12,6 +12,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
+from agentforge import agents
 from agentforge.agents import UnknownRole, resolve_role
 from agentforge.agents.implementer import IMPLEMENTER
 from agentforge.core.contracts import (
@@ -367,9 +368,13 @@ def test_retirement_and_outstanding_are_two_views_of_one_rule():
     ) == outstanding(roles, ("implementer",), lambda role: role)
 
 
-def test_an_unimplemented_role_is_named_rather_than_guessed_at():
-    with pytest.raises(UnknownRole, match="architect"):
-        resolve_role("architect")
+def test_an_unimplemented_role_is_named_rather_than_guessed_at(monkeypatch):
+    """All six Roles run today, so this is the state a seventh passes through:
+    a tier declared before a runner exists."""
+    monkeypatch.setitem(agents.KNOWN_TIERS, "cartographer", ModelTier.DEEP)
+
+    with pytest.raises(UnknownRole, match="not implemented in this version"):
+        resolve_role("cartographer")
 
 
 def test_an_invented_role_says_what_is_available():

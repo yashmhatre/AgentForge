@@ -5,13 +5,15 @@ A Role is a definition — a name, a default Model Tier, and standing instructio
 per Run on the command line, and per project in configuration once
 `agentforge init` exists.
 
-Five of the six Roles can run. The Architect is named so that a Roster asking
-for it is recognized as premature rather than as nonsense.
+All six Roles CONTEXT.md names can run. The Architect is in no shipped Workflow
+even so — most Tasks do not need a design pass, and one at `deep` on every Run
+would be the most expensive default in the project.
 """
 
 from __future__ import annotations
 
 from ..core.contracts import ModelTier, Role
+from .architect import ARCHITECT, Architect
 from .implementer import IMPLEMENTER, Implementer
 from .orchestrator import ORCHESTRATOR
 from .reviewer import REVIEWER, Reviewer
@@ -21,6 +23,7 @@ from .tester import TESTER, Tester
 #: Roles that can actually run today.
 ROLES: dict[str, Role] = {
     ORCHESTRATOR.name: ORCHESTRATOR,
+    ARCHITECT.name: ARCHITECT,
     IMPLEMENTER.name: IMPLEMENTER,
     TESTER.name: TESTER,
     SECURITY.name: SECURITY,
@@ -35,15 +38,18 @@ ROLES: dict[str, Role] = {
 #: line of YAML, never an edit to the engine. The Orchestrator is absent
 #: deliberately — it produces Issues rather than running inside a Workflow.
 RUNNERS: dict[str, type] = {
+    ARCHITECT.name: Architect,
     IMPLEMENTER.name: Implementer,
     TESTER.name: Tester,
     SECURITY.name: Security,
     REVIEWER.name: Reviewer,
 }
 
-#: The full cast from CONTEXT.md, with ADR-0004's default tiers. Roles absent
-#: from `ROLES` are later work; naming them here lets the Orchestrator recognize a
-#: reasonable-but-unavailable choice and say so.
+#: The full cast from CONTEXT.md, with ADR-0004's default tiers. Every name here
+#: now has a runner, so the two sets are equal — the difference between them is
+#: what the Orchestrator uses to recognize a reasonable-but-unavailable choice
+#: and say so, and it is what makes naming a seventh Role's tier before writing
+#: its runner safe. The Architect was the last name to sit in the gap.
 KNOWN_TIERS: dict[str, ModelTier] = {
     "orchestrator": ModelTier.DEEP,
     "architect": ModelTier.DEEP,
@@ -72,6 +78,7 @@ def resolve_role(name: str) -> Role:
 
 
 __all__ = [
+    "ARCHITECT",
     "IMPLEMENTER",
     "KNOWN_TIERS",
     "ORCHESTRATOR",
