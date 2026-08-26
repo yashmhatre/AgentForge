@@ -8,7 +8,7 @@ A human states a Task. The Orchestrator files a GitHub issue carrying a frozen p
 
 ## Status
 
-The M3 runtime now runs multiple Roles in Workflow order. The default `feature`
+The Workflow runtime now runs multiple Roles in order. The default `feature`
 Workflow invokes the Implementer, the Tester, Security, and then the Reviewer,
 posting each Agent Result to the Issue before starting the next Step.
 
@@ -127,7 +127,8 @@ rather than one it inherits.
 ## Project configuration
 
 AgentForge reads `.agentforge/config.yaml` from the target repository when it
-exists. M3 is read-only: it never creates the directory or writes the file.
+exists. Reading is all it does: it never creates the directory or writes the
+file. Writing one is `agentforge init`, which is M5.
 Without a file, the documented Provider capability defaults are Claude
 `native` and every other Provider `fragment`.
 

@@ -57,9 +57,12 @@ skills:
     consumer: orchestrator
     stage: plan
     purpose: >-
-      Synthesise the interview into a spec without further questioning. Also
-      publishes to an issue tracker and applies a `ready-for-agent` label,
-      which overlaps AgentForge's own issue handling — reconcile in M3.
+      Synthesise the interview into a spec without further questioning. It
+      also ends by publishing to an issue tracker and applying a
+      `ready-for-agent` label, which overlaps AgentForge's own issue handling.
+      Reconciled structurally rather than by prompt: `agentforge plan` runs
+      default-deny (ADR-0007), so the Orchestrator cannot reach `gh` and the
+      single-Issue guarantee holds however the skill is written.
 
   to-tickets:
     upstream: mattpocock-skills

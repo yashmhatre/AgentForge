@@ -1,4 +1,4 @@
-"""Project configuration is read once through the shared M3 loader."""
+"""Project configuration is read once through one shared loader."""
 
 import pytest
 
@@ -10,7 +10,7 @@ def test_missing_config_uses_the_documented_provider_capability_defaults(tmp_pat
 
     assert config.capability_for("claude") is CapabilityTier.NATIVE
     assert config.capability_for("codex") is CapabilityTier.FRAGMENT
-    assert not (tmp_path / ".agentforge").exists(), "the M3 loader is read-only"
+    assert not (tmp_path / ".agentforge").exists(), "the loader is read-only"
 
 
 def test_capability_tiers_are_read_from_the_shared_config_file(tmp_path):
