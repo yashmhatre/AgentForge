@@ -160,7 +160,7 @@ def test_an_issue_number_is_the_whole_input():
 
     assert state.status is RunStatus.AWAITING_SIGNOFF
     assert state.pull_request.endswith("/pull/13")
-    assert [r.outcome for r in state.results] == [Outcome.COMPLETED] * 3
+    assert [r.outcome for r in state.results] == [Outcome.COMPLETED] * 4
 
 
 def test_the_agent_works_on_a_branch_named_for_the_issue():
@@ -251,9 +251,10 @@ def test_opening_a_denied_run_resumes_at_the_tester():
     prompts = [call[call.index("-p") + 1] for call in runner.matching("claude")]
 
     assert state.status is RunStatus.AWAITING_SIGNOFF
-    assert len(prompts) == 2, "the completed implementer Step was run a second time"
+    assert len(prompts) == 3, "the completed implementer Step was run a second time"
     assert "You are the Tester" in prompts[0]
     assert "You are the Security Role" in prompts[1]
+    assert "You are the Reviewer" in prompts[2]
 
 
 def test_the_run_ends_in_a_draft_pull_request_and_never_a_merge():
@@ -398,13 +399,17 @@ def test_a_run_with_nothing_left_to_do_says_nothing():
     audit = render_result_block(
         {"role": "security", "tier": "deep", "outcome": "completed", "summary": "clean"}
     )
+    reviewed = render_result_block(
+        {"role": "reviewer", "tier": "cheap", "outcome": "completed", "summary": "matches"}
+    )
     runner = a_runner()
     runner.script(
         "gh",
         "issue",
         "view",
         stdout=issue_json(
-            labels=("agentforge:awaiting-signoff",), comments=(implementer, tester, audit)
+            labels=("agentforge:awaiting-signoff",),
+            comments=(implementer, tester, audit, reviewed),
         ),
     )
 
@@ -454,7 +459,7 @@ def test_an_escalation_stops_the_run_before_the_next_step_is_invoked():
     assert len(runner.matching("claude")) == 1, "the tester ran on a plan known to be wrong"
     entries = [c for c in comments_on(runner) if RESULT_OPEN in c]
     assert len(entries) == 1
-    assert "### implementer — escalated (step 1 of 3)" in entries[0]
+    assert "### implementer — escalated (step 1 of 4)" in entries[0]
 
 
 def test_the_escalating_roles_own_comment_names_its_step_and_the_mismatch():
@@ -473,8 +478,8 @@ def test_the_escalating_roles_own_comment_names_its_step_and_the_mismatch():
     forge(runner).implement(12, allow_commands=True)
 
     entries = [c for c in comments_on(runner) if RESULT_OPEN in c]
-    assert "### implementer — completed (step 1 of 3)" in entries[0]
-    assert "### tester — escalated (step 2 of 3)" in entries[1]
+    assert "### implementer — completed (step 1 of 4)" in entries[0]
+    assert "### tester — escalated (step 2 of 4)" in entries[1]
     assert "Step s2 names tests/test_loader.py; it is not here." in entries[1]
 
 
@@ -501,7 +506,7 @@ def test_a_hand_edited_plan_naming_a_module_that_is_not_there_halts_rather_than_
     assert labels_applied(runner)[-1] == "agentforge:halted"
 
     entry = [c for c in comments_on(runner) if RESULT_OPEN in c][-1]
-    assert "### implementer — escalated (step 1 of 3)" in entry
+    assert "### implementer — escalated (step 1 of 4)" in entry
     assert "src/nowhere/loader_v2.py" in entry
 
     assert not runner.ran("git", "commit"), "a halted Run improvised work and committed it"
@@ -545,11 +550,12 @@ def test_a_corrected_plan_resumes_rather_than_restarting_the_completed_steps():
         "tester",
         "tester",
         "security",
+        "reviewer",
     ]
-    assert state.done_roles == ("implementer", "tester", "security")
+    assert state.done_roles == ("implementer", "tester", "security", "reviewer")
     assert state.results[0].summary == "Implemented the change."
     prompts = [call[call.index("-p") + 1] for call in second.matching("claude")]
-    assert len(prompts) == 2, "the completed Step was run a second time"
+    assert len(prompts) == 3, "the completed Step was run a second time"
     assert "You are the Tester" in prompts[0]
     assert state.status is RunStatus.AWAITING_SIGNOFF
 
@@ -582,13 +588,17 @@ def test_a_finished_run_does_not_run_again():
     audit = render_result_block(
         {"role": "security", "tier": "deep", "outcome": "completed", "summary": "clean"}
     )
+    reviewed = render_result_block(
+        {"role": "reviewer", "tier": "cheap", "outcome": "completed", "summary": "matches"}
+    )
     runner = a_runner()
     runner.script(
         "gh",
         "issue",
         "view",
         stdout=issue_json(
-            labels=("agentforge:awaiting-signoff",), comments=(implementer, tester, audit)
+            labels=("agentforge:awaiting-signoff",),
+            comments=(implementer, tester, audit, reviewed),
         ),
     )
 

@@ -124,17 +124,39 @@ def _describe(result: ScanResult) -> list[str]:
     if not result.report:
         return []
 
+    # `or ""` rather than a `get` default throughout: the scanners write an
+    # explicit null where they have no suggestion, and a default only fires on a
+    # missing key. The line read "'in today's' - None" until this was found by
+    # running the real scanners over real prose.
     lines: list[str] = []
     for violation in result.report.get("violations", []):
-        where = violation.get("line_number", "?")
-        phrase = violation.get("phrase", "?")
-        suggestion = violation.get("suggestion", "")
+        where = violation.get("line_number") or "?"
+        phrase = violation.get("phrase") or "?"
+        suggestion = violation.get("suggestion") or ""
         lines.append(f"line {where}: {phrase!r} - {suggestion}".rstrip(" -"))
     for flag in result.report.get("flags", []):
-        metric = flag.get("metric", "?")
+        metric = flag.get("metric") or "?"
         detail = flag.get("detail") or ""
-        suggestion = flag.get("suggestion", "")
+        suggestion = flag.get("suggestion") or ""
         lines.append(f"{metric}: {detail} {suggestion}".strip())
+    return lines
+
+
+def render_report(report: UnslopReport) -> list[str]:
+    """One line per scanner, and one per finding beneath it.
+
+    Shared by the Reviewer's Run Log entry and its own rewrite prompt, which is
+    the point: what a human reads about the prose and what the Role is asked to
+    act on are the same text, so neither can quietly say more than the other.
+    """
+    lines: list[str] = []
+    for result in report.results:
+        if result.error:
+            lines.append(f"- {result.scanner}: could not run — {result.error}")
+            continue
+        verdict = "clean" if result.clean else f"{result.violations} finding(s)"
+        lines.append(f"- {result.scanner}: {verdict}")
+        lines += [f"    - {line}" for line in _describe(result)]
     return lines
 
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from agentforge.core import skills
@@ -80,3 +82,46 @@ def test_flag_style_reports_are_counted_not_silently_zeroed():
 def test_missing_file_is_an_error_not_a_clean_pass(tmp_path):
     with pytest.raises(FileNotFoundError):
         skills.run_unslop(tmp_path / "nope.md")
+
+
+def test_a_finding_with_no_suggestion_says_nothing_rather_than_None():
+    """The scanners write an explicit null where they have no suggestion, so a
+    `get` default never fires. The Reviewer hands these lines to a model as the
+    thing to act on, and "- None" is worse than silence."""
+    result = skills.ScanResult(
+        scanner="banned_phrase_scan.py",
+        violations=1,
+        clean=False,
+        report={"violations": [{"line_number": 5, "phrase": "in today's", "suggestion": None}]},
+    )
+
+    assert skills._describe(result) == ["line 5: \"in today's\""]
+
+
+def test_a_report_renders_one_line_per_scanner_and_one_per_finding():
+    report = skills.UnslopReport(
+        path=Path("review.md"),
+        results=[
+            skills.ScanResult(
+                scanner="banned_phrase_scan.py",
+                violations=1,
+                clean=False,
+                report={
+                    "violations": [
+                        {"line_number": 4, "phrase": "delve into", "suggestion": "say what"}
+                    ]
+                },
+            ),
+            skills.ScanResult(scanner="structure_scan.py", violations=0, clean=True, report={}),
+            skills.ScanResult(
+                scanner="silhouette_scan.py", violations=0, clean=True, error="missing script"
+            ),
+        ],
+    )
+
+    assert skills.render_report(report) == [
+        "- banned_phrase_scan.py: 1 finding(s)",
+        "    - line 4: 'delve into' - say what",
+        "- structure_scan.py: clean",
+        "- silhouette_scan.py: could not run — missing script",
+    ]

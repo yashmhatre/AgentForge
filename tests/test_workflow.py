@@ -155,10 +155,15 @@ def test_a_broken_definition_on_disk_names_the_workflow(tmp_path):
 # --- the shipped definitions -------------------------------------------------
 
 
-def test_feature_runs_the_implementer_the_tester_and_then_security():
+def test_feature_runs_the_whole_roster_with_the_reviewer_last():
     workflow = load_workflow("feature")
 
-    assert [step.role for step in workflow.steps] == ["implementer", "tester", "security"]
+    assert [step.role for step in workflow.steps] == [
+        "implementer",
+        "tester",
+        "security",
+        "reviewer",
+    ]
 
 
 @pytest.mark.parametrize("name", ["feature", "bugfix", "review"])
