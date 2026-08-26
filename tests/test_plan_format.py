@@ -172,8 +172,9 @@ def test_a_short_task_is_its_own_title():
 
 
 def test_a_previously_filed_issue_still_parses():
-    """The format is an interface. This fixture is an Issue as AgentForge filed
-    it; if it stops parsing, so does every Issue already in someone's tracker."""
+    """The format is an interface. This fixture is an Issue as an older
+    AgentForge filed it — before the body named its Workflow in prose — and if
+    it stops parsing, so does every Issue already in someone's tracker."""
     body = (FIXTURES / "issue_body_v1.md").read_text(encoding="utf-8")
 
     document = parse_issue_body(body, resolve_role)
@@ -191,7 +192,21 @@ def test_a_previously_filed_issue_still_parses():
 
 def test_the_rendered_body_still_matches_the_recorded_one():
     """Rendering drift is caught here rather than by a confused human comparing
-    two issues filed a month apart."""
-    recorded = (FIXTURES / "issue_body_v1.md").read_text(encoding="utf-8")
+    two issues filed a month apart.
+
+    A separate recording from the one above on purpose: that fixture is an
+    Issue already in a tracker and has to keep parsing, while this one is what
+    the renderer produces today. Changing the format means re-recording this and
+    leaving that alone."""
+    recorded = (FIXTURES / "issue_body_current.md").read_text(encoding="utf-8")
 
     assert render_issue_body(Task("add a retry to the loader"), a_document()) == recorded
+
+
+def test_the_body_says_which_workflow_will_run():
+    """A human reading the Issue finds out which Roles are about to touch their
+    repository, and in what order, without opening the JSON."""
+    body = render_issue_body(Task("add a retry"), a_document())
+
+    assert "Running the `feature` Workflow" in body
+    assert parse_issue_body(body, resolve_role).workflow == "feature"

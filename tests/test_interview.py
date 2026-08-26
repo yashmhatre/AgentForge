@@ -248,8 +248,9 @@ def test_the_interview_skill_is_not_delivered_to_a_pass_with_nobody_in_the_room(
     assert "/agentforge:domain-modeling" in prompts(runner)[0]
 
 
-def test_the_orchestrator_declares_domain_modeling_as_standing_equipment():
-    assert ORCHESTRATOR.skills == ("domain-modeling",)
+def test_the_orchestrator_declares_its_planning_equipment():
+    """What a planning pass works with. The interview swaps in its own."""
+    assert ORCHESTRATOR.skills == ("domain-modeling", "to-spec", "to-tickets")
     assert ORCHESTRATOR.tier is ModelTier.DEEP
 
 

@@ -30,25 +30,122 @@ from .fakes import FakeRunner
 from .test_contracts import a_plan
 
 
-def plan_block(roster, plan=None, context=None) -> str:
+def plan_block(roster, plan=None, context=None, workflow=None) -> str:
     payload = {
         "version": 1,
         "plan": (plan or a_plan()).to_dict(),
         "roster": roster,
         "context": context or {},
     }
+    if workflow is not None:
+        payload["workflow"] = workflow
     return f"{PLAN_OPEN}\n```json\n{json.dumps(payload)}\n```\n{PLAN_CLOSE}"
 
 
-def orchestrator_output(roster, outcome="completed", summary="planned it") -> str:
+def orchestrator_output(
+    roster, outcome="completed", summary="planned it", workflow=None
+) -> str:
     envelope = {
         "type": "result",
         "is_error": False,
-        "result": plan_block(roster)
+        "result": plan_block(roster, workflow=workflow)
         + "\n\n"
         + render_result_block({"outcome": outcome, "summary": summary}),
     }
     return json.dumps(envelope)
+
+
+# --- the Orchestrator picks the Workflow -------------------------------------
+
+
+def test_the_workflow_the_orchestrator_named_is_the_one_the_issue_runs():
+    """The Roster follows from it: a bug fix and a schema migration draw
+    different Rosters because they draw different Workflows."""
+    document = build_document(
+        plan_block([{"role": "implementer"}], workflow="bugfix")
+        + render_result_block({"outcome": "completed", "summary": "planned"})
+    )
+
+    assert document.workflow == "bugfix"
+    assert document.roster.names() == ("implementer", "tester", "reviewer")
+
+
+def test_a_review_of_somebody_elses_diff_draws_a_roster_with_no_implementer():
+    document = build_document(
+        plan_block([{"role": "security"}], workflow="review")
+        + render_result_block({"outcome": "completed", "summary": "planned"})
+    )
+
+    assert document.roster.names() == ("security", "reviewer")
+
+
+def test_a_plan_block_naming_no_workflow_reads_as_the_default():
+    """Additive: an Issue filed before Workflows were selectable still runs."""
+    document = build_document(
+        plan_block([{"role": "implementer"}])
+        + render_result_block({"outcome": "completed", "summary": "planned"})
+    )
+
+    assert document.workflow == "feature"
+
+
+def test_a_workflow_nobody_ships_is_caught_while_the_human_is_still_here():
+    """Rather than a week later on somebody else's machine, when the person who
+    could have corrected it has gone."""
+    document = build_document(
+        plan_block([{"role": "implementer"}], workflow="deploy-to-prod")
+        + render_result_block({"outcome": "completed", "summary": "planned"})
+    )
+
+    assert document.workflow == "feature"
+    assert any("deploy-to-prod" in note for note in document.notes)
+
+
+def test_a_role_the_workflow_does_not_run_is_dropped_and_said_so():
+    """The Roster table is what a human reads to find out who is about to touch
+    their repository. It cannot list somebody who will not."""
+    document = build_document(
+        plan_block([{"role": "implementer"}, {"role": "security"}], workflow="bugfix")
+        + render_result_block({"outcome": "completed", "summary": "planned"})
+    )
+
+    assert "security" not in document.roster.names()
+    assert any("security" in note and "bugfix" in note for note in document.notes)
+
+
+def test_a_tier_the_orchestrator_asked_for_survives_the_workflow():
+    """Choosing the Workflow is a judgement about the shape of the Task; moving
+    a Role up a tier is a judgement about the difficulty of this one."""
+    document = build_document(
+        plan_block([{"role": "implementer", "tier": "deep"}], workflow="bugfix")
+        + render_result_block({"outcome": "completed", "summary": "planned"})
+    )
+
+    tiers = {role.name: role.tier for role in document.roster}
+    assert tiers["implementer"] is ModelTier.DEEP
+    assert tiers["tester"] is ModelTier.STANDARD
+
+
+def test_the_planning_prompt_lists_the_workflows_and_their_steps():
+    prompt = Orchestrator(ClaudeProvider(FakeRunner())).build_prompt(
+        Task("add a retry"), Path("/repo")
+    )
+
+    assert "`feature`: implementer, tester, security, reviewer" in prompt
+    assert "`bugfix`: implementer, tester, reviewer" in prompt
+    assert "`review`: security, reviewer" in prompt
+
+
+def test_the_planning_prompt_says_the_orchestrator_files_nothing():
+    """`to-spec` and `to-tickets` both end by publishing to a tracker and
+    labelling what they filed. That is AgentForge's job, and a second Issue
+    filed from inside a planning pass is one nobody is tracking."""
+    prompt = Orchestrator(ClaudeProvider(FakeRunner())).build_prompt(
+        Task("add a retry"), Path("/repo")
+    )
+
+    assert "no issue tracker and no triage labels" in prompt
+    assert "do not apply a label" in prompt
 
 
 # --- Roster selection ------------------------------------------------------
@@ -131,7 +228,10 @@ def test_a_planning_pass_produces_a_fileable_document():
     planned = Orchestrator(ClaudeProvider(runner)).plan(Task("add a retry"), Path("/repo"))
 
     assert not planned.escalated
-    assert planned.document.roster.names() == ("implementer",)
+    # The Workflow is what runs, so the Roster is its Roles rather than the
+    # shorter list the model asked for.
+    assert planned.document.workflow == "feature"
+    assert planned.document.roster.names() == ("implementer", "tester", "security", "reviewer")
 
 
 def test_the_orchestrator_runs_deep_by_default():

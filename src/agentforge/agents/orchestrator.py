@@ -32,8 +32,10 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ..core.contracts import (
+    DEFAULT_WORKFLOW,
     AgentResult,
     ContextPack,
     ModelTier,
@@ -44,6 +46,9 @@ from ..core.contracts import (
     Roster,
     Task,
 )
+
+if TYPE_CHECKING:  # `core.workflow` imports this package, so the cycle stays deferred.
+    from ..core.workflow import Workflow
 from ..core.plan_format import (
     PLAN_CLOSE,
     PLAN_OPEN,
@@ -99,11 +104,26 @@ You are running in {cwd}. Read whatever you need in order to plan accurately -- 
 existing structure, conventions, tests, and any CONTEXT.md, AGENTS.md, or \
 docs/adr/ the project keeps. Do not change any files. This is a planning pass.
 
-## Roles you may put in the Roster
+## Workflows you may choose
+
+{workflows}
+
+Name one in the plan block. It decides which Roles run and in what order, so the
+Roster you write is that Workflow's Roles -- choose the Workflow that fits the
+Task rather than assembling a Roster of your own. You may still move a Role to a
+different Model Tier.
+
+## Roles the Workflows draw on
 
 {roles}
 
-Order matters: the Roster runs in the order you write it.
+## What you do not do
+
+You have no issue tracker and no triage labels. AgentForge files exactly one \
+Issue from the block you write below, under its own label, through its own \
+GitHub boundary. Do not publish anything, do not open an issue, and do not \
+apply a label -- a second Issue filed from inside a planning pass is one nobody \
+is tracking.
 
 ## Required output
 
@@ -134,6 +154,7 @@ First the plan:
     ],
     "constraints": ["anything the executing Role must not do"]
   }},
+  "workflow": "feature",
   "roster": [{{"role": "implementer", "tier": "standard"}}],
   "context": {{
     "files": ["files a Role must read"],
@@ -219,7 +240,12 @@ ORCHESTRATOR = Role(
     name="orchestrator",
     tier=ModelTier.DEEP,
     instructions=INSTRUCTIONS,
-    skills=("domain-modeling",),
+    #: What a planning pass works with: the project's vocabulary, the synthesis
+    #: of a conversation into a spec, and the breakdown of that spec into work.
+    #: Both `to-` skills end by publishing to a tracker and labelling what they
+    #: filed, which is AgentForge's job — the prompt says so, and ADR-0007's
+    #: default-deny means a planning pass cannot reach `gh` to do it anyway.
+    skills=("domain-modeling", "to-spec", "to-tickets"),
 )
 
 
@@ -326,7 +352,14 @@ class Orchestrator:
     def build_prompt(
         self, task: Task, cwd: Path, exchanges: Sequence[Exchange] = ()
     ) -> str:
+        from ..core.workflow import available_workflows
         from . import KNOWN_TIERS, ROLES
+
+        definitions = "\n".join(
+            f"- `{workflow.name}`: " + ", ".join(step.role for step in workflow.steps)
+            for workflow in available_workflows()
+            if workflow.steps
+        )
 
         available = "\n".join(
             f"- `{name}` (default tier `{ROLES[name].tier}`)"
@@ -355,6 +388,7 @@ class Orchestrator:
             task=task.statement.strip(),
             interview=interview,
             cwd=cwd,
+            workflows=definitions,
             roles=available,
             plan_open=PLAN_OPEN,
             plan_close=PLAN_CLOSE,
@@ -424,9 +458,70 @@ def build_document(text: str) -> PlanDocument:
     """Turn an Orchestrator's raw output into the document that gets filed."""
     payload = extract_plan_payload(text)
     plan = Plan.from_dict(payload["plan"])
-    roster, notes = select_roster(payload.get("roster") or [])
+    workflow, workflow_notes = select_workflow(payload.get("workflow"))
+    requested, roster_notes = select_roster(payload.get("roster") or [])
+    roster, aligned_notes = align_to_workflow(requested, workflow)
     context = ContextPack.from_dict(payload.get("context"))
-    return PlanDocument(plan=plan, roster=roster, context=context, notes=notes)
+    return PlanDocument(
+        plan=plan,
+        roster=roster,
+        context=context,
+        workflow=workflow.name,
+        notes=workflow_notes + roster_notes + aligned_notes,
+    )
+
+
+def select_workflow(requested) -> tuple[Workflow, tuple[str, ...]]:
+    """The Workflow named in the plan block, or the default with a note.
+
+    Validated here rather than at `implement` time. An Issue naming a Workflow
+    nobody has is an Issue that fails a week later on somebody else's machine,
+    and the human who could have corrected it is at the keyboard now.
+    """
+    from ..core.workflow import WorkflowError, available_workflows, load_workflow
+
+    name = str(requested or "").strip().lower()
+    if not name:
+        return load_workflow(DEFAULT_WORKFLOW), ()
+
+    try:
+        return load_workflow(name), ()
+    except WorkflowError:
+        available = ", ".join(w.name for w in available_workflows())
+        note = (
+            f"The Orchestrator named the `{name}` Workflow, which does not exist "
+            f"({available}). The Issue runs `{DEFAULT_WORKFLOW}` instead."
+        )
+        return load_workflow(DEFAULT_WORKFLOW), (note,)
+
+
+def align_to_workflow(roster: Roster, workflow: Workflow) -> tuple[Roster, tuple[str, ...]]:
+    """The Roles that will actually run, in the order the Workflow runs them.
+
+    The runtime walks the Workflow, not the Roster, so a Roster that disagreed
+    with it would be a promise the Run does not keep — and the Roster table is
+    what a human reads to find out who is about to touch their repository.
+
+    Tiers survive the alignment: choosing the Workflow is the Orchestrator's
+    judgement about the shape of the Task, and moving a Role up a tier is its
+    judgement about the difficulty of this one.
+    """
+    from . import resolve_role
+
+    tiers = {role.name: role.tier for role in roster}
+    roles = []
+    for step in workflow.steps:
+        role = resolve_role(step.role)
+        tier = step.tier or tiers.get(role.name)
+        roles.append(role.at_tier(tier) if tier else role)
+
+    dropped = sorted(set(tiers) - {step.role for step in workflow.steps})
+    notes = tuple(
+        f"The Orchestrator asked for the `{name}` Role, which the "
+        f"`{workflow.name}` Workflow does not run. It is not in the Roster."
+        for name in dropped
+    )
+    return Roster(tuple(roles)), notes
 
 
 def select_roster(requested) -> tuple[Roster, tuple[str, ...]]:
@@ -479,4 +574,13 @@ def select_roster(requested) -> tuple[Roster, tuple[str, ...]]:
     return Roster(tuple(roles)), tuple(notes)
 
 
-__all__ = ["INSTRUCTIONS", "ORCHESTRATOR", "Orchestrator", "Planned", "build_document", "select_roster"]
+__all__ = [
+    "INSTRUCTIONS",
+    "ORCHESTRATOR",
+    "Orchestrator",
+    "Planned",
+    "align_to_workflow",
+    "build_document",
+    "select_roster",
+    "select_workflow",
+]
