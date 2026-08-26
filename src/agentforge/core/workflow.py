@@ -62,6 +62,25 @@ class Workflow:
         return outstanding(self.steps, done, lambda step: step.role)
 
 
+def available_workflows(root: Path | None = None) -> tuple[Workflow, ...]:
+    """Every definition that loads, by name.
+
+    The Orchestrator picks one and names it in the Issue, so it has to be told
+    what there is. Read off the directory rather than listed in a prompt, so a
+    project that drops a definition beside the shipped ones can have it chosen.
+    A definition that does not load is left out rather than raising: one bad
+    file in the directory should not stop planning against the others.
+    """
+    directory = Path(root) if root is not None else WORKFLOWS_ROOT
+    workflows = []
+    for path in sorted(directory.glob("*.yaml")):
+        try:
+            workflows.append(parse_workflow(path.read_text(encoding="utf-8"), name=path.stem))
+        except WorkflowError:
+            continue
+    return tuple(workflows)
+
+
 def load_workflow(name: str, root: Path | None = None) -> Workflow:
     """Read and validate one definition by name."""
     directory = Path(root) if root is not None else WORKFLOWS_ROOT
@@ -163,6 +182,7 @@ __all__ = [
     "Step",
     "Workflow",
     "WorkflowError",
+    "available_workflows",
     "load_workflow",
     "parse_workflow",
 ]

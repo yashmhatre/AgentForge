@@ -78,7 +78,17 @@ def render_issue_body(task: Task, document: PlanDocument) -> str:
         parts += [f"- {constraint}" for constraint in document.plan.constraints]
         parts.append("")
 
-    parts += ["## Roster", "", "| Order | Role | Model Tier |", "| --- | --- | --- |"]
+    parts += [
+        "## Roster",
+        "",
+        (
+            f"Running the `{document.workflow}` Workflow, in this order. "
+            "A Gate between two Steps holds the Run until it clears."
+        ),
+        "",
+        "| Order | Role | Model Tier |",
+        "| --- | --- | --- |",
+    ]
     for index, role in enumerate(document.roster, start=1):
         parts.append(f"| {index} | {role.name} | `{role.tier}` |")
     parts.append("")

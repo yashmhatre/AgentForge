@@ -101,7 +101,40 @@ def test_the_filed_body_is_the_body_implement_will_parse_back():
     forge(runner).plan("add a retry to the loader")
 
     body = runner.argument_after("--body", "gh", "issue", "create")
-    assert parse_issue_body(body).roster.names() == ("implementer",)
+    document = parse_issue_body(body)
+    assert document.roster.names() == ("implementer", "tester", "security", "reviewer")
+    assert document.workflow == "feature"
+
+
+def test_exactly_one_issue_is_filed_per_plan_and_it_is_ours():
+    """The vendored `to-spec` skill ends by publishing to a tracker and applying
+    its own `ready-for-agent` label. AgentForge files the Issue, under its own
+    label — and ADR-0007's default-deny is what makes that structural: a
+    planning pass cannot reach `gh` to file a second one even if the skill text
+    tells it to."""
+    runner = a_runner()
+    runner.script("claude", stdout=orchestrator_output([{"role": "implementer"}]))
+
+    forge(runner).plan("add a retry")
+
+    created = runner.matching("gh", "issue", "create")
+    assert len(created) == 1
+    assert "--label" in created[0]
+    assert "ready-for-agent" not in " ".join(created[0])
+    assert all("--dangerously-skip-permissions" not in call for call in runner.matching("claude"))
+
+
+def test_the_workflow_the_orchestrator_chose_survives_to_the_run():
+    """#16's whole point: the Issue names the Workflow, and `implement` runs
+    that one rather than the default."""
+    runner = a_runner()
+    runner.script("claude", stdout=orchestrator_output([{"role": "implementer"}], workflow="review"))
+
+    forge(runner).plan("review the incoming branch")
+
+    body = runner.argument_after("--body", "gh", "issue", "create")
+    assert "Running the `review` Workflow" in body
+    assert parse_issue_body(body).workflow == "review"
 
 
 def test_a_freshly_filed_issue_is_labelled_planned():

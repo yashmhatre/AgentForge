@@ -91,8 +91,11 @@ Both agent commands take `--provider` and `--tier`. A bare `--tier deep` moves e
 
 ## Workflows
 
-Three ship, and the Issue's plan block names which one a Run executes. A project
-adds its own by dropping a definition beside them.
+Three ship. The Orchestrator picks one while it plans and names it in the Issue
+body, so a human reading the Issue knows which Roles are about to touch their
+repository and in what order — the Roster table is that Workflow's Roles. A
+project adds its own by dropping a definition beside them, and it becomes
+selectable too.
 
 | Workflow | Steps | For |
 | --- | --- | --- |
