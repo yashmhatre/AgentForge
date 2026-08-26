@@ -16,13 +16,21 @@ def test_all_five_third_party_skills_are_vendored():
 
 def test_the_bundle_says_which_skills_are_ours():
     """A refresh re-copies upstream over this directory. Anything of ours in it
-    has to be findable in the manifest, or it goes in the next refresh."""
+    has to be findable in the manifest, or it goes in the next refresh.
+
+    Read from `FIRST_PARTY` rather than `COMPOSED`: not everything we wrote is a
+    composite, and a refresh does not care which is which."""
     manifest = (skills.SKILLS_ROOT / "MANIFEST.yaml").read_text(encoding="utf-8")
 
     assert "first_party:" in manifest
-    for name in skills.COMPOSED:
+    for name in skills.FIRST_PARTY:
         assert name in manifest, f"{name} is ours and the manifest does not say so"
         assert skills.skill_path(name).is_dir()
+
+
+def test_every_composite_is_one_of_ours():
+    """`COMPOSED` is a subset of `FIRST_PARTY`, never the other way around."""
+    assert set(skills.COMPOSED) <= set(skills.FIRST_PARTY)
 
 
 def test_a_composite_expands_into_the_skills_it_composes():
@@ -45,6 +53,13 @@ def test_expansion_keeps_a_skill_once_however_it_was_asked_for():
 
 def test_a_plain_skill_expands_to_itself():
     assert skills.expand(("unslop",)) == ("unslop",)
+
+
+def test_our_prose_skill_composes_nothing_and_travels_alone():
+    """`write-plainly` restates no vendored text, so there is nothing to fan out
+    to. A Fragment Provider gets the whole of it in one body."""
+    assert skills.expand(("write-plainly",)) == ("write-plainly",)
+    assert "write-plainly" not in skills.COMPOSED
 
 
 def test_every_composite_names_skills_that_exist():
@@ -92,6 +107,15 @@ def test_clean_prose_passes_every_scanner(tmp_path):
     assert report.failed == []
     assert report.clean
     assert report.violations == 0
+
+
+def test_the_prose_skill_survives_the_scanners_it_describes():
+    """The skill tells the Reviewer what these three scripts count. If its own
+    text cannot clear them, it is describing something else."""
+    report = skills.run_unslop(skills.skill_path("write-plainly") / "SKILL.md")
+
+    assert report.failed == []
+    assert report.clean, "; ".join(skills.render_report(report))
 
 
 def test_banned_phrases_are_caught_and_counted(tmp_path):

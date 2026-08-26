@@ -12,6 +12,7 @@ from pathlib import Path
 from agentforge.agents.reviewer import (
     MAX_REWRITES,
     REVIEWER,
+    WRITING_SKILLS,
     build_prompt,
     build_rewrite_prompt,
     prose_of,
@@ -117,6 +118,34 @@ def test_the_review_is_written_deep_and_the_rewrites_are_not():
     models = [call[call.index("--model") + 1] for call in runner.matching("claude")]
 
     assert models == ["opus", "haiku", "haiku"]
+
+
+def prompts_of(runner) -> list[str]:
+    """What the claude CLI was actually asked, in order."""
+    return [call[call.index("-p") + 1] for call in runner.matching("claude")]
+
+
+def test_the_first_draft_is_written_with_the_prose_skill_in_front_of_it():
+    """A rewrite reaches a phrase. `silhouette_scan` reads the shape of the
+    document, and no substitution changes that, so a review that is dirty for a
+    structural reason burns all three attempts and posts dirty anyway. The
+    doctrine is cheapest before the first draft."""
+    _, runner = reviews(review_says("The change matches the Plan."), True)
+
+    assert REVIEWER.skills == WRITING_SKILLS
+    assert "/agentforge:write-plainly" in prompts_of(runner)[0]
+
+
+def test_a_rewrite_is_not_handed_the_doctrine_a_second_time():
+    """#12's rule. Every finding a rewrite acts on already names the phrase, the
+    line, and a replacement; re-delivering the skill would spend context
+    teaching a Role to write while asking it to run find-and-replace."""
+    _, runner = reviews(review_says("The change matches the Plan."), False, True)
+
+    first, rewrite = prompts_of(runner)
+
+    assert "/agentforge:write-plainly" in first
+    assert "write-plainly" not in rewrite
 
 
 def test_a_rewritten_review_is_still_reported_at_the_tier_it_was_written_at():
