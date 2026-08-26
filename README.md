@@ -14,8 +14,19 @@ posting each Agent Result to the Issue before starting the next Step.
 
 ```console
 $ agentforge plan "add a retry to the loader"
+
+The Orchestrator has questions before it writes anything down.
+Answer them, or press Enter on an empty line to plan with what it has.
+
+  Which loader — the orders one, or the returns feed?
+  > orders
+
+  Retry on 5xx only, or timeouts too?
+  > both, cap it at three attempts
+
 Filed issue #12: https://github.com/acme/pipelines/issues/12
   Roster: implementer (standard)
+  Interview: 2 question(s) answered
 
 Run it with:  agentforge implement 12
 
@@ -30,6 +41,19 @@ AgentForge stops at Sign-off. A human merges.
 ```
 
 The two commands can run on different machines. Nothing is shared between them but the issue number.
+
+The interview happens while you are still at the keyboard, because ADR-0003
+freezes the plan the moment it is filed. It is rounds of one-shot invocations
+rather than a conversation — the Provider port has no session — and it ends as
+soon as the Orchestrator has enough, or as soon as you press Enter on an empty
+line. With nothing interactive attached, there is no interview at all: a
+scheduled Run has nobody to ask, and blocking on an answer that will never
+arrive is worse than planning from what was typed.
+
+A term you settle in the interview is recorded in the project's own `CONTEXT.md`
+so the same question is not asked next week. That leaves changes in your working
+tree; `agentforge plan` says which files, and they are yours to review and
+commit.
 
 Without `--allow-commands`, the Implementer remains default-deny and the Tester
 reports that it could not run the suite; it never substitutes reading tests and

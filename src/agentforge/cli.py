@@ -108,6 +108,41 @@ def _tier(value: str) -> ModelTier:
         raise SystemExit(f"unknown Model Tier {value.strip()!r}; expected one of: {known}") from exc
 
 
+def build_interviewer(stdin=None, prompt=input):
+    """The human, as a callable — or `None` when nothing interactive is attached.
+
+    The terminal lives here and nowhere else: `core` and `agents` take a
+    callable, so the interview is exercised in tests by passing a list of
+    answers rather than by faking a console.
+
+    An empty line ends the interview, and so does end-of-input. A Task that was
+    already clear should not cost a conversation, and a human who has said
+    everything they have to say should not have to answer three more questions
+    to get their Issue.
+    """
+    stream = stdin if stdin is not None else sys.stdin
+    if not (hasattr(stream, "isatty") and stream.isatty()):
+        return None
+
+    asked = False
+
+    def ask(question: str) -> str | None:
+        nonlocal asked
+        if not asked:
+            print("\nThe Orchestrator has questions before it writes anything down.")
+            print("Answer them, or press Enter on an empty line to plan with what it has.")
+            asked = True
+        print(f"\n  {question}")
+        try:
+            answer = prompt("  > ").strip()
+        except EOFError:
+            print()
+            return None
+        return answer or None
+
+    return ask
+
+
 def _run_plan(args: argparse.Namespace, runner=None) -> int:
     from .core.runtime import Forge, RunFailed
     from .providers import DEFAULT_PROVIDER
@@ -115,7 +150,11 @@ def _run_plan(args: argparse.Namespace, runner=None) -> int:
     forge = Forge(cwd=args.directory, provider=args.provider or DEFAULT_PROVIDER, runner=runner)
 
     try:
-        outcome = forge.plan(args.task, tier=_tier(args.tier) if args.tier else None)
+        outcome = forge.plan(
+            args.task,
+            tier=_tier(args.tier) if args.tier else None,
+            interviewer=build_interviewer(),
+        )
     except RunFailed as exc:
         print(f"agentforge: {exc}", file=sys.stderr)
         return 2
@@ -129,10 +168,19 @@ def _run_plan(args: argparse.Namespace, runner=None) -> int:
 
     issue = outcome.issue
     document = outcome.document
-    print(f"Filed issue #{issue.number}: {issue.url}")
+    print(f"\nFiled issue #{issue.number}: {issue.url}")
     print(f"  Roster: {', '.join(f'{r.name} ({r.tier})' for r in document.roster)}")
+    if outcome.interview:
+        print(f"  Interview: {len(outcome.interview)} question(s) answered")
     for note in document.notes:
         print(f"  Note: {note}")
+
+    if outcome.touched:
+        print("\nThe interview left changes in your working tree:")
+        for path in outcome.touched:
+            print(f"  - {path}")
+        print("Review and commit them: a Run refuses to start on a dirty tree.")
+
     print(f"\nRun it with:  agentforge implement {issue.number}")
     return 0
 

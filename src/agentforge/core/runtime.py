@@ -18,7 +18,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from ..agents import RUNNERS, resolve_role
-from ..agents.orchestrator import Orchestrator, Planned
+from ..agents.orchestrator import Exchange, Interviewer, Orchestrator, Planned
 from ..providers import DEFAULT_PROVIDER, get_provider
 from .config import load_config
 from .contracts import (
@@ -62,6 +62,12 @@ class PlanOutcome:
     result: AgentResult
     issue: Issue | None = None
     document: PlanDocument | None = None
+    #: What the human was asked and answered, empty when nobody was there.
+    interview: tuple[Exchange, ...] = ()
+    #: Files the planning pass left changed in the working tree. An interview
+    #: records settled terms in the project's glossary, and a human who is not
+    #: told that has an unexplained diff and a Run that then refuses to start.
+    touched: tuple[str, ...] = ()
 
     @property
     def filed(self) -> bool:
@@ -112,13 +118,36 @@ class Forge:
 
     # --- agentforge plan ---------------------------------------------------
 
-    def plan(self, statement: str, tier: ModelTier | None = None) -> PlanOutcome:
+    def plan(
+        self,
+        statement: str,
+        tier: ModelTier | None = None,
+        interviewer: Interviewer | None = None,
+    ) -> PlanOutcome:
+        """Turn a Task into an Issue, interviewing first if anybody is there.
+
+        `interviewer` is the human, as a callable. Passing none is the
+        single-shot path: a scheduled Run has nobody to ask, and waiting for an
+        answer that will never come is worse than planning from what was typed.
+        """
         repo, github, provider = self._prepare()
         task = Task(statement=statement)
 
-        planned: Planned = Orchestrator(provider, tier=tier).plan(task, repo.root)
+        # Only when interviewing: the planning pass is told to change nothing,
+        # and two extra `git status` calls on every plan buy nothing there.
+        before = set(repo.changed_files()) if interviewer else set()
+
+        planned: Planned = Orchestrator(provider, tier=tier).plan(task, repo.root, interviewer)
+        touched = (
+            tuple(path for path in repo.changed_files() if path not in before)
+            if interviewer
+            else ()
+        )
+
         if planned.document is None:
-            return PlanOutcome(result=planned.result)
+            return PlanOutcome(
+                result=planned.result, interview=planned.interview, touched=touched
+            )
 
         body = render_issue_body(task, planned.document)
         issue = github.create_issue(
@@ -126,7 +155,13 @@ class Forge:
             body=body,
             labels=(RunStatus.PLANNED.label,),
         )
-        return PlanOutcome(result=planned.result, issue=issue, document=planned.document)
+        return PlanOutcome(
+            result=planned.result,
+            issue=issue,
+            document=planned.document,
+            interview=planned.interview,
+            touched=touched,
+        )
 
     # --- agentforge implement ----------------------------------------------
 
