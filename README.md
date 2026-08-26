@@ -135,10 +135,17 @@ gates:
     suite: pytest
 ```
 
-A Role declares the Vendored Skills it needs. A native Provider receives them
-through its CLI's skill mechanism; a fragment Provider receives the same
-`SKILL.md` text appended to the prompt. Capability Tiers are configuration,
-never the result of probing an installed CLI.
+A Role declares the skills it needs. A native Provider receives them through its
+CLI's skill mechanism; a fragment Provider receives the same `SKILL.md` text
+appended to the prompt. Capability Tiers are configuration, never the result of
+probing an installed CLI.
+
+Most skills are vendored third party (see `skills/MANIFEST.yaml`). One is
+AgentForge's own and composite: `grill-with-docs` is the interview and the
+writing-down as one job, built out of `grilling` and `domain-modeling`. A native
+Provider is named the composite and fans it out itself; a fragment Provider gets
+the composite and both parts inlined, because it has no mechanism to fan out
+with.
 
 A Workflow step declaring `gate: tests` runs `gates.tests.suite` and holds the
 Run when it fails, posting the output to the Issue. The default is `pytest`. A

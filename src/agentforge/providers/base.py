@@ -27,7 +27,7 @@ from ..core.config import CapabilityTier, Config
 from ..core.contracts import AgentResult, ContextPack, Finding, ModelTier, Outcome, Role
 from ..core.plan_format import extract_result_block
 from ..core.process import CommandResult, CommandRunner, MissingBinary, require
-from ..core.skills import read_skill
+from ..core.skills import expand, read_skill
 
 
 class ProviderError(RuntimeError):
@@ -140,21 +140,32 @@ class CliProvider(Provider):
         return to_agent_result(role=role, tier=tier, output=output)
 
     def _deliver_skills(self, role: Role, prompt: str) -> tuple[str, tuple[str, ...]]:
-        """Validate and deliver the Role's skills before the CLI is invoked."""
-        declared = tuple((name, read_skill(name)) for name in role.skills)
-        if not declared:
+        """Validate and deliver the Role's skills before the CLI is invoked.
+
+        A native Provider is named the skills the Role declared and no more: a
+        composite fans out to its parts through the CLI's own Skill mechanism,
+        which is what the mechanism is for.
+
+        A Fragment Provider has no such mechanism, so the composite is expanded
+        here and every body travels. Without that, a skill whose text says "run
+        these two" reaches a Provider that cannot run anything and the Role is
+        left with an instruction pointing at nothing.
+        """
+        if not role.skills:
             return prompt, ()
 
         if self.capability_tier is CapabilityTier.NATIVE:
-            commands = ", ".join(f"/agentforge:{name}" for name, _ in declared)
+            for name in role.skills:
+                read_skill(name)  # refuse a name nothing answers for, before the CLI runs
+            commands = ", ".join(f"/agentforge:{name}" for name in role.skills)
             instruction = (
                 f"Use the declared native AgentForge skills before doing this work: {commands}."
             )
             return f"{instruction}\n\n{prompt}", role.skills
 
-        fragments = []
-        for name, markdown in declared:
-            fragments.append(f"## Vendored Skill: {name}\n\n{markdown.rstrip()}")
+        fragments = [
+            f"## Skill: {name}\n\n{read_skill(name).rstrip()}" for name in expand(role.skills)
+        ]
         return f"{prompt}\n\n" + "\n\n".join(fragments) + "\n", ()
 
 

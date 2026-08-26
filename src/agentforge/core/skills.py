@@ -1,14 +1,22 @@
-"""Access to the vendored skill bundle.
+"""Access to the skill bundle.
 
 Skills ship as package data, never as importable modules. Markdown is read as
 text; Python is invoked as a subprocess through the Command Runner, which is the
 one process boundary in the codebase.
+
+Most of the bundle is vendored third-party work (ADR-0006) and never edited in
+place. A few skills are AgentForge's own, and one of those is a composite: a
+skill whose job is to run two others together on one task. `COMPOSED` says what
+each expands to, because a composite has to survive both Capability Tiers —
+natively it fans out through the Skill tool, and as a Fragment there is no tool
+to fan out with, so the delivery path inlines what it names.
 """
 
 from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -24,6 +32,30 @@ UNSLOP_SCANNERS = (
     "structure_scan.py",
     "silhouette_scan.py",
 )
+
+
+#: AgentForge's own skills, and the vendored skills each is built out of. A
+#: composite adds the job the parts are doing together and restates neither: a
+#: Fragment is the degraded delivery of a skill and never a second copy of one,
+#: so the method stays in exactly one file.
+COMPOSED: dict[str, tuple[str, ...]] = {
+    "grill-with-docs": ("grilling", "domain-modeling"),
+}
+
+
+def expand(names: Sequence[str]) -> tuple[str, ...]:
+    """Declared skills, with each composite followed by what it is made of.
+
+    Order matters and duplicates do not survive it: the composite states the job
+    before the methods it draws on, and a Role that declared a part directly as
+    well gets it once.
+    """
+    ordered: list[str] = []
+    for name in names:
+        for part in (name, *COMPOSED.get(name, ())):
+            if part not in ordered:
+                ordered.append(part)
+    return tuple(ordered)
 
 
 class SkillNotFound(LookupError):

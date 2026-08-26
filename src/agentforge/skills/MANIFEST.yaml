@@ -1,4 +1,4 @@
-# Vendored skills. Third-party content, tracked deliberately.
+# The skill bundle. Mostly third-party content, tracked deliberately.
 #
 # Nothing in `agentforge` imports this directory. Markdown is read as text;
 # Python is invoked as a subprocess with `sys.executable` by absolute path.
@@ -8,6 +8,9 @@
 # and `vendored_at`, and re-run the tests. Never edit vendored files in place —
 # a local edit that upstream does not know about turns every future refresh
 # into a manual merge.
+#
+# `first_party` at the bottom is the exception, and the reason it is listed here
+# is so that a refresh never mistakes it for something to overwrite.
 
 version: 1
 
@@ -98,3 +101,26 @@ skills:
 # mattpocock-skills. Those stages are what AgentForge's own Implementer and
 # Reviewer Roles exist to do, and shipping both would mean maintaining two
 # competing implementations of the same step.
+
+# --- AgentForge's own ------------------------------------------------------
+
+first_party:
+  grill-with-docs:
+    consumer: orchestrator
+    stage: plan
+    composes: [grilling, domain-modeling]
+    purpose: >-
+      The interview and the writing-down as one job, plus the part neither
+      vendored skill knows: that the plan freezes when it is filed, so a
+      question not asked here becomes a guess made later by an Agent with less
+      context than the interviewer had.
+    why_not_vendored: >-
+      Upstream ships a skill of the same name at
+      skills/engineering/grill-with-docs, and its whole body is "Call the Skill
+      tool twice, for grilling and domain-modeling". That works on a Provider
+      with a Skill tool and does nothing on one without: delivered as a Fragment
+      it would reach the Agent as an instruction pointing at a mechanism that is
+      not there, and the interview method would silently never arrive
+      (ADR-0005). AgentForge ships its own composite instead, and
+      `core.skills.COMPOSED` expands it into its parts on the Fragment path.
+      Deliberately not vendored — do not add it on the next refresh.

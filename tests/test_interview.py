@@ -222,11 +222,11 @@ def test_a_project_with_no_glossary_is_not_given_one_mid_interview(tmp_path):
 # --- skills ------------------------------------------------------------------
 
 
-def test_the_interview_skills_reach_the_agent_by_the_capability_tier_path():
-    """`grilling` conducts the interview and `domain-modeling` resolves terms.
-    Both travel the same route as every other skill (ADR-0005), so a Provider
-    that cannot take them natively gets them as Fragments without this Role
-    knowing the difference."""
+def test_the_interview_skill_reaches_the_agent_by_the_capability_tier_path():
+    """`grill-with-docs` is the interview and the writing-down as one job. It
+    travels the same route as every other skill (ADR-0005), so a Provider that
+    cannot take it natively gets it — and the two it composes — as Fragments,
+    without this Role knowing the difference."""
     orchestrator, runner = an_orchestrator(
         asks("Which loader?"), READY, orchestrator_output([{"role": "implementer"}])
     )
@@ -234,18 +234,17 @@ def test_the_interview_skills_reach_the_agent_by_the_capability_tier_path():
     orchestrator.plan(Task("add a retry"), CWD, Human("The orders loader."))
 
     interview = prompts(runner)[0]
-    assert "/agentforge:grilling" in interview
-    assert "/agentforge:domain-modeling" in interview
+    assert "/agentforge:grill-with-docs" in interview
 
 
-def test_grilling_is_not_delivered_to_a_planning_pass_with_nobody_in_the_room():
+def test_the_interview_skill_is_not_delivered_to_a_pass_with_nobody_in_the_room():
     """An interview skill has nothing to say to a single-shot plan, and a Role
     told to conduct one anyway is a Role told to wait for an empty room."""
     orchestrator, runner = an_orchestrator(orchestrator_output([{"role": "implementer"}]))
 
     orchestrator.plan(Task("add a retry"), CWD)
 
-    assert "/agentforge:grilling" not in prompts(runner)[0]
+    assert "/agentforge:grill-with-docs" not in prompts(runner)[0]
     assert "/agentforge:domain-modeling" in prompts(runner)[0]
 
 

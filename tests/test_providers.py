@@ -96,9 +96,60 @@ def test_a_non_native_provider_appends_the_same_skill_as_a_fragment():
     )
 
     prompt = runner.only("codex")[-1]
-    assert "## Vendored Skill: grilling" in prompt
+    assert "## Skill: grilling" in prompt
     assert read_skill("grilling").rstrip() in prompt
     assert "--plugin-dir" not in runner.only("codex")
+
+
+def test_a_composite_skill_expands_into_its_parts_for_a_fragment_provider():
+    """A composite says "run these two". A Provider with no Skill mechanism
+    cannot, so the parts travel with it — otherwise the Role is handed an
+    instruction pointing at nothing and the method never arrives."""
+    runner = FakeRunner().script("codex", stdout=recorded("codex_completed.txt"))
+    provider = CodexProvider(
+        runner,
+        config=Config(provider_capabilities={"codex": CapabilityTier.FRAGMENT}),
+    )
+    role = Role("orchestrator", ModelTier.DEEP, skills=("grill-with-docs",))
+
+    provider.invoke(
+        role=role,
+        prompt="do the thing",
+        context=ContextPack(),
+        tier=role.tier,
+        cwd=Path("/repo"),
+    )
+
+    prompt = runner.only("codex")[-1]
+    assert "## Skill: grill-with-docs" in prompt
+    assert "## Skill: grilling" in prompt
+    assert "## Skill: domain-modeling" in prompt
+    assert prompt.index("grill-with-docs") < prompt.index("## Skill: grilling"), (
+        "the job the parts are doing together comes before the parts"
+    )
+
+
+def test_a_composite_is_named_once_to_a_native_provider():
+    """Natively the CLI's own Skill mechanism fans it out, which is what that
+    mechanism is for. Naming the parts as well would deliver them twice."""
+    runner = FakeRunner().script("claude", stdout=recorded("claude_completed.json"))
+    provider = ClaudeProvider(
+        runner,
+        config=Config(provider_capabilities={"claude": CapabilityTier.NATIVE}),
+    )
+    role = Role("orchestrator", ModelTier.DEEP, skills=("grill-with-docs",))
+
+    provider.invoke(
+        role=role,
+        prompt="do the thing",
+        context=ContextPack(),
+        tier=role.tier,
+        cwd=Path("/repo"),
+    )
+
+    prompt = runner.only("claude")[runner.only("claude").index("-p") + 1]
+    assert "/agentforge:grill-with-docs" in prompt
+    assert "/agentforge:grilling" not in prompt
 
 
 def test_an_unknown_declared_skill_fails_before_the_provider_is_invoked():
