@@ -65,11 +65,13 @@ Interviewer = Callable[[str], str | None]
 #: round it does not ask is a `deep` invocation nobody pays for.
 MAX_ROUNDS = 3
 
-#: Skills the interview adds for its own invocations. `grilling` conducts an
-#: interview and has nothing to say to a planning pass with nobody in the room,
-#: so it is declared per invocation rather than on the Role. Both travel the
-#: Capability Tier path like every other skill (ADR-0005).
-INTERVIEW_SKILLS = ("grilling", "domain-modeling")
+#: What the interview adds for its own invocations. `grill-with-docs` is the
+#: interview and the writing-down as one job; it has nothing to say to a
+#: planning pass with nobody in the room, so it is declared per invocation
+#: rather than on the Role. It travels the Capability Tier path like every other
+#: skill (ADR-0005), and expands into the two it composes wherever a Provider
+#: cannot invoke a skill by name.
+INTERVIEW_SKILLS = ("grill-with-docs",)
 
 INSTRUCTIONS = """\
 You are the Orchestrator in AgentForge. You reason once, and everything after \

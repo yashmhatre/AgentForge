@@ -9,9 +9,51 @@ import pytest
 from agentforge.core import skills
 
 
-def test_all_five_skills_are_vendored():
+def test_all_five_third_party_skills_are_vendored():
     for name in ("grilling", "domain-modeling", "to-spec", "to-tickets", "unslop"):
         assert skills.skill_path(name).is_dir()
+
+
+def test_the_bundle_says_which_skills_are_ours():
+    """A refresh re-copies upstream over this directory. Anything of ours in it
+    has to be findable in the manifest, or it goes in the next refresh."""
+    manifest = (skills.SKILLS_ROOT / "MANIFEST.yaml").read_text(encoding="utf-8")
+
+    assert "first_party:" in manifest
+    for name in skills.COMPOSED:
+        assert name in manifest, f"{name} is ours and the manifest does not say so"
+        assert skills.skill_path(name).is_dir()
+
+
+def test_a_composite_expands_into_the_skills_it_composes():
+    assert skills.expand(("grill-with-docs",)) == (
+        "grill-with-docs",
+        "grilling",
+        "domain-modeling",
+    )
+
+
+def test_expansion_keeps_a_skill_once_however_it_was_asked_for():
+    """A Role that declared a part directly as well gets it once, in the order
+    the composite put it in."""
+    assert skills.expand(("grill-with-docs", "grilling")) == (
+        "grill-with-docs",
+        "grilling",
+        "domain-modeling",
+    )
+
+
+def test_a_plain_skill_expands_to_itself():
+    assert skills.expand(("unslop",)) == ("unslop",)
+
+
+def test_every_composite_names_skills_that_exist():
+    """A composite pointing at a skill nobody ships would fail at delivery, on a
+    Fragment Provider only, halfway through a Run."""
+    for name, parts in skills.COMPOSED.items():
+        assert skills.read_skill(name)
+        for part in parts:
+            assert skills.read_skill(part)
 
 
 def test_unknown_skill_names_what_is_available():
