@@ -41,3 +41,9 @@ dev = [
     "pytest>=8.0",
     "ruff>=0.6",
 ]
+
+# Vendored third-party skills are never edited in place, so linting them reports
+# 76 findings nobody here is allowed to act on. Same rule as ADR-0006: a bundle's
+# internal style is upstream's business.
+[tool.ruff]
+extend-exclude = ["src/agentforge/skills"]
