@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,6 +7,9 @@ name = "agentforge"
 version = "0.1.0"
 description = "A modular framework for coordinating specialized software agents."
 requires-python = ">=3.11"
+authors = [{ name = "Yash Mhatre" }]
+license = "Apache-2.0"
+license-files = ["LICENSE", "src/agentforge/skills/NOTICE"]
 dependencies = [
     "pyyaml>=6.0",
 ]
