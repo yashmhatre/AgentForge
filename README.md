@@ -33,9 +33,10 @@ The two commands can run on different machines. Nothing is shared between them b
 
 Without `--allow-commands`, the Implementer remains default-deny and the Tester
 reports that it could not run the suite; it never substitutes reading tests and
-claims completion. Security and the Reviewer need no such flag — auditing and
-reviewing are reading. Still to come: the Architect Role; context packs;
-plugins; and `agentforge init`. See [`docs/PLAN.md`](docs/PLAN.md).
+claims completion. Security, the Reviewer, and the Architect need no such flag —
+auditing, reviewing, and designing are reading. All six Roles `CONTEXT.md` names
+now run. Still to come: context packs; plugins; and `agentforge init`. See
+[`docs/PLAN.md`](docs/PLAN.md).
 
 The Reviewer writes the prose a human reads at Sign-off, and that prose is
 scanned by the vendored `unslop` scanners before it is posted. A finding sends
@@ -78,6 +79,13 @@ adds its own by dropping a definition beside them.
 `review` is the only one with no Implementer. It ends at a draft pull request
 like the others, because the branch already carries the commits it was pointed
 at.
+
+The Architect is in none of them. It runs `deep`, most Tasks do not need a
+design pass, and one on every Run would be the most expensive default in the
+project — so the Orchestrator selects it for design-heavy Tasks, and a project
+that always wants one names it in a Workflow of its own. Its design reaches the
+Run Log rather than the next Role's prompt, which is a limit of what a Context
+Pack carries today.
 
 A step may declare a Gate that must clear before the next one starts. None of
 the shipped definitions do: a Gate suspends the Run until it clears, and a

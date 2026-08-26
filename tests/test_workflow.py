@@ -190,6 +190,16 @@ def test_bugfix_fixes_verifies_and_reports():
     ]
 
 
+@pytest.mark.parametrize("name", ["feature", "bugfix", "review"])
+def test_no_shipped_definition_pays_for_a_design_pass(name):
+    """The Architect runs `deep`. Most Tasks do not need one, and a design pass
+    on every Run would be the most expensive default in the project — so the
+    Orchestrator selects it, or a project writes it into a Workflow of its own."""
+    workflow = load_workflow(name, root=WORKFLOWS_ROOT)
+
+    assert "architect" not in [step.role for step in workflow.steps]
+
+
 def test_review_audits_and_reports_on_a_diff_it_did_not_write():
     """The only shipped Workflow with no Implementer."""
     assert [s.role for s in load_workflow("review").steps] == ["security", "reviewer"]

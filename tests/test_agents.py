@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from agentforge import agents
 from agentforge.agents.implementer import IMPLEMENTER, Implementer, build_prompt
 from agentforge.agents.orchestrator import (
     ORCHESTRATOR,
@@ -61,14 +62,20 @@ def test_a_roster_the_orchestrator_asked_for_is_kept_in_order():
     assert notes == ()
 
 
-def test_roles_that_do_not_exist_yet_are_dropped_and_the_human_is_told():
+def test_roles_that_do_not_exist_yet_are_dropped_and_the_human_is_told(monkeypatch):
+    """Every Role CONTEXT.md names now runs, so the gap this covers is the one a
+    seventh Role sits in between being given a tier and being given a runner.
+    The Architect was the last name to sit in it."""
+    monkeypatch.setitem(agents.KNOWN_TIERS, "cartographer", ModelTier.DEEP)
+
     roster, notes = select_roster(
-        [{"role": "implementer"}, {"role": "tester"}, {"role": "architect"}]
+        [{"role": "implementer"}, {"role": "tester"}, {"role": "cartographer"}]
     )
 
     assert roster.names() == ("implementer", "tester")
     assert len(notes) == 1
-    assert "architect" in notes[0]
+    assert "cartographer" in notes[0]
+    assert "not implemented yet" in notes[0]
 
 
 def test_an_invented_role_is_dropped_as_unknown_rather_than_as_deferred():
@@ -79,7 +86,7 @@ def test_an_invented_role_is_dropped_as_unknown_rather_than_as_deferred():
 
 def test_a_roster_with_nothing_runnable_still_gets_a_role():
     """M1 is proving the pipe. An Issue nobody can implement proves nothing."""
-    roster, notes = select_roster([{"role": "architect"}])
+    roster, notes = select_roster([{"role": "bulldozer"}])
 
     assert roster.names() == ("implementer",)
     assert any("No implemented Role survived" in note for note in notes)
@@ -175,14 +182,31 @@ def test_a_confident_orchestrator_that_wrote_no_plan_is_a_failure():
     assert "no usable plan" in planned.result.summary
 
 
-def test_the_planning_prompt_names_only_roles_that_can_run():
+def test_the_planning_prompt_names_every_role_that_can_run():
     prompt = Orchestrator(ClaudeProvider(FakeRunner())).build_prompt(
         Task("add a retry"), Path("/repo")
     )
 
-    assert "`implementer`" in prompt
-    assert "do not put them in the Roster" in prompt
-    assert "tester" in prompt
+    for name in ("architect", "implementer", "tester", "security", "reviewer"):
+        assert f"`{name}`" in prompt, name
+    assert "orchestrator" not in prompt.split("## Roles")[-1].split("##")[0], (
+        "the Orchestrator offered itself a place on the Roster"
+    )
+    assert "do not put them in the Roster" not in prompt, (
+        "nothing is deferred now, so the prompt must not warn about nothing"
+    )
+
+
+def test_the_planning_prompt_warns_off_a_role_that_has_a_tier_and_no_runner(monkeypatch):
+    """The other half: a Role named in the tier table before its runner lands is
+    a reasonable thing for a model to reach for, and the prompt says not to."""
+    monkeypatch.setitem(agents.KNOWN_TIERS, "cartographer", ModelTier.DEEP)
+
+    prompt = Orchestrator(ClaudeProvider(FakeRunner())).build_prompt(
+        Task("add a retry"), Path("/repo")
+    )
+
+    assert "do not put them in the Roster: `cartographer`" in prompt
 
 
 # --- the Implementer -------------------------------------------------------

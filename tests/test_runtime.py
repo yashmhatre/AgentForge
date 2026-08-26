@@ -698,12 +698,13 @@ def test_an_issue_with_no_plan_block_is_refused_with_a_reason():
         forge(runner).implement(12)
 
 
-def test_an_issue_naming_an_unbuilt_role_says_which_one():
-    body = plan_block([{"role": "architect"}], plan=a_plan())
+def test_an_issue_naming_a_role_that_cannot_run_says_which_one():
+    """A hand-edited plan block, or one filed by a newer AgentForge than this."""
+    body = plan_block([{"role": "dramaturge"}], plan=a_plan())
     runner = a_runner()
     runner.script("gh", "issue", "view", stdout=issue_json(body=body))
 
-    with pytest.raises(RunFailed, match="architect"):
+    with pytest.raises(RunFailed, match="dramaturge"):
         forge(runner).implement(12)
 
 
@@ -1478,6 +1479,36 @@ def test_a_review_run_on_a_branch_with_nothing_on_it_still_refuses():
 
     assert state.status is RunStatus.FAILED
     assert not runner.ran("gh", "pr", "create")
+
+
+def test_a_workflow_naming_the_architect_loads_and_runs(tmp_path, monkeypatch):
+    """The Architect is in no shipped definition, which is what makes this worth
+    asserting: a Role nothing can run is decorative, and CONTEXT.md promised six.
+
+    A project that wants a design pass writes it into a Workflow of its own, and
+    the runtime looks the runner up like any other."""
+    _workflow(
+        tmp_path,
+        monkeypatch,
+        "name: feature\nsteps:\n  - role: architect\n  - role: implementer\n",
+    )
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script(
+        "claude",
+        stdout=[
+            agent_says("completed", "The parser owns the format; the port stays dumb.", ()),
+            agent_says("completed", "Built it that way."),
+        ],
+    )
+
+    state = forge(runner).implement(12, allow_commands=True)
+
+    assert state.status is RunStatus.AWAITING_SIGNOFF
+    assert state.done_roles == ("architect", "implementer")
+    prompts = [call[call.index("-p") + 1] for call in runner.matching("claude")]
+    assert "You are the Architect" in prompts[0]
+    assert "the port stays dumb" in next(c for c in comments_on(runner) if "### architect" in c)
 
 
 def test_the_runtime_names_no_role():
