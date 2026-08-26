@@ -124,3 +124,22 @@ first_party:
       (ADR-0005). AgentForge ships its own composite instead, and
       `core.skills.COMPOSED` expands it into its parts on the Fragment path.
       Deliberately not vendored — do not add it on the next refresh.
+
+  write-plainly:
+    consumer: reviewer
+    stage: runtime
+    composes: []
+    purpose: >-
+      What the three `unslop` scanners count, written as guidance for the draft
+      rather than as findings on a draft. Delivered before the Reviewer's first
+      attempt; deliberately not delivered on a rewrite, where every finding
+      already names the phrase, the line, and a replacement.
+    why_not_vendored: >-
+      Upstream's own `unslop/SKILL.md` is a routing table for a human typing
+      `/unslop cleanup`, and its doctrine lives entirely in `references/`, which
+      this bundle excludes (`vendored_partially: true` above). Delivered as a
+      Fragment it would reach the Reviewer as a menu pointing at ten files
+      nobody ships. This file states only what the three vendored scanners
+      actually enforce, so it duplicates no upstream text and goes stale only
+      when the scanners change. Deliberately not vendored — do not add
+      upstream's SKILL.md body on the next refresh.

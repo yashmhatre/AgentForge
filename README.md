@@ -63,8 +63,13 @@ now run. Still to come: context packs; plugins; and `agentforge init`. See
 [`docs/PLAN.md`](docs/PLAN.md).
 
 The Reviewer writes the prose a human reads at Sign-off, and that prose is
-scanned by the vendored `unslop` scanners before it is posted. A finding sends
-the Reviewer its own findings to rewrite against, twice at most. The scan is a
+scanned by the vendored `unslop` scanners before it is posted. The first draft is
+written with `write-plainly` in front of it — what the three scanners count,
+stated for a draft rather than as findings on one — because a rewrite reaches a
+phrase and one of the scanners reads the shape of the whole document. A finding
+sends the Reviewer its own findings to rewrite against, twice at most, and the
+skill is not delivered again there: a finding already names the phrase, the line,
+and a replacement. The scan is a
 Command and not a Gate: prose that still scans dirty on the third attempt is
 posted anyway with the report attached, because holding a finished Run on a
 cosmetic check trades a real cost for a stylistic one. The report reaches the
@@ -143,12 +148,14 @@ CLI's skill mechanism; a fragment Provider receives the same `SKILL.md` text
 appended to the prompt. Capability Tiers are configuration, never the result of
 probing an installed CLI.
 
-Most skills are vendored third party (see `skills/MANIFEST.yaml`). One is
-AgentForge's own and composite: `grill-with-docs` is the interview and the
-writing-down as one job, built out of `grilling` and `domain-modeling`. A native
-Provider is named the composite and fans it out itself; a fragment Provider gets
-the composite and both parts inlined, because it has no mechanism to fan out
-with.
+Most skills are vendored third party (see `skills/MANIFEST.yaml`). Two are
+AgentForge's own. `grill-with-docs` is the interview and the writing-down as one
+job, built out of `grilling` and `domain-modeling`: a native Provider is named
+the composite and fans it out itself, and a fragment Provider gets the composite
+and both parts inlined, because it has no mechanism to fan out with.
+`write-plainly` composes nothing — it is derived from what the three `unslop`
+scanners enforce, since upstream keeps its own writing doctrine in a
+`references/` tree this bundle does not vendor.
 
 A Workflow step declaring `gate: tests` runs `gates.tests.suite` and holds the
 Run when it fails, posting the output to the Issue. The default is `pytest`. A

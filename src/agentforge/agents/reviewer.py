@@ -8,6 +8,14 @@ deterministic and no model is involved in judging them, so a finding is a fact
 about the text rather than an opinion about it; the Reviewer is handed its own
 findings and rewrites, twice at most.
 
+The first draft is written with `write-plainly` in front of it, because a
+rewrite only reaches a phrase. `silhouette_scan` flags the shape of the document
+— an outline previewed and then fulfilled, paragraphs opened on rotating
+discourse cues, an ending that loops back to the opening's vocabulary — and no
+substitution fixes any of those. Prose that scans dirty for a structural reason
+can burn all three attempts and post dirty anyway, so the cheapest place to
+spend the doctrine is before the first draft rather than after it.
+
 The scan is a Command and not a Gate. Prose that still scans dirty on the third
 attempt is posted anyway with its report attached, because holding a finished
 Run on a cosmetic check trades a real cost for a stylistic one. The report goes
@@ -30,6 +38,13 @@ from .implementer import render_steps
 #: posted as it stands: a fourth try costs another invocation to improve a
 #: sentence nobody has asked to be perfect.
 MAX_REWRITES = 2
+
+#: Delivered before the first draft and nowhere else. It is AgentForge's own,
+#: derived from what the three scanners enforce rather than from the vendored
+#: `unslop` doctrine — that doctrine lives in `references/`, which is not
+#: vendored (see `skills/MANIFEST.yaml`), so shipping SKILL.md as a Fragment
+#: would hand the Reviewer a routing table pointing at files nobody has.
+WRITING_SKILLS = ("write-plainly",)
 
 #: The tier a rewrite runs at, which is not the tier the review runs at. Two
 #: different jobs share this Step: judging a diff against a frozen Plan, and
@@ -131,7 +146,12 @@ End your reply with this block and nothing after it:
 #: what to look at first. A thin review is one nobody can act on, and nothing
 #: downstream catches it — the next thing after this Role is a person deciding
 #: whether to merge. Its rewrites run at `REWRITE_TIER` instead.
-REVIEWER = Role(name="reviewer", tier=ModelTier.DEEP, instructions=INSTRUCTIONS)
+REVIEWER = Role(
+    name="reviewer",
+    tier=ModelTier.DEEP,
+    instructions=INSTRUCTIONS,
+    skills=WRITING_SKILLS,
+)
 
 
 def build_prompt(
@@ -200,10 +220,12 @@ class Reviewer:
             cwd=cwd,
         )
 
-        # A rewrite is a different job from the review and is priced as one.
-        # `at_tier` rather than a second mechanism: varying a Role for one
-        # invocation is what it is for.
-        rewriter = role.at_tier(REWRITE_TIER)
+        # A rewrite is a different job from the review and is priced as one, and
+        # it is briefed as one too. The skill is dropped along with the tier:
+        # every finding a rewrite acts on already names the phrase, the line, and
+        # a replacement, so re-delivering the doctrine would spend context
+        # teaching a Role to write while asking it to run find-and-replace.
+        rewriter = replace(role, tier=REWRITE_TIER, skills=())
 
         attempt = 1
         report = self._scan(result)
@@ -283,6 +305,7 @@ __all__ = [
     "MAX_REWRITES",
     "REVIEWER",
     "REWRITE_TIER",
+    "WRITING_SKILLS",
     "Reviewer",
     "build_prompt",
     "build_rewrite_prompt",

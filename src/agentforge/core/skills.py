@@ -5,11 +5,15 @@ text; Python is invoked as a subprocess through the Command Runner, which is the
 one process boundary in the codebase.
 
 Most of the bundle is vendored third-party work (ADR-0006) and never edited in
-place. A few skills are AgentForge's own, and one of those is a composite: a
-skill whose job is to run two others together on one task. `COMPOSED` says what
-each expands to, because a composite has to survive both Capability Tiers —
-natively it fans out through the Skill tool, and as a Fragment there is no tool
-to fan out with, so the delivery path inlines what it names.
+place. A few skills are AgentForge's own; `FIRST_PARTY` names them, because a
+refresh re-copies upstream over this directory and anything of ours that is not
+findable goes with it.
+
+One of ours is a composite: a skill whose job is to run two others together on
+one task. `COMPOSED` says what each expands to, because a composite has to
+survive both Capability Tiers — natively it fans out through the Skill tool, and
+as a Fragment there is no tool to fan out with, so the delivery path inlines what
+it names.
 """
 
 from __future__ import annotations
@@ -34,10 +38,17 @@ UNSLOP_SCANNERS = (
 )
 
 
-#: AgentForge's own skills, and the vendored skills each is built out of. A
-#: composite adds the job the parts are doing together and restates neither: a
-#: Fragment is the degraded delivery of a skill and never a second copy of one,
-#: so the method stays in exactly one file.
+#: Every skill in the bundle that AgentForge wrote. Not all of them are
+#: composites — `write-plainly` is derived from what the scanners above enforce
+#: and composes nothing — so this is the list a refresh has to be careful of,
+#: and `COMPOSED` is not.
+FIRST_PARTY: tuple[str, ...] = ("grill-with-docs", "write-plainly")
+
+
+#: The composites, and the vendored skills each is built out of. A composite adds
+#: the job the parts are doing together and restates neither: a Fragment is the
+#: degraded delivery of a skill and never a second copy of one, so the method
+#: stays in exactly one file.
 COMPOSED: dict[str, tuple[str, ...]] = {
     "grill-with-docs": ("grilling", "domain-modeling"),
 }
