@@ -1,0 +1,256 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1720 880" width="1720" height="880" role="img" aria-label="An Issue carries the frozen plan and the Roster. Each Agent reads the Issue and appends its result to the same Issue as the Run Log. The Workflow ends at a draft pull request that only a human can merge.">
+
+  <rect x="0" y="0" width="1720" height="880" fill="#F5F8FA"/>
+  <path d="M0,0 L700,0 L640,880 L0,880 Z" fill="#0B2138"/>
+
+  <g font-family="system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif">
+
+    <!-- ===================== LEFT PANEL ===================== -->
+    <g>
+      <path d="M44,36 L64,25 L84,36 L84,58 L64,69 L44,58 Z" fill="none" stroke="#5EEAD4" stroke-width="2.4" stroke-linejoin="round"/>
+      <path d="M44,36 L64,47 L84,36 M64,47 L64,69" fill="none" stroke="#5EEAD4" stroke-width="1.6" stroke-linejoin="round"/>
+      <text x="106" y="55" font-size="21" font-weight="600" letter-spacing="5.5" fill="#FFFFFF">AGENTFORGE</text>
+
+      <text x="44" y="168" font-family="Georgia, Times New Roman, serif" font-size="60" font-weight="700" fill="#FFFFFF">One issue number</text>
+      <text x="44" y="232" font-family="Georgia, Times New Roman, serif" font-size="60" font-weight="700" fill="#FFFFFF">is the <tspan fill="#5EEAD4">entire contract.</tspan></text>
+
+      <text x="44" y="292" font-size="17.5" fill="#9FB6C8">Planning and execution can happen on different</text>
+      <text x="44" y="318" font-size="17.5" fill="#9FB6C8">machines, days apart &#8212; with nothing passed</text>
+      <text x="44" y="344" font-size="17.5" fill="#9FB6C8">between them but the issue number.</text>
+
+      <g>
+        <rect x="44" y="378" width="516" height="56" rx="8" fill="#10304C" stroke="#1B4266" stroke-width="1"/>
+        <rect x="44" y="378" width="3" height="56" rx="1.5" fill="#5EEAD4"/>
+        <text x="74" y="412" font-size="15" font-weight="700" fill="#5EEAD4">01</text>
+        <text x="118" y="412" font-size="15.5" fill="#E6EEF4">Issue body = frozen plan + Roster</text>
+      </g>
+      <g>
+        <rect x="44" y="444" width="516" height="56" rx="8" fill="#10304C" stroke="#1B4266" stroke-width="1"/>
+        <rect x="44" y="444" width="3" height="56" rx="1.5" fill="#5EEAD4"/>
+        <text x="74" y="478" font-size="15" font-weight="700" fill="#5EEAD4">02</text>
+        <text x="118" y="478" font-size="15.5" fill="#E6EEF4">Comments = the Run Log, and the Run State</text>
+      </g>
+      <g>
+        <rect x="44" y="510" width="516" height="56" rx="8" fill="#10304C" stroke="#1B4266" stroke-width="1"/>
+        <rect x="44" y="510" width="3" height="56" rx="1.5" fill="#5EEAD4"/>
+        <text x="74" y="544" font-size="15" font-weight="700" fill="#5EEAD4">03</text>
+        <text x="118" y="544" font-size="15.5" fill="#E6EEF4">Agents read the Issue, never each other</text>
+      </g>
+      <g>
+        <rect x="44" y="576" width="516" height="56" rx="8" fill="#10304C" stroke="#1B4266" stroke-width="1"/>
+        <rect x="44" y="576" width="3" height="56" rx="1.5" fill="#5EEAD4"/>
+        <text x="74" y="610" font-size="15" font-weight="700" fill="#5EEAD4">04</text>
+        <text x="118" y="610" font-size="15.5" fill="#E6EEF4">No local run directory. No database.</text>
+      </g>
+      <g>
+        <rect x="44" y="642" width="516" height="56" rx="8" fill="#10304C" stroke="#1B4266" stroke-width="1"/>
+        <rect x="44" y="642" width="3" height="56" rx="1.5" fill="#5EEAD4"/>
+        <text x="74" y="676" font-size="15" font-weight="700" fill="#5EEAD4">05</text>
+        <text x="118" y="676" font-size="15.5" fill="#E6EEF4">No Workflow ends by merging.</text>
+      </g>
+
+      <rect x="44" y="726" width="516" height="76" rx="8" fill="#0E2A44" stroke="#1B4266" stroke-width="1"/>
+      <text x="70" y="780" font-family="Georgia, Times New Roman, serif" font-size="42" fill="#2F6B8F">&#8220;</text>
+      <text x="104" y="772" font-family="Georgia, Times New Roman, serif" font-size="21" font-style="italic" fill="#FFFFFF">Trust comes from subtraction.</text>
+
+      <text x="44" y="842" font-size="14" fill="#6E8AA0">github.com/yashmhatre/AgentForge</text>
+    </g>
+
+    <!-- ===================== RIGHT: WORKFLOW HEADER ===================== -->
+    <g>
+      <line x1="880" y1="58" x2="975" y2="58" stroke="#C6D5E0" stroke-width="1"/>
+      <text x="1210" y="63" text-anchor="middle" font-size="14" font-weight="700" letter-spacing="2.6" fill="#3D5566">ONE WORKFLOW FROM A SINGLE ISSUE</text>
+      <line x1="1445" y1="58" x2="1540" y2="58" stroke="#C6D5E0" stroke-width="1"/>
+      <text x="845" y="128" text-anchor="middle" font-size="11.5" font-weight="700" letter-spacing="2" fill="#7C8E9C">START</text>
+      <text x="1244" y="128" text-anchor="middle" font-size="11.5" font-weight="700" letter-spacing="2" fill="#7C8E9C">THE ROSTER, IN WORKFLOW ORDER</text>
+      <text x="1630" y="128" text-anchor="middle" font-size="11.5" font-weight="700" letter-spacing="2" fill="#7C8E9C">SIGN-OFF</text>
+    </g>
+
+    <!-- ===================== ISSUE CARD ===================== -->
+    <g>
+      <rect x="760" y="155" width="170" height="140" rx="10" fill="#FFFFFF" stroke="#D9E4EC" stroke-width="1.2"/>
+      <circle cx="787" cy="184" r="11" fill="#16293A"/>
+      <circle cx="787" cy="184" r="4.6" fill="#FFFFFF"/>
+      <path d="M787,188.6 v5.5" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+      <text x="808" y="190" font-size="15" font-weight="700" fill="#16293A">Issue #1287</text>
+      <text x="778" y="220" font-size="11.5" fill="#5E7385">Refactor configuration</text>
+      <text x="778" y="236" font-size="11.5" fill="#5E7385">loading to support</text>
+      <text x="778" y="252" font-size="11.5" fill="#5E7385">multiple sources</text>
+      <rect x="778" y="264" width="46" height="18" rx="9" fill="#E4F6EE" stroke="#9AD9C2" stroke-width="1"/>
+      <text x="801" y="277" text-anchor="middle" font-size="10.5" font-weight="600" fill="#127A5E">open</text>
+    </g>
+
+    <!-- ===================== ROLE CHIPS ===================== -->
+    <!-- Architect (planned) -->
+    <g>
+      <rect x="950" y="155" width="104" height="140" rx="10" fill="#EEF3F7" stroke="#B6C6D2" stroke-width="1.2" stroke-dasharray="5 4"/>
+      <path d="M1002,177 l-12,21 h24 Z" fill="none" stroke="#8A9DAC" stroke-width="1.6" stroke-linejoin="round"/>
+      <text x="1002" y="226" text-anchor="middle" font-size="12.5" font-weight="700" fill="#6C808F">Architect</text>
+      <text x="1002" y="246" text-anchor="middle" font-size="9.5" fill="#8A9DAC">Shapes the</text>
+      <text x="1002" y="259" text-anchor="middle" font-size="9.5" fill="#8A9DAC">approach</text>
+      <rect x="971" y="269" width="62" height="16" rx="8" fill="#FFFFFF" stroke="#B6C6D2" stroke-width="1"/>
+      <text x="1002" y="280.5" text-anchor="middle" font-size="9" font-weight="600" fill="#7C8E9C">planned #13</text>
+    </g>
+    <!-- Implementer -->
+    <g>
+      <rect x="1071" y="155" width="104" height="140" rx="10" fill="#FFFFFF" stroke="#7FB8CE" stroke-width="1.6"/>
+      <path d="M1116,179 l-8,8 l8,8 M1130,179 l8,8 l-8,8" fill="none" stroke="#0E6E88" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="1123" y="226" text-anchor="middle" font-size="12.5" font-weight="700" fill="#16293A">Implementer</text>
+      <text x="1123" y="246" text-anchor="middle" font-size="9.5" fill="#5E7385">Makes changes,</text>
+      <text x="1123" y="259" text-anchor="middle" font-size="9.5" fill="#5E7385">appends result</text>
+      <rect x="1096" y="269" width="54" height="16" rx="8" fill="#E4F6EE" stroke="#9AD9C2" stroke-width="1"/>
+      <text x="1123" y="280.5" text-anchor="middle" font-size="9" font-weight="600" fill="#127A5E">shipped</text>
+    </g>
+    <!-- Tester -->
+    <g>
+      <rect x="1192" y="155" width="104" height="140" rx="10" fill="#FFFFFF" stroke="#7FB8CE" stroke-width="1.6"/>
+      <rect x="1235" y="176" width="18" height="22" rx="3" fill="none" stroke="#0E6E88" stroke-width="1.7"/>
+      <path d="M1239,187 l3,3 l6,-7" fill="none" stroke="#0E6E88" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="1244" y="226" text-anchor="middle" font-size="12.5" font-weight="700" fill="#16293A">Tester</text>
+      <text x="1244" y="246" text-anchor="middle" font-size="9.5" fill="#5E7385">Runs the suite,</text>
+      <text x="1244" y="259" text-anchor="middle" font-size="9.5" fill="#5E7385">appends result</text>
+      <rect x="1217" y="269" width="54" height="16" rx="8" fill="#E4F6EE" stroke="#9AD9C2" stroke-width="1"/>
+      <text x="1244" y="280.5" text-anchor="middle" font-size="9" font-weight="600" fill="#127A5E">shipped</text>
+    </g>
+    <!-- Security (planned) -->
+    <g>
+      <rect x="1313" y="155" width="104" height="140" rx="10" fill="#EEF3F7" stroke="#B6C6D2" stroke-width="1.2" stroke-dasharray="5 4"/>
+      <path d="M1365,175 l10,4.5 v8 c0,6 -4.4,10 -10,12 c-5.6,-2 -10,-6 -10,-12 v-8 Z" fill="none" stroke="#8A9DAC" stroke-width="1.6" stroke-linejoin="round"/>
+      <text x="1365" y="226" text-anchor="middle" font-size="12.5" font-weight="700" fill="#6C808F">Security</text>
+      <text x="1365" y="246" text-anchor="middle" font-size="9.5" fill="#8A9DAC">Clean-pass</text>
+      <text x="1365" y="259" text-anchor="middle" font-size="9.5" fill="#8A9DAC">Gate</text>
+      <rect x="1334" y="269" width="62" height="16" rx="8" fill="#FFFFFF" stroke="#B6C6D2" stroke-width="1"/>
+      <text x="1365" y="280.5" text-anchor="middle" font-size="9" font-weight="600" fill="#7C8E9C">planned #11</text>
+    </g>
+    <!-- Reviewer (planned) -->
+    <g>
+      <rect x="1434" y="155" width="104" height="140" rx="10" fill="#EEF3F7" stroke="#B6C6D2" stroke-width="1.2" stroke-dasharray="5 4"/>
+      <circle cx="1482" cy="184" r="8.5" fill="none" stroke="#8A9DAC" stroke-width="1.7"/>
+      <line x1="1488" y1="190" x2="1495" y2="197" stroke="#8A9DAC" stroke-width="1.8" stroke-linecap="round"/>
+      <text x="1486" y="226" text-anchor="middle" font-size="12.5" font-weight="700" fill="#6C808F">Reviewer</text>
+      <text x="1486" y="246" text-anchor="middle" font-size="9.5" fill="#8A9DAC">Unslop retry</text>
+      <text x="1486" y="259" text-anchor="middle" font-size="9.5" fill="#8A9DAC">loop</text>
+      <rect x="1455" y="269" width="62" height="16" rx="8" fill="#FFFFFF" stroke="#B6C6D2" stroke-width="1"/>
+      <text x="1486" y="280.5" text-anchor="middle" font-size="9" font-weight="600" fill="#7C8E9C">planned #12</text>
+    </g>
+
+    <!-- ===================== ARROWS ===================== -->
+    <g stroke="#A9BCC9" stroke-width="1.5" fill="#A9BCC9">
+      <line x1="932" y1="225" x2="941" y2="225"/><polygon points="948,225 941,221.5 941,228.5" stroke="none"/>
+      <line x1="1056" y1="225" x2="1062" y2="225"/><polygon points="1069,225 1062,221.5 1062,228.5" stroke="none"/>
+      <line x1="1177" y1="225" x2="1183" y2="225"/><polygon points="1190,225 1183,221.5 1183,228.5" stroke="none"/>
+      <line x1="1298" y1="225" x2="1304" y2="225"/><polygon points="1311,225 1304,221.5 1304,228.5" stroke="none"/>
+      <line x1="1419" y1="225" x2="1425" y2="225"/><polygon points="1432,225 1425,221.5 1425,228.5" stroke="none"/>
+      <line x1="1540" y1="225" x2="1551" y2="225"/><polygon points="1558,225 1551,221.5 1551,228.5" stroke="none"/>
+    </g>
+
+    <!-- ===================== SIGN-OFF ===================== -->
+    <g>
+      <rect x="1560" y="155" width="140" height="182" rx="10" fill="#FFFFFF" stroke="#5FBFA8" stroke-width="1.8"/>
+      <circle cx="1615" cy="181" r="4.4" fill="none" stroke="#0E7C63" stroke-width="1.7"/>
+      <circle cx="1615" cy="205" r="4.4" fill="none" stroke="#0E7C63" stroke-width="1.7"/>
+      <circle cx="1641" cy="181" r="4.4" fill="none" stroke="#0E7C63" stroke-width="1.7"/>
+      <path d="M1615,185.4 v15.2 M1641,185.4 v7 a5,5 0 0 1 -5,5 h-16" fill="none" stroke="#0E7C63" stroke-width="1.7" stroke-linecap="round"/>
+      <text x="1630" y="235" text-anchor="middle" font-size="14.5" font-weight="700" fill="#16293A">Draft PR</text>
+      <text x="1630" y="253" text-anchor="middle" font-size="9.5" fill="#5E7385">opened by AgentForge</text>
+      <line x1="1578" y1="267" x2="1682" y2="267" stroke="#E1EAF0" stroke-width="1"/>
+      <circle cx="1606" cy="291" r="7" fill="none" stroke="#16293A" stroke-width="1.6"/>
+      <path d="M1595,308 a11,9 0 0 1 22,0" fill="none" stroke="#16293A" stroke-width="1.6" stroke-linecap="round"/>
+      <text x="1655" y="289" text-anchor="middle" font-size="12.5" font-weight="700" fill="#16293A">Human</text>
+      <text x="1655" y="304" text-anchor="middle" font-size="12.5" font-weight="700" fill="#16293A">merges</text>
+      <text x="1630" y="325" text-anchor="middle" font-size="9.5" fill="#5E7385">No Agent has this power</text>
+    </g>
+
+    <!-- ===================== LEGEND ===================== -->
+    <g>
+      <path d="M1071,309 v8 h225 v-8" fill="none" stroke="#A9BCC9" stroke-width="1.2"/>
+      <text x="1183" y="333" text-anchor="middle" font-size="10.5" font-weight="600" fill="#5E7385">M3 runs these two</text>
+      <text x="760" y="360" font-size="10.5" fill="#7C8E9C">Solid = shipped today.  Dashed = planned, and not yet part of the default feature Workflow.</text>
+    </g>
+
+    <!-- ===================== RUN LOG PANEL ===================== -->
+    <g>
+      <rect x="760" y="378" width="570" height="402" rx="12" fill="#FFFFFF" stroke="#D9E4EC" stroke-width="1.2"/>
+      <text x="1045" y="411" text-anchor="middle" font-size="13" font-weight="700" letter-spacing="1.6" fill="#3D5566">THE ISSUE THREAD IS THE RUN LOG</text>
+      <line x1="800" y1="450" x2="800" y2="700" stroke="#E1EAF0" stroke-width="1.5"/>
+
+      <!-- implementer -->
+      <g>
+        <circle cx="800" cy="458" r="15" fill="#EAF4F8" stroke="#B6D6E4" stroke-width="1.2"/>
+        <rect x="794" y="454" width="12" height="9" rx="2.5" fill="none" stroke="#2F7E99" stroke-width="1.4"/>
+        <line x1="800" y1="454" x2="800" y2="450" stroke="#2F7E99" stroke-width="1.4"/>
+        <rect x="830" y="432" width="470" height="60" rx="8" fill="#FBFDFE" stroke="#E1EAF0" stroke-width="1"/>
+        <text x="848" y="456" font-size="12.5" font-weight="700" fill="#16293A">agent-implementer</text>
+        <rect x="965" y="445" width="28" height="15" rx="7.5" fill="#EEF3F7" stroke="#D2DEE7" stroke-width="1"/>
+        <text x="979" y="456" text-anchor="middle" font-size="9" fill="#7C8E9C">bot</text>
+        <text x="1004" y="456" font-size="10.5" fill="#93A5B2">Agent Result</text>
+        <text x="848" y="478" font-size="11.5" fill="#5E7385">Wrapped the fetch in a bounded retry. Added tests.</text>
+      </g>
+      <!-- tester -->
+      <g>
+        <circle cx="800" cy="538" r="15" fill="#EAF4F8" stroke="#B6D6E4" stroke-width="1.2"/>
+        <rect x="794" y="534" width="12" height="9" rx="2.5" fill="none" stroke="#2F7E99" stroke-width="1.4"/>
+        <line x1="800" y1="534" x2="800" y2="530" stroke="#2F7E99" stroke-width="1.4"/>
+        <rect x="830" y="512" width="470" height="60" rx="8" fill="#FBFDFE" stroke="#E1EAF0" stroke-width="1"/>
+        <text x="848" y="536" font-size="12.5" font-weight="700" fill="#16293A">agent-tester</text>
+        <rect x="930" y="525" width="28" height="15" rx="7.5" fill="#EEF3F7" stroke="#D2DEE7" stroke-width="1"/>
+        <text x="944" y="536" text-anchor="middle" font-size="9" fill="#7C8E9C">bot</text>
+        <text x="969" y="536" font-size="10.5" fill="#93A5B2">Agent Result</text>
+        <text x="848" y="558" font-size="11.5" fill="#5E7385">pytest: 24 passed. Coverage unchanged.</text>
+      </g>
+      <!-- agentforge itself, at Sign-off -->
+      <g>
+        <circle cx="800" cy="618" r="15" fill="#E4F6EE" stroke="#9AD9C2" stroke-width="1.2"/>
+        <path d="M794,610 l12,8 l-12,8 Z" fill="none" stroke="#0E7C63" stroke-width="1.5" stroke-linejoin="round"/>
+        <rect x="830" y="592" width="470" height="60" rx="8" fill="#F4FBF8" stroke="#CBE9DD" stroke-width="1"/>
+        <text x="848" y="616" font-size="12.5" font-weight="700" fill="#16293A">agentforge</text>
+        <rect x="925" y="605" width="54" height="15" rx="7.5" fill="#E4F6EE" stroke="#9AD9C2" stroke-width="1"/>
+        <text x="952" y="616" text-anchor="middle" font-size="9" font-weight="600" fill="#127A5E">Sign-off</text>
+        <text x="990" y="616" font-size="10.5" fill="#93A5B2">the framework, not a Role</text>
+        <text x="848" y="638" font-size="11.5" fill="#5E7385">Draft pull request opened: #1290. The Run stops here.</text>
+      </g>
+      <!-- human -->
+      <g>
+        <circle cx="800" cy="698" r="15" fill="#16293A"/>
+        <circle cx="800" cy="694" r="4.4" fill="#FFFFFF"/>
+        <path d="M793.5,707 a7,6 0 0 1 13,0 Z" fill="#FFFFFF"/>
+        <rect x="830" y="672" width="470" height="60" rx="8" fill="#FBFDFE" stroke="#E1EAF0" stroke-width="1"/>
+        <text x="848" y="696" font-size="12.5" font-weight="700" fill="#16293A">human</text>
+        <text x="908" y="696" font-size="10.5" fill="#93A5B2">the only account that can merge</text>
+        <text x="848" y="718" font-size="11.5" fill="#5E7385">Looks good. Merging.</text>
+      </g>
+
+      <text x="1045" y="762" text-anchor="middle" font-size="10.5" fill="#93A5B2">Agents never talk to each other. Each reads the Issue and appends to the Log.</text>
+    </g>
+
+    <!-- ===================== CALLOUTS ===================== -->
+    <g>
+      <rect x="1370" y="378" width="330" height="126" rx="12" fill="#FFFFFF" stroke="#D9E4EC" stroke-width="1.2"/>
+      <path d="M1400,402 l11,5 v8.5 c0,6.5 -4.6,10.5 -11,13 c-6.4,-2.5 -11,-6.5 -11,-13 v-8.5 Z" fill="none" stroke="#0E7C63" stroke-width="1.7" stroke-linejoin="round"/>
+      <text x="1424" y="412" font-size="14.5" font-weight="700" fill="#16293A">Restart-safe.</text>
+      <text x="1394" y="450" font-size="11.5" fill="#5E7385">The Run State is derived from the Issue</text>
+      <text x="1394" y="468" font-size="11.5" fill="#5E7385">and nothing else, which is why a Run</text>
+      <text x="1394" y="486" font-size="11.5" fill="#5E7385">survives a lost laptop.</text>
+
+      <rect x="1370" y="524" width="330" height="256" rx="12" fill="#FFFFFF" stroke="#D9E4EC" stroke-width="1.2"/>
+      <text x="1535" y="558" text-anchor="middle" font-size="12.5" font-weight="700" letter-spacing="1.2" fill="#3D5566">NO SHARED SESSION. NO HIDDEN STATE.</text>
+
+      <path d="M1398,590 h18 M1398,596 h18 M1398,602 h18" stroke="#8A9DAC" stroke-width="1.6" stroke-linecap="round"/>
+      <text x="1434" y="601" font-size="12.5" fill="#16293A">No local run directory</text>
+
+      <ellipse cx="1407" cy="639" rx="9" ry="3.6" fill="none" stroke="#8A9DAC" stroke-width="1.5"/>
+      <path d="M1398,639 v10 a9,3.6 0 0 0 18,0 v-10" fill="none" stroke="#8A9DAC" stroke-width="1.5"/>
+      <text x="1434" y="649" font-size="12.5" fill="#16293A">No database</text>
+
+      <rect x="1398" y="682" width="18" height="15" rx="3" fill="none" stroke="#8A9DAC" stroke-width="1.5"/>
+      <line x1="1398" y1="688" x2="1416" y2="688" stroke="#8A9DAC" stroke-width="1.5"/>
+      <text x="1434" y="696" font-size="12.5" fill="#16293A">No in-memory session</text>
+
+      <circle cx="1407" cy="738" r="9" fill="none" stroke="#8A9DAC" stroke-width="1.5"/>
+      <path d="M1407,732.5 v6 l4,4" fill="none" stroke="#8A9DAC" stroke-width="1.5" stroke-linecap="round"/>
+      <text x="1434" y="735" font-size="12.5" fill="#16293A">Safe to stop, restart, or</text>
+      <text x="1434" y="752" font-size="12.5" fill="#16293A">resume on any machine</text>
+    </g>
+
+  </g>
+</svg>
