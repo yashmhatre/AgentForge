@@ -64,6 +64,26 @@ AgentForge never touches a model API and handles no credentials of its own. What
 
 Both agent commands take `--provider` and `--tier`. A bare `--tier deep` moves every Role; `--tier implementer=deep` moves one.
 
+## Workflows
+
+Three ship, and the Issue's plan block names which one a Run executes. A project
+adds its own by dropping a definition beside them.
+
+| Workflow | Steps | For |
+| --- | --- | --- |
+| `feature` | implementer, tester, security, reviewer | The default: build something that was not there before. |
+| `bugfix` | implementer, tester, reviewer | A fix, verified and reported on. A bug that touches auth is a Task for `feature`. |
+| `review` | security, reviewer | A diff AgentForge did not write. Point it at a branch somebody else wrote. |
+
+`review` is the only one with no Implementer. It ends at a draft pull request
+like the others, because the branch already carries the commits it was pointed
+at.
+
+A step may declare a Gate that must clear before the next one starts. None of
+the shipped definitions do: a Gate suspends the Run until it clears, and a
+default Workflow that stops to wait on somebody is a choice a project makes
+rather than one it inherits.
+
 ## Project configuration
 
 AgentForge reads `.agentforge/config.yaml` from the target repository when it
@@ -110,7 +130,7 @@ code rather than the verdict about the old code.
 - `core/` — the contracts, the command runner, the GitHub boundary, the plan format, and the run loop.
 - `agents/` — the Role definitions and their prompts.
 - `providers/` — one adapter per coding-agent CLI.
-- `workflows/` — shipped Workflow definitions; `context/` and `plugins/` are later milestones.
+- `workflows/` — the three shipped Workflow definitions; `context/` and `plugins/` are later milestones.
 - `skills/` — vendored third-party skills. Never edited in place; see `skills/MANIFEST.yaml`.
 
 Read [`CONTEXT.md`](CONTEXT.md) before writing anything, and [`docs/adr/`](docs/adr/) for the decisions that constrain it.

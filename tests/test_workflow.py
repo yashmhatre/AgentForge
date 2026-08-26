@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import pytest
 
+from agentforge.agents import RUNNERS
 from agentforge.core.contracts import ModelTier
 from agentforge.core.gates import GATES
 from agentforge.core.workflow import (
@@ -169,6 +170,29 @@ def test_feature_runs_the_whole_roster_with_the_reviewer_last():
 @pytest.mark.parametrize("name", ["feature", "bugfix", "review"])
 def test_every_shipped_definition_loads(name):
     assert load_workflow(name, root=WORKFLOWS_ROOT).name == name
+
+
+@pytest.mark.parametrize("name", ["feature", "bugfix", "review"])
+def test_every_shipped_definition_declares_steps_that_can_run(name):
+    """A definition naming a Role nothing can run is refused at load time, so
+    this is the whole of what "shipped and runnable" needs to mean."""
+    workflow = load_workflow(name, root=WORKFLOWS_ROOT)
+
+    assert workflow.steps, f"{name} ships with no Steps"
+    assert all(step.role in RUNNERS for step in workflow.steps)
+
+
+def test_bugfix_fixes_verifies_and_reports():
+    assert [s.role for s in load_workflow("bugfix").steps] == [
+        "implementer",
+        "tester",
+        "reviewer",
+    ]
+
+
+def test_review_audits_and_reports_on_a_diff_it_did_not_write():
+    """The only shipped Workflow with no Implementer."""
+    assert [s.role for s in load_workflow("review").steps] == ["security", "reviewer"]
 
 
 def test_the_gate_kinds_are_the_three_m3_ships():
