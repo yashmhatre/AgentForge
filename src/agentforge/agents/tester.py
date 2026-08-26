@@ -56,7 +56,12 @@ cannot be run. Name each finding and the acceptance criterion it prevents you \
 from verifying. Reading tests is not a substitute for running them.\
 """
 
-TESTER = Role(name="tester", tier=ModelTier.STANDARD, instructions=INSTRUCTIONS)
+#: The Tester runs `cheap`: the suite is the authority on pass or fail, and this
+#: Role reports what it saw rather than deciding it. The trade is deliberate and
+#: recorded in ADR-0004 — reasoning about an edge case nobody wrote a test for is
+#: the part that gets worse here, and it is the part a human reads the findings
+#: for anyway.
+TESTER = Role(name="tester", tier=ModelTier.CHEAP, instructions=INSTRUCTIONS)
 
 
 def build_prompt(

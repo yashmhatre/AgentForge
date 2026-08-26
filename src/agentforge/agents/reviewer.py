@@ -31,6 +31,13 @@ from .implementer import render_steps
 #: sentence nobody has asked to be perfect.
 MAX_REWRITES = 2
 
+#: The tier a rewrite runs at, which is not the tier the review runs at. Two
+#: different jobs share this Step: judging a diff against a frozen Plan, and
+#: applying findings that already name the phrase, the line, and a replacement.
+#: The Role's declared tier is chosen for the first. Paying it for the second
+#: buys a stronger model to run find-and-replace, twice. See ADR-0004.
+REWRITE_TIER = ModelTier.CHEAP
+
 INSTRUCTIONS = """\
 You are the Reviewer in AgentForge. You are the last Role to speak before a \
 human reads this Run, and what you write is what they read.
@@ -119,8 +126,12 @@ End your reply with this block and nothing after it:
 {result_close}
 """
 
-#: The Reviewer runs `cheap`: it reports on work the deeper tiers already did.
-REVIEWER = Role(name="reviewer", tier=ModelTier.CHEAP, instructions=INSTRUCTIONS)
+#: The Reviewer runs `deep`. It speaks last, and what it writes is the whole of
+#: what a human reads at Sign-off: whether the Run did what it said it would, and
+#: what to look at first. A thin review is one nobody can act on, and nothing
+#: downstream catches it — the next thing after this Role is a person deciding
+#: whether to merge. Its rewrites run at `REWRITE_TIER` instead.
+REVIEWER = Role(name="reviewer", tier=ModelTier.DEEP, instructions=INSTRUCTIONS)
 
 
 def build_prompt(
@@ -189,14 +200,19 @@ class Reviewer:
             cwd=cwd,
         )
 
+        # A rewrite is a different job from the review and is priced as one.
+        # `at_tier` rather than a second mechanism: varying a Role for one
+        # invocation is what it is for.
+        rewriter = role.at_tier(REWRITE_TIER)
+
         attempt = 1
         report = self._scan(result)
         while report is not None and not report.clean and attempt <= MAX_REWRITES:
             rewritten = self.provider.invoke(
-                role=role,
-                prompt=build_rewrite_prompt(prose_of(result), report, role),
+                role=rewriter,
+                prompt=build_rewrite_prompt(prose_of(result), report, rewriter),
                 context=context,
-                tier=tier,
+                tier=REWRITE_TIER,
                 cwd=cwd,
             )
             attempt += 1
@@ -206,9 +222,14 @@ class Reviewer:
                 return rewritten
             result, report = rewritten, self._scan(rewritten)
 
+        # The tier the Run Log reports is the one the review was written at. A
+        # result carries whatever tier produced it, so without this a `deep`
+        # review reads as `cheap` for the only reason that a phrase was fixed.
         if report is None:
-            return result
-        return replace(result, detail=_with_report(result.detail, report, attempt))
+            return replace(result, tier=tier)
+        return replace(
+            result, tier=tier, detail=_with_report(result.detail, report, attempt)
+        )
 
     def _scan(self, result: AgentResult) -> UnslopReport | None:
         """Scan what the Reviewer wrote, or nothing if it did not review.
@@ -234,7 +255,10 @@ class Reviewer:
 def _with_report(detail: str, report: UnslopReport, attempt: int) -> str:
     """The review, then what the scanners made of it. See ADR-0002: the Run Log
     is the only place a later reader looks."""
-    tries = f"attempt {attempt} of {MAX_REWRITES + 1}"
+    # Where the money went, for a reader wondering why a `deep` Role's entry
+    # mentions three attempts: only the first was written at that tier.
+    rewritten = "" if attempt == 1 else f", rewritten at `{REWRITE_TIER}`"
+    tries = f"attempt {attempt} of {MAX_REWRITES + 1}{rewritten}"
     if report.clean:
         headline = f"**`unslop` scan** — clean on {tries}."
         lines = [headline]
@@ -258,6 +282,7 @@ __all__ = [
     "INSTRUCTIONS",
     "MAX_REWRITES",
     "REVIEWER",
+    "REWRITE_TIER",
     "Reviewer",
     "build_prompt",
     "build_rewrite_prompt",

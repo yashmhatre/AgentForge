@@ -32,9 +32,9 @@ Run it with:  agentforge implement 12
 
 $ agentforge implement 12 --allow-commands
   [ok] implementer (standard) — Wrapped the fetch in a bounded retry.
-  [ok] tester (standard) — pytest: 24 passed.
+  [ok] tester (cheap) — pytest: 24 passed.
   [ok] security (deep) — Audited the change; no findings.
-  [ok] reviewer (cheap) — The change matches the plan. unslop: clean on attempt 2.
+  [ok] reviewer (deep) — The change matches the plan. unslop: clean on attempt 2.
 
 Draft pull request: https://github.com/acme/pipelines/pull/13
 AgentForge stops at Sign-off. A human merges.
