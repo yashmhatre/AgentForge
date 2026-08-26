@@ -72,6 +72,16 @@ class FakeRunner:
         )
         return self
 
+    def install(self, *binaries: str) -> FakeRunner:
+        """Simulate a machine where a tool a Run may reach for is present.
+
+        The default set is what every Run needs; a Workflow that declares a Gate
+        of its own reaches for more, and says so here rather than by the absence
+        of a check.
+        """
+        self.binaries.update(binaries)
+        return self
+
     def uninstall(self, *binaries: str) -> FakeRunner:
         """Simulate a machine where a tool is not installed."""
         for binary in binaries:

@@ -32,7 +32,7 @@ The two commands can run on different machines. Nothing is shared between them b
 Without `--allow-commands`, the Implementer remains default-deny and the Tester
 reports that it could not run the suite; it never substitutes reading tests and
 claims completion. Still to come: the Architect, Security, and Reviewer Roles;
-Workflow Gates; context packs; plugins; and `agentforge init`. See
+the Security Gate; context packs; plugins; and `agentforge init`. See
 [`docs/PLAN.md`](docs/PLAN.md).
 
 ## Requirements
@@ -67,12 +67,28 @@ providers:
     capability_tier: native
   codex:
     capability_tier: fragment
+
+gates:
+  tests:
+    suite: pytest
 ```
 
 A Role declares the Vendored Skills it needs. A native Provider receives them
 through its CLI's skill mechanism; a fragment Provider receives the same
 `SKILL.md` text appended to the prompt. Capability Tiers are configuration,
 never the result of probing an installed CLI.
+
+A Workflow step declaring `gate: tests` runs `gates.tests.suite` and holds the
+Run when it fails, posting the output to the Issue. The default is `pytest`. A
+string is split the way a shell would split it; a list is taken as written,
+which is how a path with a space in it gets named. The Gate runs the suite
+itself rather than believing what the Tester said about it, and it needs no
+`--allow-commands`: ADR-0007 governs what a Role may run, and this is the
+project's own declared suite rather than a command a model chose.
+
+A suite that ran and failed suspends the Run — the commit that fixes it clears
+the Gate. A suite that could not be run at all halts the Run, because there is
+nothing there for a later Run to clear.
 
 ## Project layout
 

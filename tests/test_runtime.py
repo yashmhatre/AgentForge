@@ -1134,6 +1134,104 @@ def test_a_suspended_run_whose_gate_is_gone_finishes_rather_than_staying_suspend
     assert not runner.ran("claude")
 
 
+# --- the test-suite Gate, from inside a Run ---------------------------------
+
+
+TESTS_GATED = (
+    "name: feature\nsteps:\n  - role: implementer\n  - role: tester\n    gate: tests\n"
+)
+
+FAILING_SUITE = "E   assert 3 == 4\n1 failed, 23 passed in 0.42s"
+
+
+def test_a_failing_suite_suspends_the_run_rather_than_opening_a_pull_request(
+    tmp_path, monkeypatch
+):
+    """The point of the Gate: a Run does not reach a human's pull request having
+    broken the build. Suspended rather than halted, because the commit that fixes
+    the suite clears it."""
+    _workflow(tmp_path, monkeypatch, TESTS_GATED)
+    runner = a_runner().install("pytest")
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
+    runner.script("pytest", stdout=FAILING_SUITE, returncode=1)
+
+    state = forge(runner).implement(12, allow_commands=True)
+
+    assert state.status is RunStatus.SUSPENDED
+    assert labels_applied(runner) == ["agentforge:running", "agentforge:suspended"]
+    assert not runner.ran("gh", "pr", "create")
+
+
+def test_the_failing_suites_own_output_reaches_the_run_log(tmp_path, monkeypatch):
+    """On the Issue rather than in the terminal of whoever started the Run —
+    which is the whole of ADR-0002's claim, applied to a Gate."""
+    _workflow(tmp_path, monkeypatch, TESTS_GATED)
+    runner = a_runner().install("pytest")
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
+    runner.script("pytest", stdout=FAILING_SUITE, returncode=1)
+
+    forge(runner).implement(12, allow_commands=True)
+
+    gate = next(c for c in comments_on(runner) if "Gate —" in c)
+    assert "### tests Gate — blocked (after step 2 of 2)" in gate
+    assert "1 failed, 23 passed in 0.42s" in gate
+    assert "**Waiting on:** the `tests` Gate after step 2" in comments_on(runner)[-1]
+
+
+def test_a_suite_that_cannot_be_run_halts_the_run_and_is_not_a_failing_suite(
+    tmp_path, monkeypatch
+):
+    """Two different endings, and the Issue says which. A suite that never ran
+    has reported nothing about the code, so there is nothing for a later Run to
+    clear by waiting — and the label a human sees is halted, not suspended."""
+    _workflow(tmp_path, monkeypatch, TESTS_GATED)
+    runner = a_runner().uninstall("pytest")
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
+
+    state = forge(runner).implement(12, allow_commands=True)
+
+    assert state.status is RunStatus.HALTED
+    assert labels_applied(runner) == ["agentforge:running", "agentforge:halted"]
+    assert "pytest" in next(c for c in comments_on(runner) if "Gate —" in c)
+
+
+def test_a_resumed_run_re_runs_the_suite_and_re_runs_no_step(tmp_path, monkeypatch):
+    """Two invocations with only the Issue between them. The Gate judged nobody's
+    output, so every Step stays behind the Run and what has to happen again is
+    the suite — which is now green, so the Run goes on to Sign-off."""
+    _workflow(tmp_path, monkeypatch, TESTS_GATED)
+
+    first = a_runner().install("pytest")
+    first.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    first.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
+    first.script("pytest", stdout=FAILING_SUITE, returncode=1)
+    suspended = forge(first).implement(12, allow_commands=True)
+
+    second = a_runner().install("pytest")
+    second.script(
+        "gh",
+        "issue",
+        "view",
+        stdout=issue_json(labels=("agentforge:suspended",), comments=tuple(comments_on(first))),
+    )
+    # The human committed the fix before re-running; a Run refuses a dirty tree.
+    second.script("git", "status", "--porcelain", stdout="")
+    second.script("pytest", stdout="24 passed in 0.44s")
+
+    resumed = forge(second).implement(12, allow_commands=True)
+
+    assert suspended.done_roles == ("implementer", "tester"), (
+        "the test-suite Gate un-retired a Step, which is the ADR-0008 deadlock"
+    )
+    assert not second.ran("claude"), "a Gate that judged no Role re-ran one anyway"
+    assert second.ran("pytest"), "the Run read the old verdict back instead of re-running"
+    assert resumed.status is RunStatus.AWAITING_SIGNOFF
+    assert "--draft" in second.only("gh", "pr", "create")
+
+
 def test_the_runtime_names_no_role():
     """#4: adding a seventh Role must not require editing the engine.
 

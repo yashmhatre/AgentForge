@@ -125,6 +125,22 @@ def test_a_gate_block_round_trips():
     assert extract_gate_block(render_gate_block(payload)) == payload
 
 
+def test_a_block_survives_a_payload_that_carries_fences_of_its_own():
+    """The test-suite Gate quotes what the suite printed, and a suite in a
+    repository like this one prints fenced blocks. A closing fence found inside
+    the JSON truncates it, and the entry is dropped from the Run Log by a Run
+    that was counting on reading it back."""
+    payload = {
+        "kind": "tests",
+        "verdict": "blocked",
+        "step": 2,
+        "invalidates": "",
+        "summary": "`pytest` failed.\n\n````text\nE   assert render() == \"```json\"\n````",
+    }
+
+    assert extract_gate_block(render_gate_block(payload)) == payload
+
+
 def test_a_gate_block_is_not_read_as_an_agent_result():
     """ADR-0008: a Gate is not an Agent, so `parse_run_log` must not see one.
     A Gate verdict counted as a Step would retire the Step it was judging."""

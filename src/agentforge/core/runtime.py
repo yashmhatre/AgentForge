@@ -231,6 +231,8 @@ class Forge:
                     kind=step.gate,
                     role=step.role,
                     step=position,
+                    runner=self.runner,
+                    root=repo.root,
                 ),
             )
             if entry.verdict is GateVerdict.CLEARED:
