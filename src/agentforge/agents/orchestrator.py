@@ -549,8 +549,8 @@ def select_roster(requested) -> tuple[Roster, tuple[str, ...]]:
         if name not in ROLES:
             if name in KNOWN_TIERS:
                 notes.append(
-                    f"The Orchestrator asked for the `{name}` Role, which is not implemented "
-                    "yet (M2). It was dropped from the Roster."
+                    f"The Orchestrator asked for the `{name}` Role, which has a declared "
+                    "tier but is not implemented yet. It was dropped from the Roster."
                 )
             else:
                 notes.append(f"Unknown Role `{name}` requested by the Orchestrator; dropped.")

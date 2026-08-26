@@ -4,6 +4,8 @@
 
 Vocabulary for everything below lives in [`CONTEXT.md`](../CONTEXT.md). Decisions live in [`docs/adr/`](adr/). This file covers order of work.
 
+**On the numbers.** The milestone numbers here are the ones the code comments use — the Tester arrived in M2, Context Packs are M3, `agentforge init` is M5. The Issue tracker numbered the same work differently: it opened Issue #1 as M1, then skipped a number, so what this file calls M2 was filed and closed as "M3: full Roster and Workflow runtime". Nothing is missing between M1 and M2. Prefer these numbers when writing a comment, and name the milestone rather than its number when writing an Issue title.
+
 ## What is being built
 
 A human types `agentforge plan "add a late-arriving-facts handler to the orders pipeline"`. The Orchestrator resolves project context, picks a Roster, writes a plan, and files a GitHub issue.

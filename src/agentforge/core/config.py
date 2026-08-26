@@ -32,7 +32,7 @@ DEFAULT_TEST_SUITE = ("pytest",)
 
 @dataclass(frozen=True)
 class Config:
-    """The read-only project configuration used by M3 call sites."""
+    """The read-only project configuration the Workflow runtime reads."""
 
     provider_capabilities: dict[str, CapabilityTier] = field(
         default_factory=lambda: dict(DEFAULT_CAPABILITIES)
