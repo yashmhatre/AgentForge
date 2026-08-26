@@ -212,19 +212,27 @@ def _extract_block(text: str, open_marker: str, close_marker: str) -> str | None
 
     Last rather than first because an Agent that quotes the instructions it was
     given writes the example before it writes its answer.
+
+    The closing fence is the last one inside the markers rather than the first,
+    because JSON escapes no backticks: a Gate quoting a failing suite and an
+    Agent quoting the code it changed both put fences inside the payload, and
+    stopping at the first one truncates the JSON into something unparseable.
+    The close marker is what bounds the search, so a block missing one falls
+    back to the first fence rather than reaching into whatever follows it.
     """
     start = text.rfind(open_marker)
     if start == -1:
         return None
     end = text.find(close_marker, start)
-    inner = text[start + len(open_marker) : end if end != -1 else len(text)]
+    bounded = end != -1
+    inner = text[start + len(open_marker) : end if bounded else len(text)]
 
     fence = inner.find("```")
     if fence == -1:
         return inner.strip() or None
     inner = inner[fence + 3 :]
     inner = inner.removeprefix("json")
-    closing = inner.find("```")
+    closing = inner.rfind("```") if bounded else inner.find("```")
     if closing != -1:
         inner = inner[:closing]
     return inner.strip() or None
