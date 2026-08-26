@@ -174,11 +174,15 @@ def _run_implement(args: argparse.Namespace, runner=None) -> int:
         return 1
 
     if state.status is RunStatus.SUSPENDED:
+        blocking = next((entry for entry in reversed(state.gates) if entry.blocked), None)
+        gate = f"the `{blocking.kind}` Gate" if blocking else "a Gate"
         print(
-            f"\nRun suspended at step {state.current_step}, waiting on a Gate. Issue "
+            f"\nRun suspended at step {state.current_step}, waiting on {gate}. Issue "
             f"#{state.issue} is labelled `{RunStatus.SUSPENDED.label}`; re-run once it clears.",
             file=sys.stderr,
         )
+        if blocking and blocking.summary:
+            print(f"  {blocking.summary}", file=sys.stderr)
         return 1
 
     if not state.results:

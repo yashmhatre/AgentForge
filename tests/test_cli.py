@@ -18,7 +18,7 @@ from agentforge.core.plan_format import render_result_block
 
 from .fakes import FakeRunner
 from .test_agents import orchestrator_output
-from .test_runtime import ROOT, a_runner, agent_says
+from .test_runtime import HUMAN_GATED, ROOT, _workflow, a_runner, agent_says
 
 
 @pytest.fixture
@@ -101,6 +101,23 @@ def test_a_halted_run_exits_one_and_points_at_the_label(runner, capsys):
     captured = capsys.readouterr()
     assert "[escalated] implementer" in captured.out
     assert "agentforge:halted" in captured.err
+
+
+def test_a_suspended_run_exits_one_and_names_the_gate_it_is_waiting_on(
+    runner, capsys, tmp_path, monkeypatch
+):
+    """Exit 1 rather than 0: a suspended Run has not done what was asked yet,
+    and a script that carried on would carry on past the Gate."""
+    _workflow(tmp_path, monkeypatch, HUMAN_GATED)
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
+
+    assert run(["implement", "12", "--allow-commands"], runner) == 1
+
+    captured = capsys.readouterr()
+    assert "[ok] implementer" in captured.out
+    assert "waiting on the `human` Gate" in captured.err
+    assert "agentforge:suspended" in captured.err
 
 
 def test_a_tier_override_reaches_the_provider(runner):

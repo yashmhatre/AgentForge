@@ -10,9 +10,10 @@ that cannot run, a Gate kind that does not exist, or a tier that was never a
 tier is refused at load time, so a typo in a Workflow costs nothing rather than
 costing a deep-tier planning pass.
 
-A Step declares four things. The Role is resolved and run, and the Model Tier
-override is applied for that invocation. The Gate and skip condition are parsed
-and carried, waiting for #9 and the conditional-step work respectively.
+A Step declares four things. The Role is resolved and run, the Model Tier
+override is applied for that invocation, and the Gate is looked up in
+`core.gates` and evaluated once the Step is behind the Run. The skip condition is
+parsed and carried, waiting for the conditional-step work.
 """
 
 from __future__ import annotations
@@ -24,14 +25,10 @@ import yaml
 
 from ..agents import UnknownRole, resolve_role
 from .contracts import ModelTier, outstanding
+from .gates import GATES
 
 #: Shipped definitions live beside the package, like the vendored skills.
 WORKFLOWS_ROOT = Path(__file__).resolve().parent.parent / "workflows"
-
-#: Gate kinds M3 ships: a passing test suite, a clean Security pass, and a
-#: human. #9 turns this into a registry with predicates behind it; until then
-#: the set exists so a Workflow naming `vibes` is refused rather than carried.
-GATE_KINDS = frozenset({"tests", "security", "human"})
 
 
 class WorkflowError(ValueError):
@@ -43,8 +40,8 @@ class Step:
     """One Role invocation, plus the three things that qualify it.
 
     `tier` overrides the Role's ADR-0004 default for this step alone. `gate`
-    must clear before the next step begins. `when` is the condition under which
-    the step is skipped. Gates and conditions are not acted on yet.
+    names the kind of Gate that must clear before the next step begins. `when` is
+    the condition under which the step is skipped, and is not acted on yet.
     """
 
     role: str
@@ -135,11 +132,17 @@ def _parse_tier(value: object, *, where: str) -> ModelTier | None:
 
 
 def _parse_gate(value: object, *, where: str) -> str | None:
+    """A Gate kind is valid when something is registered to evaluate it.
+
+    Validated against `core.gates.GATES` rather than a list kept here: two lists
+    would let a definition name a Gate nothing answers for, which is a check that
+    silently never runs.
+    """
     if value is None:
         return None
     kind = str(value).strip().lower()
-    if kind not in GATE_KINDS:
-        kinds = ", ".join(sorted(GATE_KINDS))
+    if kind not in GATES:
+        kinds = ", ".join(sorted(GATES))
         raise WorkflowError(f"{where} names Gate kind {value!r}; kinds are: {kinds}")
     return kind
 
@@ -156,7 +159,6 @@ def _kind(value: object) -> str:
 
 
 __all__ = [
-    "GATE_KINDS",
     "WORKFLOWS_ROOT",
     "Step",
     "Workflow",
