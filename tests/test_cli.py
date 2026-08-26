@@ -166,3 +166,12 @@ def test_unslop_still_runs_after_the_command_runner_refactor(tmp_path, capsys):
 def test_init_is_still_honestly_unimplemented():
     with pytest.raises(SystemExit, match="not implemented"):
         cli.main(["init"])
+
+
+def test_the_help_says_which_command_is_not_built(capsys):
+    """A release whose `--help` advertises a command that exits 1 is a release
+    that answers "does this do what I need" wrongly."""
+    with pytest.raises(SystemExit):
+        cli.main(["--help"])
+
+    assert "not built yet" in capsys.readouterr().out

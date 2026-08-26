@@ -43,8 +43,12 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    # Listed rather than hidden, and honest about it: somebody reading `--help`
+    # is deciding whether this tool does what they need, and both halves of that
+    # answer belong there. `main` exits non-zero on it.
     init = subcommands.add_parser(
-        "init", help="configure AgentForge for the repository in the working directory"
+        "init",
+        help="not built yet (M5): configure AgentForge for the repository in this directory",
     )
     init.add_argument("--provider", default="claude", help="coding-agent CLI to drive")
 
