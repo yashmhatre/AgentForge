@@ -11,9 +11,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from agentforge.core.contracts import (
+    AgentResult,
+    Finding,
     GateEntry,
     GateVerdict,
     ModelTier,
+    Outcome,
     Plan,
     Role,
     Roster,
@@ -27,13 +30,31 @@ from .fakes import FakeRunner
 IMPLEMENTER = Role("implementer", ModelTier.STANDARD)
 
 
-def a_state(*gates: GateEntry) -> RunState:
+def a_state(*gates: GateEntry, results: tuple[AgentResult, ...] = ()) -> RunState:
     return RunState(
         issue=12,
         plan=Plan(summary="Add a retry."),
         roster=Roster((IMPLEMENTER,)),
+        results=results,
         gates=gates,
     )
+
+
+def an_audit(*findings: Finding, outcome: Outcome = Outcome.COMPLETED) -> AgentResult:
+    return AgentResult(
+        role="security",
+        tier=ModelTier.DEEP,
+        outcome=outcome,
+        summary="audited",
+        findings=findings,
+    )
+
+
+INTERPOLATED_SQL = Finding(
+    location="src/loader.py:42",
+    risk="The order id is interpolated into the SQL string.",
+    rationale="The loader runs against production Unity Catalog.",
+)
 
 
 def a_context(
@@ -76,15 +97,6 @@ def test_a_kind_nobody_registered_errors_rather_than_being_ignored():
 
     assert entry.verdict is GateVerdict.ERRORED
     assert "vibes" in entry.summary
-
-
-def test_a_kind_that_is_not_built_yet_errors_rather_than_clearing_silently():
-    """`security` is #11. Until it lands a Workflow declaring one stops the Run
-    and says so, which is the safe direction to be wrong in."""
-    entry = evaluate_gate("security", a_context("security"))
-
-    assert entry.verdict is GateVerdict.ERRORED
-    assert "security" in entry.summary
 
 
 def test_a_verdict_is_stamped_with_the_kind_and_the_step_that_produced_it():
@@ -259,6 +271,76 @@ def test_the_suite_is_re_run_rather_than_read_back_off_the_run_log():
 
     assert entry.verdict is GateVerdict.CLEARED
     assert runner.ran("pytest"), "the Gate answered from the Run Log without running"
+
+
+def test_the_clean_pass_gate_clears_on_an_audit_that_found_nothing():
+    state = a_state(results=(an_audit(),))
+
+    entry = evaluate_gate("security", a_context("security", state, step=2))
+
+    assert entry.verdict is GateVerdict.CLEARED
+
+
+def test_a_finding_blocks_the_run_short_of_sign_off():
+    state = a_state(results=(an_audit(INTERPOLATED_SQL),))
+
+    entry = evaluate_gate("security", a_context("security", state, step=2))
+
+    assert entry.verdict is GateVerdict.BLOCKED
+    assert "src/loader.py:42" in entry.summary, "the verdict names nothing to look at"
+
+
+def test_the_clean_pass_gate_marks_the_security_step_for_re_run():
+    """The mirror of the test-suite Gate, and the other half of ADR-0008. This
+    verdict was drawn from the Security Agent's own output, so a human who fixes
+    a finding needs the audit run again — a Run that resumed past this entry
+    would re-read a finding about code that no longer exists, forever."""
+    state = a_state(results=(an_audit(INTERPOLATED_SQL),))
+
+    entry = evaluate_gate("security", a_context("security", state, step=2))
+
+    assert entry.invalidates == "security"
+
+
+def test_the_gate_reads_the_latest_audit_rather_than_the_first():
+    """A Run that blocked, was fixed, and re-audited has both in its Run Log.
+    The stale one is not the verdict."""
+    state = a_state(results=(an_audit(INTERPOLATED_SQL), an_audit()))
+
+    entry = evaluate_gate("security", a_context("security", state, step=2))
+
+    assert entry.verdict is GateVerdict.CLEARED
+
+
+def test_security_not_having_run_errors_rather_than_waiting_for_it():
+    """The distinction the acceptance criteria turn on: an audit that found
+    nothing is a cleared Gate, and no audit at all is not something waiting will
+    produce — the Step is not in front of this Run."""
+    entry = evaluate_gate("security", a_context("security", step=2))
+
+    assert entry.verdict is GateVerdict.ERRORED
+    assert "security" in entry.summary
+
+
+def test_an_audit_that_did_not_complete_is_not_an_audit():
+    """An escalation halts the Run before the Gate in the ordinary case. Read
+    off the Run Log rather than trusted to be absent, because the Run Log is
+    what a later invocation replays."""
+    state = a_state(results=(an_audit(outcome=Outcome.ESCALATED),))
+
+    entry = evaluate_gate("security", a_context("security", state, step=2))
+
+    assert entry.verdict is GateVerdict.ERRORED
+
+
+def test_the_clean_pass_gate_runs_nothing():
+    """It reads a Role's output. A Gate that re-audited would be a second
+    Security Agent, at deep tier, on every resume."""
+    runner = FakeRunner()
+
+    evaluate_gate("security", a_context("security", a_state(results=(an_audit(),)), runner=runner))
+
+    assert runner.calls == []
 
 
 def test_the_suite_a_project_declares_is_the_one_that_runs(tmp_path):

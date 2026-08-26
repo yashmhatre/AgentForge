@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import ClassVar
 
 from ..core.config import CapabilityTier, Config
-from ..core.contracts import AgentResult, ContextPack, ModelTier, Outcome, Role
+from ..core.contracts import AgentResult, ContextPack, Finding, ModelTier, Outcome, Role
 from ..core.plan_format import extract_result_block
 from ..core.process import CommandResult, CommandRunner, MissingBinary, require
 from ..core.skills import read_skill
@@ -205,6 +205,7 @@ def to_agent_result(*, role: Role, tier: ModelTier, output: ProviderOutput) -> A
         summary=summary,
         detail=str(payload.get("detail") or ""),
         files_changed=tuple(payload.get("files_changed") or ()),
+        findings=tuple(Finding.coerce(item) for item in payload.get("findings") or ()),
         raw=output.text,
     )
 

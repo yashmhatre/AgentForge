@@ -1,12 +1,13 @@
 # The default Workflow: build something that was not there before.
 #
-# #11 adds the Security Role and #12 the Reviewer. No Gate is declared here on
-# purpose: a Gate suspends the Run until it clears, and the default Workflow
-# stopping to wait on somebody is a choice a project makes rather than one it
-# inherits. Add `gate: human` to a step to insert yourself after it, or
-# `gate: tests` to hold it on the repository's own suite; the kinds are
+# #12 adds the Reviewer. No Gate is declared here on purpose: a Gate suspends
+# the Run until it clears, and the default Workflow stopping to wait on somebody
+# is a choice a project makes rather than one it inherits. Add `gate: human` to a
+# step to insert yourself after it, `gate: tests` to hold it on the repository's
+# own suite, or `gate: security` to hold it on a clean audit; the kinds are
 # registered in `core/gates.py`.
 name: feature
 steps:
   - role: implementer
   - role: tester
+  - role: security

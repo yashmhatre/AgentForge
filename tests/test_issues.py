@@ -15,6 +15,7 @@ import pytest
 from agentforge.agents.implementer import IMPLEMENTER
 from agentforge.core.contracts import (
     AgentResult,
+    Finding,
     GateEntry,
     GateVerdict,
     ModelTier,
@@ -198,6 +199,48 @@ def test_a_run_log_comment_reads_as_prose_and_parses_as_data():
     assert "`standard`" in body
     assert "`src/loader.py`" in body
     assert parse_run_log(Issue(12, "t", BODY, comments=(Comment("bot", body),))) == (result,)
+
+
+def test_findings_reach_the_run_log_with_a_location_and_a_rationale():
+    """The whole of what makes a finding actionable. A category with neither is
+    a message that sends a human looking for what the Agent already found."""
+    result = AgentResult(
+        role="security",
+        tier=ModelTier.DEEP,
+        outcome=Outcome.COMPLETED,
+        summary="1 finding.",
+        findings=(
+            Finding(
+                location="src/loader.py:42",
+                risk="The order id is interpolated into the SQL string.",
+                rationale="The loader runs against production Unity Catalog.",
+            ),
+        ),
+    )
+
+    body = render_run_log_comment(result)
+
+    assert "**Findings (1):**" in body
+    assert "`src/loader.py:42`" in body
+    assert "interpolated into the SQL string" in body
+    assert "Why it matters: The loader runs against production Unity Catalog." in body
+    assert parse_run_log(Issue(12, "t", BODY, comments=(Comment("bot", body),))) == (result,)
+
+
+def test_a_finding_that_arrived_without_a_location_still_renders():
+    """It still blocks a Gate, so it still has to be readable."""
+    result = AgentResult(
+        role="security",
+        tier=ModelTier.DEEP,
+        outcome=Outcome.COMPLETED,
+        summary="1 finding.",
+        findings=(Finding(location="", risk="The token is logged at INFO."),),
+    )
+
+    body = render_run_log_comment(result)
+
+    assert "_no location reported_" in body
+    assert "The token is logged at INFO." in body
 
 
 def test_an_escalation_comment_tells_the_human_what_to_do_next():

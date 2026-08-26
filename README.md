@@ -9,8 +9,8 @@ A human states a Task. The Orchestrator files a GitHub issue carrying a frozen p
 ## Status
 
 The M3 runtime now runs multiple Roles in Workflow order. The default `feature`
-Workflow invokes the Implementer and then the Tester, posting each Agent Result
-to the Issue before starting the next Step.
+Workflow invokes the Implementer, the Tester, and then Security, posting each
+Agent Result to the Issue before starting the next Step.
 
 ```console
 $ agentforge plan "add a retry to the loader"
@@ -22,6 +22,7 @@ Run it with:  agentforge implement 12
 $ agentforge implement 12 --allow-commands
   [ok] implementer (standard) — Wrapped the fetch in a bounded retry.
   [ok] tester (standard) — pytest: 24 passed.
+  [ok] security (deep) — Audited the change; no findings.
 
 Draft pull request: https://github.com/acme/pipelines/pull/13
 AgentForge stops at Sign-off. A human merges.
@@ -31,9 +32,9 @@ The two commands can run on different machines. Nothing is shared between them b
 
 Without `--allow-commands`, the Implementer remains default-deny and the Tester
 reports that it could not run the suite; it never substitutes reading tests and
-claims completion. Still to come: the Architect, Security, and Reviewer Roles;
-the Security Gate; context packs; plugins; and `agentforge init`. See
-[`docs/PLAN.md`](docs/PLAN.md).
+claims completion. The Security Role needs no such flag — auditing is reading.
+Still to come: the Architect and Reviewer Roles; context packs; plugins; and
+`agentforge init`. See [`docs/PLAN.md`](docs/PLAN.md).
 
 ## Requirements
 
@@ -89,6 +90,11 @@ project's own declared suite rather than a command a model chose.
 A suite that ran and failed suspends the Run — the commit that fixes it clears
 the Gate. A suite that could not be run at all halts the Run, because there is
 nothing there for a later Run to clear.
+
+`gate: security` needs no configuration. It reads the Security Agent's Findings
+out of the Run Log: none of them clears it, and any of them suspends the Run and
+marks the Security Step to run again, so the audit that resumes reads the fixed
+code rather than the verdict about the old code.
 
 ## Project layout
 

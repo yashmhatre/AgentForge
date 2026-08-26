@@ -19,6 +19,7 @@ from agentforge.core.contracts import (
     RUN_LABELS,
     AgentResult,
     ContextPack,
+    Finding,
     GateEntry,
     GateVerdict,
     ModelTier,
@@ -98,6 +99,57 @@ def test_agent_result_round_trips_but_leaves_the_transcript_behind():
 
     assert restored == result
     assert restored.raw == "", "raw output must not travel into the Run Log"
+
+
+def test_findings_round_trip_so_a_later_run_reads_back_what_was_found():
+    """A Gate one invocation later reads these off the Issue, so they are a
+    compatibility surface exactly as the plan block is."""
+    result = AgentResult(
+        role="security",
+        tier=ModelTier.DEEP,
+        outcome=Outcome.COMPLETED,
+        summary="1 finding.",
+        findings=(
+            Finding(
+                location="src/loader.py:42",
+                risk="The order id is interpolated into the SQL string.",
+                rationale="The loader runs against production Unity Catalog.",
+            ),
+        ),
+    )
+
+    assert AgentResult.from_dict(result.to_dict()) == result
+
+
+def test_a_result_with_nothing_to_report_carries_no_findings_key():
+    """Every Implementer entry in the Run Log would otherwise say it found
+    nothing, which is not a question the Implementer was asked."""
+    result = AgentResult(
+        role="implementer",
+        tier=ModelTier.STANDARD,
+        outcome=Outcome.COMPLETED,
+        summary="Added the retry.",
+    )
+
+    assert "findings" not in result.to_dict()
+
+
+def test_a_finding_reported_as_a_sentence_is_kept_rather_than_dropped():
+    """Dropping the ones that arrive in the wrong shape would clear a Gate that
+    should have blocked, so the safe direction is to keep them."""
+    restored = AgentResult.from_dict(
+        {
+            "role": "security",
+            "tier": "deep",
+            "outcome": "completed",
+            "summary": "1 finding.",
+            "findings": ["The token is logged at INFO."],
+        }
+    )
+
+    assert len(restored.findings) == 1
+    assert restored.findings[0].location == ""
+    assert "token is logged" in restored.findings[0].risk
 
 
 def test_tier_overrides_leave_the_role_definition_alone():
@@ -316,8 +368,8 @@ def test_retirement_and_outstanding_are_two_views_of_one_rule():
 
 
 def test_an_unimplemented_role_is_named_rather_than_guessed_at():
-    with pytest.raises(UnknownRole, match="security"):
-        resolve_role("security")
+    with pytest.raises(UnknownRole, match="architect"):
+        resolve_role("architect")
 
 
 def test_an_invented_role_says_what_is_available():

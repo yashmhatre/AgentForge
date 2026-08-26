@@ -299,11 +299,57 @@ class ContextPack:
 
 
 @dataclass(frozen=True)
+class Finding:
+    """One thing an Agent found and did not fix.
+
+    Three fields rather than a sentence, because "potential injection risk" as
+    the whole message is what this shape exists to prevent: a human needs to
+    know where to look, what could go wrong there, and why that matters in this
+    repository rather than in general.
+
+    A finding is not an Escalation. The plan was executable and was executed;
+    this is something noticed on the way, and what a Gate does about it is the
+    Gate's business.
+    """
+
+    location: str
+    risk: str
+    rationale: str = ""
+
+    def to_dict(self) -> dict:
+        return {"location": self.location, "risk": self.risk, "rationale": self.rationale}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> Finding:
+        return cls(
+            location=str(data.get("location") or ""),
+            risk=str(data.get("risk") or ""),
+            rationale=str(data.get("rationale") or ""),
+        )
+
+    @classmethod
+    def coerce(cls, value: object) -> Finding:
+        """A finding as a Role reported it, however it reported it.
+
+        A model asked for three fields sometimes answers with a sentence.
+        Dropping those would clear a Gate that should have blocked, so a bare
+        string becomes a finding with no location rather than no finding at all.
+        """
+        if isinstance(value, dict):
+            return cls.from_dict(value)
+        return cls(location="", risk=str(value).strip())
+
+
+@dataclass(frozen=True)
 class AgentResult:
     """What one Agent invocation produced.
 
     `summary` is the line a human reads in the Run Log. For an escalation it is
     the reason the Plan could not be executed.
+
+    `findings` is what the Agent noticed and left for somebody else. Empty means
+    it looked and found nothing, which is why a Role that could not look at all
+    escalates instead: a Gate reading this cannot tell the two apart otherwise.
     """
 
     role: str
@@ -312,6 +358,7 @@ class AgentResult:
     summary: str
     detail: str = ""
     files_changed: tuple[str, ...] = ()
+    findings: tuple[Finding, ...] = ()
 
     #: The adapter's full text output. Transport only — it carries the
     #: Orchestrator's plan block out of a Provider invocation and gives a
@@ -329,7 +376,7 @@ class AgentResult:
         return self.outcome is Outcome.COMPLETED
 
     def to_dict(self) -> dict:
-        return {
+        payload = {
             "role": self.role,
             "tier": str(self.tier),
             "outcome": str(self.outcome),
@@ -337,6 +384,12 @@ class AgentResult:
             "detail": self.detail,
             "files_changed": list(self.files_changed),
         }
+        # Written only when there are any: every Implementer result in the Run
+        # Log would otherwise carry an empty list saying it found nothing, which
+        # is not something the Implementer was asked.
+        if self.findings:
+            payload["findings"] = [finding.to_dict() for finding in self.findings]
+        return payload
 
     @classmethod
     def from_dict(cls, data: dict) -> AgentResult:
@@ -347,6 +400,7 @@ class AgentResult:
             summary=str(data.get("summary") or ""),
             detail=str(data.get("detail") or ""),
             files_changed=tuple(data.get("files_changed") or ()),
+            findings=tuple(Finding.coerce(item) for item in data.get("findings") or ()),
         )
 
 
