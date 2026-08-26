@@ -9,8 +9,8 @@ A human states a Task. The Orchestrator files a GitHub issue carrying a frozen p
 ## Status
 
 The M3 runtime now runs multiple Roles in Workflow order. The default `feature`
-Workflow invokes the Implementer, the Tester, and then Security, posting each
-Agent Result to the Issue before starting the next Step.
+Workflow invokes the Implementer, the Tester, Security, and then the Reviewer,
+posting each Agent Result to the Issue before starting the next Step.
 
 ```console
 $ agentforge plan "add a retry to the loader"
@@ -23,6 +23,7 @@ $ agentforge implement 12 --allow-commands
   [ok] implementer (standard) — Wrapped the fetch in a bounded retry.
   [ok] tester (standard) — pytest: 24 passed.
   [ok] security (deep) — Audited the change; no findings.
+  [ok] reviewer (cheap) — The change matches the plan. unslop: clean on attempt 2.
 
 Draft pull request: https://github.com/acme/pipelines/pull/13
 AgentForge stops at Sign-off. A human merges.
@@ -32,9 +33,17 @@ The two commands can run on different machines. Nothing is shared between them b
 
 Without `--allow-commands`, the Implementer remains default-deny and the Tester
 reports that it could not run the suite; it never substitutes reading tests and
-claims completion. The Security Role needs no such flag — auditing is reading.
-Still to come: the Architect and Reviewer Roles; context packs; plugins; and
-`agentforge init`. See [`docs/PLAN.md`](docs/PLAN.md).
+claims completion. Security and the Reviewer need no such flag — auditing and
+reviewing are reading. Still to come: the Architect Role; context packs;
+plugins; and `agentforge init`. See [`docs/PLAN.md`](docs/PLAN.md).
+
+The Reviewer writes the prose a human reads at Sign-off, and that prose is
+scanned by the vendored `unslop` scanners before it is posted. A finding sends
+the Reviewer its own findings to rewrite against, twice at most. The scan is a
+Command and not a Gate: prose that still scans dirty on the third attempt is
+posted anyway with the report attached, because holding a finished Run on a
+cosmetic check trades a real cost for a stylistic one. The report reaches the
+Run Log either way.
 
 ## Requirements
 

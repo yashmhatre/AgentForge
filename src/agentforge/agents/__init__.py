@@ -5,8 +5,8 @@ A Role is a definition — a name, a default Model Tier, and standing instructio
 per Run on the command line, and per project in configuration once
 `agentforge init` exists.
 
-Four of the six Roles can run. The rest are named so that a Roster mentioning
-them is recognized as premature rather than as nonsense.
+Five of the six Roles can run. The Architect is named so that a Roster asking
+for it is recognized as premature rather than as nonsense.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from __future__ import annotations
 from ..core.contracts import ModelTier, Role
 from .implementer import IMPLEMENTER, Implementer
 from .orchestrator import ORCHESTRATOR
+from .reviewer import REVIEWER, Reviewer
 from .security import SECURITY, Security
 from .tester import TESTER, Tester
 
@@ -23,6 +24,7 @@ ROLES: dict[str, Role] = {
     IMPLEMENTER.name: IMPLEMENTER,
     TESTER.name: TESTER,
     SECURITY.name: SECURITY,
+    REVIEWER.name: REVIEWER,
 }
 
 #: How to run each Role, keyed the same way. A runner takes a Provider and
@@ -36,6 +38,7 @@ RUNNERS: dict[str, type] = {
     IMPLEMENTER.name: Implementer,
     TESTER.name: Tester,
     SECURITY.name: Security,
+    REVIEWER.name: Reviewer,
 }
 
 #: The full cast from CONTEXT.md, with ADR-0004's default tiers. Roles absent
@@ -72,6 +75,7 @@ __all__ = [
     "IMPLEMENTER",
     "KNOWN_TIERS",
     "ORCHESTRATOR",
+    "REVIEWER",
     "ROLES",
     "RUNNERS",
     "SECURITY",
