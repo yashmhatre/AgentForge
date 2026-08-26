@@ -609,9 +609,14 @@ def test_a_finished_run_does_not_run_again():
 
 
 def test_an_agent_that_claims_success_but_changed_nothing_fails_loudly():
-    """Otherwise the Run opens an empty pull request and reports it worked."""
+    """Otherwise the Run opens an empty pull request and reports it worked.
+
+    The empty tree is half of it; the other half is a branch that carries
+    nothing the base does not, which is what makes this an empty pull request
+    rather than a Run that wrote its work earlier."""
     runner = a_runner()
     runner.script("git", "status", "--porcelain", stdout="")
+    runner.script("git", "rev-list", "--count", stdout="0\n")
     runner.script("claude", stdout=agent_says("completed", "All good!", ()))
 
     state = forge(runner).implement(12, allow_commands=True)
@@ -721,13 +726,17 @@ def test_a_workflow_that_does_not_exist_is_refused_before_any_agent_is_invoked()
     assert not runner.ran("claude"), "a bad Workflow name must cost nothing"
 
 
-def test_a_workflow_with_no_steps_is_refused_before_any_agent_is_invoked():
-    """`bugfix` and `review` ship empty until #14. Running one is a no-op, not a Run."""
+def test_a_workflow_with_no_steps_is_refused_before_any_agent_is_invoked(
+    tmp_path, monkeypatch
+):
+    """Every shipped definition declares Steps now, so this is a definition a
+    project wrote. Running it is a no-op rather than a Run."""
+    (tmp_path / "feature.yaml").write_text("name: feature\nsteps: []\n", encoding="utf-8")
+    monkeypatch.setattr("agentforge.core.workflow.WORKFLOWS_ROOT", tmp_path)
     runner = a_runner()
-    runner.script("gh", "issue", "view", stdout=issue_json(_body_naming_workflow("review")))
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
 
-    with pytest.raises(RunFailed, match="review"):
+    with pytest.raises(RunFailed, match="feature"):
         forge(runner).implement(12)
 
     assert not runner.ran("claude")
@@ -1399,6 +1408,76 @@ def test_an_audit_that_writes_nothing_still_opens_the_pull_request(
 
     assert state.status is RunStatus.AWAITING_SIGNOFF
     assert not second.ran("git", "commit"), "there was nothing to commit"
+
+
+# --- the three shipped Workflows, end to end -------------------------------
+
+
+def _shipped_run(name: str, runner=None):
+    """One Run of a shipped definition, against the recorded Issue body."""
+    runner = runner or a_runner()
+    runner.script("gh", "issue", "view", stdout=issue_json(_body_naming_workflow(name)))
+    return runner
+
+
+def test_the_feature_workflow_runs_its_four_roles_in_order():
+    runner = _shipped_run("feature")
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=agent_says("completed", "Done."))
+
+    state = forge(runner).implement(12, allow_commands=True)
+
+    assert state.status is RunStatus.AWAITING_SIGNOFF
+    assert state.done_roles == ("implementer", "tester", "security", "reviewer")
+
+
+def test_the_bugfix_workflow_fixes_verifies_and_reports_without_an_audit():
+    """A bug fix that touches auth is a Task the Orchestrator routes to
+    `feature`. That is a judgement about the Task, not a Step in this one."""
+    runner = _shipped_run("bugfix")
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=agent_says("completed", "Fixed."))
+
+    state = forge(runner).implement(12, allow_commands=True)
+
+    assert state.status is RunStatus.AWAITING_SIGNOFF
+    assert state.done_roles == ("implementer", "tester", "reviewer")
+    prompts = [call[call.index("-p") + 1] for call in runner.matching("claude")]
+    assert not any("You are the Security Role" in prompt for prompt in prompts)
+
+
+def test_the_review_workflow_completes_on_a_diff_no_agent_wrote():
+    """#14's substantive half. No Implementer runs, nothing is written to the
+    tree, and the Run still reaches Sign-off — the branch already carries the
+    human's commits, which is the whole premise of pointing `review` at one.
+
+    This is the case that catches a runtime quietly assuming it produced the
+    diff itself."""
+    runner = _shipped_run("review")
+    # Nothing to commit at any point: the diff was committed by whoever wrote it.
+    runner.script("git", "status", "--porcelain", stdout="")
+    runner.script("claude", stdout=agent_says("completed", "Reviewed.", ()))
+
+    state = forge(runner).implement(12, allow_commands=True)
+
+    assert state.status is RunStatus.AWAITING_SIGNOFF
+    assert state.done_roles == ("security", "reviewer")
+    assert not runner.ran("git", "commit"), "a review Workflow committed something"
+    assert "--draft" in runner.only("gh", "pr", "create")
+
+
+def test_a_review_run_on_a_branch_with_nothing_on_it_still_refuses():
+    """The refusal survives the Workflow that legitimately writes nothing: an
+    empty branch is an empty pull request whoever was supposed to fill it."""
+    runner = _shipped_run("review")
+    runner.script("git", "status", "--porcelain", stdout="")
+    runner.script("git", "rev-list", "--count", stdout="0\n")
+    runner.script("claude", stdout=agent_says("completed", "Reviewed.", ()))
+
+    state = forge(runner).implement(12, allow_commands=True)
+
+    assert state.status is RunStatus.FAILED
+    assert not runner.ran("gh", "pr", "create")
 
 
 def test_the_runtime_names_no_role():

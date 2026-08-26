@@ -73,6 +73,24 @@ class Repository:
         self._git("commit", "-m", message)
         return True
 
+    def carries_work_against(self, base: str) -> bool:
+        """Whether this branch holds commits `base` does not.
+
+        Which is what "something to open a pull request for" means. Asked of git
+        rather than of a Role's account of what it changed, because that account
+        is exactly what a Run cannot take on trust — and because the work may
+        have been committed by an earlier invocation of this Run, or by the human
+        whose diff a `review` Workflow was pointed at.
+
+        A git that cannot answer — an unfetched base, a shallow clone — answers
+        yes. Refusing to open a pull request because a ref was missing is the
+        worse of the two mistakes.
+        """
+        counted = self._git("rev-list", "--count", f"{base}..HEAD", check=False)
+        if not counted.ok:
+            return True
+        return counted.stdout.strip() not in ("", "0")
+
     def push(self, branch: str) -> None:
         self._git("push", "--set-upstream", "origin", branch)
 

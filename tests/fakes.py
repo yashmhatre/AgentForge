@@ -133,5 +133,8 @@ def github_repository(runner: FakeRunner, root: Path) -> FakeRunner:
     runner.script("git", "rev-parse", "--abbrev-ref", stdout="main\n")
     runner.script("git", "status", "--porcelain", stdout="")
     runner.script("git", "rev-parse", "--verify", returncode=1)
+    # A branch with something on it. The Run asks git this rather than asking a
+    # Role what it changed, so a test about an empty branch scripts a 0 here.
+    runner.script("git", "rev-list", "--count", stdout="2\n")
     runner.script("gh", "repo", "view", stdout='{"defaultBranchRef": {"name": "main"}}')
     return runner

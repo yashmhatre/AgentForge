@@ -1,2 +1,8 @@
+# A fix, verified, and reported on. No Security Step: a bug fix that touches
+# auth is a Task the Orchestrator routes to `feature` instead, which is a
+# judgement about the Task rather than a check that can be automated here.
 name: bugfix
-steps: []
+steps:
+  - role: implementer
+  - role: tester
+  - role: reviewer
