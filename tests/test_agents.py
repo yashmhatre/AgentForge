@@ -123,7 +123,7 @@ def test_a_tier_the_orchestrator_asked_for_survives_the_workflow():
 
     tiers = {role.name: role.tier for role in document.roster}
     assert tiers["implementer"] is ModelTier.DEEP
-    assert tiers["tester"] is ModelTier.STANDARD
+    assert tiers["tester"] is ModelTier.CHEAP, "a Role nobody moved kept its default"
 
 
 def test_the_planning_prompt_lists_the_workflows_and_their_steps():
@@ -242,6 +242,23 @@ def test_the_orchestrator_runs_deep_by_default():
 
     assert ORCHESTRATOR.tier is ModelTier.DEEP
     assert runner.argument_after("--model", "claude") == "opus"
+
+
+def test_the_two_tier_tables_agree():
+    """ADR-0004's table is written down twice: once as `KNOWN_TIERS`, and once as
+    the tier each Role actually declares. Only the second drives an invocation,
+    so the first can go stale without anything failing — and it is what the
+    Orchestrator is shown when it picks a Roster."""
+    declared = {name: role.tier for name, role in agents.ROLES.items()}
+    known = {name: tier for name, tier in agents.KNOWN_TIERS.items() if name in declared}
+
+    assert declared == known
+
+
+def test_the_tier_table_covers_every_role_context_md_names():
+    """A Role missing from `KNOWN_TIERS` reads as invented rather than deferred,
+    and the human is told the wrong thing about why it was dropped."""
+    assert set(agents.ROLES) <= set(agents.KNOWN_TIERS)
 
 
 def test_an_ambiguous_task_escalates_while_the_human_is_still_at_the_keyboard():

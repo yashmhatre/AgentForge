@@ -908,7 +908,7 @@ def test_a_tester_step_override_leaves_the_roles_default_unchanged(tmp_path, mon
         if "### tester" in call[call.index("--body") + 1]
     ]
     assert "**Model Tier:** `deep`" in comments[0]
-    assert TESTER.tier is ModelTier.STANDARD
+    assert TESTER.tier is ModelTier.CHEAP
 
 
 def test_a_definition_naming_an_unrunnable_role_costs_no_provider_call(tmp_path, monkeypatch):

@@ -13,10 +13,14 @@ from .fakes import FakeRunner
 from .test_contracts import a_plan
 
 
-def test_the_tester_is_a_standard_tier_role_that_reports_findings():
+def test_the_tester_is_a_cheap_tier_role_that_reports_findings():
+    """`cheap` per ADR-0004: the suite is the authority on pass or fail, and the
+    Tester reports what it saw rather than deciding it. The trade is recorded in
+    that ADR's amendment — this is the row to move back if flaws start reaching
+    Sign-off."""
     prompt = build_prompt(a_plan(), ContextPack(), Path("/repo"))
 
-    assert TESTER.tier is ModelTier.STANDARD
+    assert TESTER.tier is ModelTier.CHEAP
     assert "frozen Plan" in prompt
     assert "edge cases" in prompt
     assert "findings" in prompt

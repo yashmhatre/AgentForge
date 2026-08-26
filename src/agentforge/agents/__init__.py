@@ -54,9 +54,9 @@ KNOWN_TIERS: dict[str, ModelTier] = {
     "orchestrator": ModelTier.DEEP,
     "architect": ModelTier.DEEP,
     "security": ModelTier.DEEP,
+    "reviewer": ModelTier.DEEP,
     "implementer": ModelTier.STANDARD,
-    "tester": ModelTier.STANDARD,
-    "reviewer": ModelTier.CHEAP,
+    "tester": ModelTier.CHEAP,
 }
 
 

@@ -96,14 +96,44 @@ def reviews(claude, *verdicts: bool):
     return result, runner
 
 
-def test_the_reviewer_is_a_cheap_tier_role_that_reports_against_the_plan():
-    """`cheap` per ADR-0004: it reports on work the deeper tiers already did."""
+def test_the_reviewer_is_a_deep_tier_role_that_reports_against_the_plan():
+    """`deep` per ADR-0004's amendment: it speaks last, so nothing downstream
+    catches a review that is thin or wrong. The next thing after it is a person
+    deciding whether to merge."""
     prompt = build_prompt(a_plan(), ContextPack(), Path("/repo"))
 
-    assert REVIEWER.tier is ModelTier.CHEAP
+    assert REVIEWER.tier is ModelTier.DEEP
     assert "frozen Plan" in prompt
     assert "did what it said it would" in prompt
     assert "Sign-off" in prompt
+
+
+def test_the_review_is_written_deep_and_the_rewrites_are_not():
+    """Two jobs share this Step and they are priced separately. Judging a diff
+    against a frozen Plan is what `deep` was chosen for; applying a finding that
+    already names the phrase, the line, and a replacement is not."""
+    _, runner = reviews(review_says("The change matches the Plan."), False, False, True)
+
+    models = [call[call.index("--model") + 1] for call in runner.matching("claude")]
+
+    assert models == ["opus", "haiku", "haiku"]
+
+
+def test_a_rewritten_review_is_still_reported_at_the_tier_it_was_written_at():
+    """A result carries whatever tier produced it, so the last rewrite would
+    otherwise make a `deep` review read as `cheap` in the Run Log — for the only
+    reason that a phrase was fixed."""
+    result, _ = reviews(review_says("The change matches the Plan."), False, True)
+
+    assert result.tier is ModelTier.DEEP
+    assert "rewritten at `cheap`" in result.detail
+
+
+def test_a_review_that_needed_no_rewrite_says_nothing_about_rewrite_tiers():
+    result, _ = reviews(review_says("The change matches the Plan."), True)
+
+    assert result.tier is ModelTier.DEEP
+    assert "rewritten at" not in result.detail
 
 
 def test_clean_prose_is_posted_without_a_rewrite():
