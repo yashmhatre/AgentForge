@@ -163,6 +163,62 @@ def test_unslop_still_runs_after_the_command_runner_refactor(tmp_path, capsys):
     assert "clean" in capsys.readouterr().out
 
 
+# --- the interview reaches the human through the terminal, and only there ----
+
+
+class _Stream:
+    """A stdin that is, or is not, a terminal."""
+
+    def __init__(self, tty: bool) -> None:
+        self._tty = tty
+
+    def isatty(self) -> bool:
+        return self._tty
+
+
+def test_nothing_interactive_attached_means_no_interviewer():
+    """A scheduled Run has nobody to ask. The Orchestrator falls back to the
+    single-shot path rather than blocking on input that will never arrive."""
+    assert cli.build_interviewer(stdin=_Stream(tty=False)) is None
+
+
+def test_a_terminal_gets_an_interviewer_that_reads_answers(capsys):
+    answers = iter(["The orders loader."])
+    ask = cli.build_interviewer(stdin=_Stream(tty=True), prompt=lambda _: next(answers))
+
+    assert ask is not None
+    assert ask("Which loader?") == "The orders loader."
+    out = capsys.readouterr().out
+    assert "Which loader?" in out
+    assert "press Enter on an empty line" in out, "the way out has to be discoverable"
+
+
+def test_an_empty_line_ends_the_interview():
+    ask = cli.build_interviewer(stdin=_Stream(tty=True), prompt=lambda _: "   ")
+
+    assert ask("Which loader?") is None
+
+
+def test_end_of_input_ends_the_interview():
+    """A pipe that closes mid-question is a human who has left."""
+
+    def closed(_):
+        raise EOFError
+
+    ask = cli.build_interviewer(stdin=_Stream(tty=True), prompt=closed)
+
+    assert ask("Which loader?") is None
+
+
+def test_the_banner_is_printed_once_however_many_questions_there_are(capsys):
+    ask = cli.build_interviewer(stdin=_Stream(tty=True), prompt=lambda _: "yes")
+
+    ask("First?")
+    ask("Second?")
+
+    assert capsys.readouterr().out.count("press Enter on an empty line") == 1
+
+
 def test_init_is_still_honestly_unimplemented():
     with pytest.raises(SystemExit, match="not implemented"):
         cli.main(["init"])

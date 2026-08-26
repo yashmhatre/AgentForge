@@ -146,6 +146,70 @@ def test_a_tier_override_moves_the_orchestrator():
     assert runner.argument_after("--model", "claude") == "haiku"
 
 
+def test_planning_interviews_the_human_and_files_one_issue():
+    """The interview is rounds of invocations before the plan; the Issue is
+    still one Issue."""
+    runner = a_runner()
+    runner.script(
+        "claude",
+        stdout=[
+            json.dumps(
+                {
+                    "type": "result",
+                    "is_error": False,
+                    "result": render_result_block(
+                        {
+                            "outcome": "completed",
+                            "summary": "unclear",
+                            "questions": ["Which loader?"],
+                        }
+                    ),
+                }
+            ),
+            orchestrator_output([{"role": "implementer"}]),
+        ],
+    )
+
+    outcome = forge(runner).plan("add a retry", interviewer=lambda q: "The orders loader.")
+
+    assert outcome.filed
+    assert len(runner.matching("gh", "issue", "create")) == 1
+    assert [e.answer for e in outcome.interview] == ["The orders loader."]
+
+
+def test_what_the_interview_left_in_the_working_tree_is_reported():
+    """An interview records a settled term in the project's glossary. A human
+    who is not told has an unexplained diff and a Run that then refuses to
+    start on it."""
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=["", " M CONTEXT.md\n"])
+    runner.script("claude", stdout=orchestrator_output([{"role": "implementer"}]))
+
+    outcome = forge(runner).plan("add a retry", interviewer=lambda q: "yes")
+
+    assert outcome.touched == ("CONTEXT.md",)
+
+
+def test_a_file_the_human_had_already_changed_is_not_blamed_on_the_interview():
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=" M src/loader.py\n")
+    runner.script("claude", stdout=orchestrator_output([{"role": "implementer"}]))
+
+    outcome = forge(runner).plan("add a retry", interviewer=lambda q: "yes")
+
+    assert outcome.touched == ()
+
+
+def test_a_plan_with_nobody_to_interview_asks_git_nothing():
+    """The single-shot path is unchanged, down to the calls it makes."""
+    runner = a_runner()
+    runner.script("claude", stdout=orchestrator_output([{"role": "implementer"}]))
+
+    forge(runner).plan("add a retry")
+
+    assert not runner.ran("git", "status")
+
+
 # --- agentforge implement --------------------------------------------------
 
 
