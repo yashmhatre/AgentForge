@@ -27,6 +27,15 @@ agentforge = [
     "skills/**/*",
 ]
 
+# `skills/**/*` is deliberately broad — a vendored skill is copied whole and its
+# layout is upstream's business, not ours. The cost is that it also sweeps up
+# whatever a local test run left behind, so the bytecode is excluded explicitly.
+[tool.setuptools.exclude-package-data]
+agentforge = [
+    "**/__pycache__/*",
+    "**/*.py[cod]",
+]
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
