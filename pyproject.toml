@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "agentforge"
 version = "0.1.0"
 description = "A modular framework for coordinating specialized software agents."
+readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Yash Mhatre" }]
 license = "Apache-2.0"
@@ -13,6 +14,14 @@ license-files = ["LICENSE", "src/agentforge/skills/NOTICE"]
 dependencies = [
     "pyyaml>=6.0",
 ]
+
+# A wheel found on its own -- downloaded from a release, or sitting in a
+# site-packages nobody remembers filling -- has to lead back somewhere. The
+# repository is that somewhere: 0.1 publishes to no index, so there is no
+# project page for the metadata to point at instead.
+[project.urls]
+Homepage = "https://github.com/yashmhatre/AgentForge"
+Issues = "https://github.com/yashmhatre/AgentForge/issues"
 
 [project.scripts]
 agentforge = "agentforge.cli:main"

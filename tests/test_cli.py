@@ -12,7 +12,7 @@ import json
 
 import pytest
 
-from agentforge import cli
+from agentforge import __version__, cli
 from agentforge.core.contracts import ModelTier
 from agentforge.core.plan_format import render_result_block
 
@@ -238,6 +238,17 @@ def test_the_help_says_which_command_is_not_built(capsys):
         cli.main(["--help"])
 
     assert "not built yet" in capsys.readouterr().out
+
+
+def test_version_prints_the_version_and_exits_zero(capsys):
+    """`--version` is answered by the parser and exits, so it never returns
+    through `main` the way a command does. Zero is the half that matters: a
+    release script asks the installed CLI what it is and checks the status."""
+    with pytest.raises(SystemExit) as exit_:
+        cli.main(["--version"])
+
+    assert exit_.value.code == 0
+    assert __version__ in capsys.readouterr().out
 
 
 def test_implement_prints_what_the_run_cost(runner, capsys):

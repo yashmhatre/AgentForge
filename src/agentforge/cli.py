@@ -6,6 +6,7 @@ import argparse
 import json
 import sys
 
+from . import __version__
 from .core.contracts import ModelTier, Outcome, RunStatus
 
 TIER_HELP = (
@@ -19,6 +20,13 @@ def build_parser() -> argparse.ArgumentParser:
         prog="agentforge",
         description="Coordinate specialized software agents through reusable workflows.",
     )
+
+    # `--version` is answered by the parser and exits, exactly as `--help` does;
+    # neither ever reaches `main`'s dispatch. The literal lives in `__version__`
+    # alone, so a release bumps one line here and one in `pyproject.toml` --
+    # tests/test_docs.py fails if those two ever disagree.
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+
     subcommands = parser.add_subparsers(dest="command", metavar="<command>")
 
     plan = subcommands.add_parser("plan", help="turn a task into a GitHub issue")

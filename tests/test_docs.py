@@ -5,11 +5,17 @@ and asserts on the findings that come back. Known-good and known-bad in pairs
 for each property: a checker that never passes is as useless as one that never
 fails, and the known-good case is deliberately a near miss rather than the
 clean tree, because that is where an over-eager rule shows itself.
+
+The last two sections drop the fixture tree and assert against the real files:
+this repository's own glossary, and the two places it records its own version.
 """
 
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
+
+import agentforge
 
 from .docs_check import check_documentation, parse_glossary
 
@@ -334,3 +340,17 @@ def test_role_and_agent_reject_each_other():
 
     assert "Agent" in terms["Role"].avoid
     assert "Role" in terms["Agent"].avoid
+
+
+# --- the version is recorded twice and may not drift -------------------------
+
+
+def test_the_package_and_the_distribution_agree_on_the_version():
+    """#46 kept two literals rather than single-sourcing one through build
+    metadata, on the grounds that a two-line test is less machinery than the
+    import dance the alternative costs. This is that test: without it, the two
+    are free to disagree and the wheel ships a version its own CLI denies.
+    """
+    metadata = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+
+    assert metadata["project"]["version"] == agentforge.__version__
