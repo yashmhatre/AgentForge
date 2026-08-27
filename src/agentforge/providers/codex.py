@@ -25,10 +25,11 @@ weaker signal than a genuinely independent adapter would be.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from typing import ClassVar
 
-from ..core.contracts import ModelTier
+from ..core.contracts import ModelTier, Usage
 from ..core.process import CommandResult
 from .base import CliProvider, ProviderOutput
 
@@ -102,14 +103,37 @@ class CodexProvider(CliProvider):
 
     def parse_output(self, result: CommandResult) -> ProviderOutput:
         """No envelope. The transcript is the output and the exit code is the verdict."""
+        usage = _usage(result.stdout)
+
         if result.ok:
-            return ProviderOutput(text=result.stdout)
+            return ProviderOutput(text=result.stdout, usage=usage)
 
         detail = (result.stderr or result.stdout or "").strip()
         return ProviderOutput(
             text=result.stdout,
             error=f"the codex CLI exited {result.returncode}: {detail[:400]}",
+            usage=usage,
         )
+
+
+#: The last line of a transcript, on a run that got that far. One figure and no
+#: split, which is the asymmetry ADR-0009 exists to keep honest: this adapter
+#: reports tokens and never dollars, and the Run Log says so rather than leaving
+#: a blank where a price would have been.
+_TOKENS = re.compile(r"tokens used:\s*([\d,]+)", re.IGNORECASE)
+
+
+def _usage(transcript: str) -> Usage | None:
+    """The token count this CLI prints when it finishes, if it printed one.
+
+    The last match rather than the first: a transcript that reports per-turn
+    counts ends with the one for the whole invocation, and an Agent that quoted
+    the phrase in its own output would otherwise be believed over the CLI.
+    """
+    matches = _TOKENS.findall(transcript or "")
+    if not matches:
+        return None
+    return Usage(provider=CodexProvider.name, total_tokens=int(matches[-1].replace(",", "")))
 
 
 __all__ = ["CodexProvider"]

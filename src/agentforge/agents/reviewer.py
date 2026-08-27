@@ -29,7 +29,16 @@ import tempfile
 from dataclasses import replace
 from pathlib import Path
 
-from ..core.contracts import AgentResult, ContextPack, ModelTier, Outcome, Plan, Role
+from ..context.prompt import render_context_block
+from ..core.contracts import (
+    AgentResult,
+    ContextPack,
+    ModelTier,
+    Outcome,
+    Plan,
+    Role,
+    Usage,
+)
 from ..core.plan_format import RESULT_CLOSE, RESULT_OPEN
 from ..core.skills import UnslopReport, render_report, run_unslop
 from .implementer import render_steps
@@ -80,7 +89,7 @@ PROMPT = """\
 ### Steps
 
 {steps}
-
+{context}
 ## Working directory
 
 {cwd}
@@ -164,6 +173,7 @@ def build_prompt(
         instructions=role.instructions,
         summary=plan.summary.strip(),
         steps=render_steps(plan),
+        context=render_context_block(context),
         cwd=cwd,
         result_open=RESULT_OPEN,
         result_close=RESULT_CLOSE,
@@ -220,6 +230,11 @@ class Reviewer:
             cwd=cwd,
         )
 
+        # Every invocation this Role makes, not only the one it hands back. A
+        # rewrite is cheap and there can be two of them, and a Run Log that
+        # reported the last one's price would understate the Reviewer forever.
+        spent = [result.usage]
+
         # A rewrite is a different job from the review and is priced as one, and
         # it is briefed as one too. The skill is dropped along with the tier:
         # every finding a rewrite acts on already names the phrase, the line, and
@@ -238,19 +253,25 @@ class Reviewer:
                 cwd=cwd,
             )
             attempt += 1
+            spent.append(rewritten.usage)
             if rewritten.outcome is not Outcome.COMPLETED:
                 # A rewrite that could not be produced is the Run's business,
-                # not the scanner's. Hand it back as it came.
-                return rewritten
+                # not the scanner's. Hand it back as it came, priced at what the
+                # whole Role spent getting there.
+                return replace(rewritten, usage=Usage.combine(spent))
             result, report = rewritten, self._scan(rewritten)
 
         # The tier the Run Log reports is the one the review was written at. A
         # result carries whatever tier produced it, so without this a `deep`
         # review reads as `cheap` for the only reason that a phrase was fixed.
+        usage = Usage.combine(spent)
         if report is None:
-            return replace(result, tier=tier)
+            return replace(result, tier=tier, usage=usage)
         return replace(
-            result, tier=tier, detail=_with_report(result.detail, report, attempt)
+            result,
+            tier=tier,
+            usage=usage,
+            detail=_with_report(result.detail, report, attempt),
         )
 
     def _scan(self, result: AgentResult) -> UnslopReport | None:

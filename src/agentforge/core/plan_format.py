@@ -93,11 +93,12 @@ def render_issue_body(task: Task, document: PlanDocument) -> str:
         parts.append(f"| {index} | {role.name} | `{role.tier}` |")
     parts.append("")
 
-    if document.context.files or document.context.conventions or document.context.symbols:
+    if document.context:
         parts += ["## Context Pack", ""]
         for label, values in (
             ("Files", document.context.files),
             ("Symbols", document.context.symbols),
+            ("References", document.context.references),
             ("Conventions", document.context.conventions),
         ):
             if values:

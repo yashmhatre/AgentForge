@@ -18,7 +18,14 @@ from agentforge.core.plan_format import render_result_block
 
 from .fakes import FakeRunner
 from .test_agents import orchestrator_output
-from .test_runtime import HUMAN_GATED, ROOT, _workflow, a_runner, agent_says
+from .test_runtime import (
+    HUMAN_GATED,
+    ROOT,
+    _workflow,
+    a_runner,
+    agent_says,
+    recorded_claude_run,
+)
 
 
 @pytest.fixture
@@ -231,3 +238,26 @@ def test_the_help_says_which_command_is_not_built(capsys):
         cli.main(["--help"])
 
     assert "not built yet" in capsys.readouterr().out
+
+
+def test_implement_prints_what_the_run_cost(runner, capsys):
+    """The figure a human asks for first, in the terminal they are already
+    looking at rather than only on the Issue."""
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=recorded_claude_run())
+
+    assert run(["implement", "12", "--allow-commands"], runner) == 0
+
+    assert "Cost: $" in capsys.readouterr().out
+
+
+def test_the_control_run_is_one_flag(runner, capsys):
+    """Measuring what a pack saved needs a Run without one, and a data engineer
+    should not have to edit an Issue body to get it."""
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
+
+    assert run(["implement", "12", "--allow-commands", "--no-context-pack"], runner) == 0
+
+    prompts = [call[call.index("-p") + 1] for call in runner.matching("claude")]
+    assert prompts and all("## Context Pack" not in prompt for prompt in prompts)

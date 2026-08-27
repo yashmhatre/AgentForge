@@ -42,6 +42,15 @@ def build_parser() -> argparse.ArgumentParser:
             "and granted for this Run only -- never persisted to configuration"
         ),
     )
+    implement.add_argument(
+        "--no-context-pack",
+        action="store_true",
+        help=(
+            "hand every Role an empty Context Pack, so each reads the repository for "
+            "itself. This is the control Run: compare its cost against a packed Run of "
+            "the same issue to find out what the pack is worth"
+        ),
+    )
 
     # Listed rather than hidden, and honest about it: somebody reading `--help`
     # is deciding whether this tool does what they need, and both halves of that
@@ -186,7 +195,7 @@ def _run_plan(args: argparse.Namespace, runner=None) -> int:
 
 
 def _run_implement(args: argparse.Namespace, runner=None) -> int:
-    from .core.issues import IssueError
+    from .core.issues import IssueError, render_run_cost
     from .core.runtime import Forge, RunFailed
     from .providers import DEFAULT_PROVIDER
 
@@ -199,6 +208,7 @@ def _run_implement(args: argparse.Namespace, runner=None) -> int:
             tier_overrides=per_role or None,
             tier=default_tier,
             allow_commands=args.allow_commands,
+            resolve_context=not args.no_context_pack,
         )
     except (RunFailed, IssueError) as exc:
         print(f"agentforge: {exc}", file=sys.stderr)
@@ -211,6 +221,9 @@ def _run_implement(args: argparse.Namespace, runner=None) -> int:
             Outcome.FAILED: "failed",
         }[result.outcome]
         print(f"  [{marker}] {result.role} ({result.tier}) — {result.summary}")
+
+    if state.results:
+        print(f"\n  Cost: {render_run_cost(state.results)}")
 
     if state.status is RunStatus.AWAITING_SIGNOFF:
         print(f"\nDraft pull request: {state.pull_request}")

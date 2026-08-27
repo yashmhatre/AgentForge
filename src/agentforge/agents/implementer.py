@@ -1,8 +1,11 @@
 """The Implementer: executes a Plan it did not write.
 
 It is handed the Plan and the Context Pack and never the human's original
-phrasing (ADR-0003). What it is not handed, it does not go looking for — that
-repeated rediscovery is the cost the frozen plan exists to remove.
+phrasing (ADR-0003). The pack is the reading already done for it, so that six
+Roles do not each rediscover one repository — but it is a head start rather than
+a boundary, and a step that needs a file the pack does not name is a step that
+reads it (ADR-0010). What the Implementer does not do is re-scope: it executes
+the Plan it was given and nothing adjacent to it.
 
 Its second job is to refuse. A plan written on Monday can be wrong by Thursday,
 and an Agent that improvises a correction produces confident wrong work that
@@ -15,6 +18,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ..context.prompt import render_context_block
 from ..core.contracts import AgentResult, ContextPack, ModelTier, Plan, Role
 from ..core.plan_format import RESULT_CLOSE, RESULT_OPEN
 
@@ -114,24 +118,12 @@ def build_prompt(
     if plan.constraints:
         constraints = "\n### Constraints\n\n" + "\n".join(f"- {c}" for c in plan.constraints) + "\n"
 
-    context_block = ""
-    sections = [
-        ("Read these files", context.files),
-        ("These symbols are involved", context.symbols),
-        ("Follow these conventions", context.conventions),
-    ]
-    rendered = [
-        f"**{label}:** " + ", ".join(values) for label, values in sections if values
-    ]
-    if rendered:
-        context_block = "\n## Context Pack\n\n" + "\n\n".join(rendered) + "\n"
-
     return PROMPT.format(
         instructions=role.instructions,
         summary=plan.summary.strip(),
         steps=render_steps(plan),
         constraints=constraints,
-        context=context_block,
+        context=render_context_block(context),
         cwd=cwd,
         execution="" if allow_commands else DENIED_COMMANDS,
         result_open=RESULT_OPEN,

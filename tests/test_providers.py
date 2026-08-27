@@ -356,3 +356,71 @@ def test_a_timeout_is_reported_rather_than_hanging_the_run():
     output = ClaudeProvider(FakeRunner()).parse_output(result)
 
     assert output.error and "timed out" in output.error
+
+
+# --- what an invocation consumed -------------------------------------------
+
+
+def test_the_claude_adapter_recovers_dollars_and_a_token_split():
+    """The envelope this adapter already parses for the result text carries both.
+    Throwing them away is what made "token efficient" an adjective."""
+    runner = FakeRunner().script("claude", stdout=recorded("claude_completed.json"))
+
+    result = invoke(ClaudeProvider(runner))
+
+    assert result.usage.provider == "claude"
+    assert result.usage.cost_usd == pytest.approx(0.4312)
+    assert result.usage.input_tokens == 18422
+    assert result.usage.output_tokens == 2317
+
+
+def test_the_codex_adapter_recovers_tokens_and_claims_no_price():
+    """The asymmetry ADR-0009 exists for: this CLI counts tokens and sets no
+    price, and inventing one from a rate card would be a number nobody charged."""
+    runner = FakeRunner().script("codex", stdout=recorded("codex_completed.txt"))
+
+    result = CodexProvider(runner).invoke(
+        role=IMPLEMENTER,
+        prompt="do the thing",
+        context=ContextPack(),
+        tier=ModelTier.STANDARD,
+        cwd=Path("/repo"),
+    )
+
+    assert result.usage.provider == "codex"
+    assert result.usage.total_tokens == 21044
+    assert result.usage.cost_usd is None
+
+
+def test_a_provider_that_reports_nothing_leaves_the_usage_absent_rather_than_zero():
+    """A zero is a claim that the invocation was free. Absent is the truth, and
+    it is what lets a Run's total say how much of itself is missing."""
+    runner = FakeRunner().script("claude", stdout=recorded("claude_no_usage.json"))
+
+    assert invoke(ClaudeProvider(runner)).usage is None
+
+
+def test_a_failed_invocation_still_reports_what_it_spent():
+    """A Run that spent real money discovering its CLI was misconfigured spent
+    it. This envelope reports a true zero, which is not the same as silence."""
+    runner = FakeRunner().script("claude", stdout=recorded("claude_cli_error.json"))
+
+    result = invoke(ClaudeProvider(runner))
+
+    assert result.outcome is Outcome.FAILED
+    assert result.usage.cost_usd == 0.0
+    assert result.usage.reported
+
+
+def test_a_transcript_with_no_token_line_reports_nothing():
+    runner = FakeRunner().script("codex", stdout="Done, and no counts were printed.")
+
+    result = CodexProvider(runner).invoke(
+        role=IMPLEMENTER,
+        prompt="do the thing",
+        context=ContextPack(),
+        tier=ModelTier.STANDARD,
+        cwd=Path("/repo"),
+    )
+
+    assert result.usage is None

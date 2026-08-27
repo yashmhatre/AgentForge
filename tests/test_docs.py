@@ -283,6 +283,11 @@ def test_the_glossary_defines_exactly_these_terms():
     Finding arrived with the Security Role: it is what the clean-pass Gate reads,
     it is deliberately not an Escalation, and "issue" was already taken by the
     tracker.
+
+    Extractor and Usage arrived with the Context Pack work. An Extractor answers
+    for one file and is not the resolver that calls it, and a Usage is what one
+    invocation consumed in whatever unit its Provider reports — which is why it
+    is not called Cost, the word the Run Log shows a human.
     """
     assert [t.name for t in _repo_terms()] == [
         "Task",
@@ -304,8 +309,10 @@ def test_the_glossary_defines_exactly_these_terms():
         "Escalation",
         "Run Log",
         "Context Pack",
+        "Extractor",
         "Plugin",
         "Command",
+        "Usage",
         "Project Context",
         "Command Runner",
         "Provider",
