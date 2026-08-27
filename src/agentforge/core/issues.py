@@ -28,6 +28,7 @@ from .contracts import (
     Outcome,
     RunState,
     RunStatus,
+    Usage,
 )
 from .plan_format import (
     extract_gate_block,
@@ -250,8 +251,125 @@ def render_run_log_comment(
     if result.detail.strip():
         lines += ["", "<details><summary>Detail</summary>", "", result.detail.strip(), "", "</details>"]
 
+    lines += ["", render_cost_line(result.usage)]
     lines += ["", render_result_block(result.to_dict())]
     return "\n".join(lines) + "\n"
+
+
+def render_cost_line(usage: Usage | None) -> str:
+    """What this invocation consumed, in whatever unit its Provider reports.
+
+    Three sentences for three Providers, and ADR-0009 is why there is not one.
+    A CLI that prices its own work is quoted in dollars; one that counts tokens
+    and sets no price is quoted in tokens and says that is all it gave; one that
+    says nothing at all has that written down too, because a line that stopped
+    at a blank reads as free to everybody who has not read this file.
+    """
+    who = f"the `{usage.provider}` CLI" if usage and usage.provider else "this Provider"
+
+    if usage is None or not usage.reported:
+        return f"**Cost:** not reported — {who} does not report what an invocation consumes."
+
+    if usage.cost_usd is None:
+        return f"**Cost:** {usage.tokens:,} tokens — {who} reports tokens and not dollars."
+
+    return f"**Cost:** ${usage.cost_usd:.4f}{_token_split(usage)}"
+
+
+def _token_split(usage: Usage) -> str:
+    """The tokens behind a price, however finely the CLI broke them down."""
+    if usage.input_tokens is not None or usage.output_tokens is not None:
+        return f" — {usage.input_tokens or 0:,} in, {usage.output_tokens or 0:,} out"
+    if usage.tokens is not None:
+        return f" — {usage.tokens:,} tokens"
+    return ""
+
+
+def render_run_cost(results: Sequence[AgentResult]) -> str:
+    """What the whole Run cost, and how much of that figure is missing.
+
+    A total assembled from Steps that mostly reported nothing is worse than no
+    total, so this says how many Steps stand behind the number. That is what
+    keeping an unknown cost absent rather than zero buys: a sum of zeros reads
+    as a cheap Run, and "across 3 of 6 Steps" reads as what it is.
+    """
+    priced = [result.usage for result in results if result.usage and result.usage.reported]
+    if not priced:
+        return "not reported — no Step's Provider reported what it consumed."
+
+    if len(priced) == len(results):
+        steps = f"across {len(results)} Step" + ("s" if len(results) != 1 else "")
+    else:
+        steps = f"across {len(priced)} of {len(results)} Steps"
+
+    total = Usage.combine(priced)
+    if total.cost_usd is None:
+        who = f"the `{total.provider}` CLI" if total.provider else "this Provider"
+        return f"{total.tokens:,} tokens {steps} — {who} reports tokens and not dollars."
+
+    return f"${total.cost_usd:.4f}{_token_split(total)} {steps}."
+
+
+def render_context_comment(context: ContextPack) -> str:
+    """The pack this Run's Agents were handed, recorded before the first one ran.
+
+    A Run that went wrong is diagnosed against what its Agents could see, and
+    without this the reader is left inferring that from the Plan. It carries no
+    machine block on purpose: the pack is resolved from the frozen Plan on every
+    invocation (ADR-0010), so this is a record of a Run rather than a contract
+    the next one reads back.
+    """
+    if not context:
+        return (
+            "### Context Pack — none\n\n"
+            "No pack was resolved for this Run, so every Role reads the repository for "
+            "itself. That is what `--no-context-pack` is for: the Run's total below is "
+            "the figure a packed Run is measured against.\n"
+        )
+
+    lines = [
+        f"### Context Pack — {_counted(context)}",
+        "",
+        (
+            "Resolved from the frozen Plan before the first Role was invoked, and handed "
+            "to every Agent in this Run. A Role that needed something else read it anyway; "
+            "the pack is a head start rather than a boundary."
+        ),
+        "",
+    ]
+
+    lines += [f"**Files ({len(context.files)}):**", ""]
+    lines += [f"- `{path}`" for path in context.files]
+
+    for label, values in (("Symbols", context.symbols), ("Reaches for", context.references)):
+        if values:
+            lines += [
+                "",
+                f"<details><summary>{label} ({len(values)})</summary>",
+                "",
+                ", ".join(f"`{value}`" for value in values),
+                "",
+                "</details>",
+            ]
+
+    if context.conventions:
+        lines += ["", "**Conventions:**", ""]
+        lines += [f"- {convention}" for convention in context.conventions]
+
+    return "\n".join(lines) + "\n"
+
+
+def _counted(context: ContextPack) -> str:
+    """The pack's size, as the one line a reader compares two Runs by."""
+    counts = (
+        (len(context.files), "file"),
+        (len(context.symbols), "symbol"),
+        (len(context.references), "reference"),
+    )
+    return ", ".join(
+        f"{count} {noun}" + ("s" if count != 1 else "") for count, noun in counts if count
+    )
+
 
 
 def render_findings(findings: Sequence[Finding]) -> list[str]:
@@ -367,6 +485,7 @@ def render_terminal_comment(state: RunState) -> str:
         f"- **Escalated:** {_escalated_line(state)}",
         f"- **Steps completed:** {', '.join(state.done_roles) or 'none'}",
         f"- **Workflow:** `{state.workflow}`",
+        f"- **Cost:** {render_run_cost(state.results)}",
     ]
 
     waiting = _waiting_on(state)
@@ -534,8 +653,11 @@ __all__ = [
     "IssueError",
     "parse_gate_log",
     "parse_run_log",
+    "render_context_comment",
+    "render_cost_line",
     "render_findings",
     "render_gate_comment",
+    "render_run_cost",
     "render_run_log_comment",
     "render_terminal_comment",
     "run_state",

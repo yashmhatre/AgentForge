@@ -85,8 +85,12 @@ _Avoid_: Transcript, history, trace, journal
 ### What an Agent is given
 
 **Context Pack**:
-The bounded set of files, symbols, and conventions handed to an Agent at invocation. A Context Pack replaces repository exploration, which is why a Role does not need to read a repository to work in one.
+The bounded set of files, symbols, and conventions handed to an Agent at invocation, resolved from the frozen Plan before the first Role runs. A Context Pack is the exploration already done, which is why six Roles do not each rediscover one repository — and it is a head start rather than a boundary, so a Role that needs something the pack does not carry reads it. See ADR-0010.
 _Avoid_: Context, payload, bundle, briefing
+
+**Extractor**:
+The per-language reader that turns one file into what it defines and what it reaches for — a Python module's functions and imports, a query's columns and tables, a config file's keys. An Extractor answers for one file and never opens a second, and a file type no Extractor claims degrades to its path rather than to an error. See ADR-0010.
+_Avoid_: Parser, analyzer, scanner, reader
 
 **Plugin**:
 A bundle of domain knowledge for one technology — Python, SQL, PySpark, Databricks — contributing extractors, Fragments, validators, and Commands. Plugins are what make AgentForge useful in a data engineering repository rather than merely usable in one.
@@ -95,6 +99,10 @@ _Avoid_: Extension, module, pack
 **Command**:
 A repeated data-engineering chore expressed as a template or script that runs with no inference. Scaffolding a dbt model is a Command; deciding whether the model is correct is not.
 _Avoid_: Script, recipe, macro, tool
+
+**Usage**:
+What one Agent invocation consumed, in whatever unit its Provider reports — dollars, tokens, both, or neither. A figure nobody reported is absent rather than zero, so that a Run's total can say how much of itself is missing. The Run Log labels it *Cost*, because that is the question the person reading it is asking. See ADR-0009.
+_Avoid_: Cost, spend, price, tokens
 
 **Project Context**:
 What AgentForge learns about a target repository at `agentforge init` — its languages, its layout, its conventions, its active Plugins. Stored in `.agentforge/config.yaml` in the target repository, not in AgentForge.

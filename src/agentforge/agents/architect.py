@@ -26,6 +26,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ..context.prompt import render_context_block
 from ..core.contracts import AgentResult, ContextPack, ModelTier, Plan, Role
 from ..core.plan_format import RESULT_CLOSE, RESULT_OPEN
 from .implementer import render_steps
@@ -102,25 +103,12 @@ def build_prompt(
     if plan.constraints:
         constraints = "\n### Constraints\n\n" + "\n".join(f"- {c}" for c in plan.constraints) + "\n"
 
-    context_block = ""
-    rendered = [
-        f"**{label}:** " + ", ".join(values)
-        for label, values in (
-            ("Read these files", context.files),
-            ("These symbols are involved", context.symbols),
-            ("Follow these conventions", context.conventions),
-        )
-        if values
-    ]
-    if rendered:
-        context_block = "\n## Context Pack\n\n" + "\n\n".join(rendered) + "\n"
-
     return PROMPT.format(
         instructions=role.instructions,
         summary=plan.summary.strip(),
         steps=render_steps(plan),
         constraints=constraints,
-        context=context_block,
+        context=render_context_block(context),
         cwd=cwd,
         result_open=RESULT_OPEN,
         result_close=RESULT_CLOSE,

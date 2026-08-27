@@ -76,6 +76,11 @@ def forge(runner: FakeRunner) -> Forge:
     return Forge(cwd=ROOT, provider="claude", runner=runner)
 
 
+def recorded_claude_run() -> str:
+    """A real `claude` envelope, so a Run is priced by what a CLI actually said."""
+    return (FIXTURES / "claude_completed.json").read_text(encoding="utf-8")
+
+
 # --- agentforge plan -------------------------------------------------------
 
 
@@ -291,12 +296,14 @@ def test_each_result_is_posted_to_the_issue_before_the_run_moves_on():
     first_agent, second_agent = [
         index for index, call in enumerate(runner.calls) if call[0] == "claude"
     ][:2]
-    first_comment = next(
+    # The Context Pack is posted before the first Agent, and every result after
+    # the Agent that produced it, so the first result comment is the second one.
+    first_result = [
         index
         for index, call in enumerate(runner.calls)
         if call[:3] == ("gh", "issue", "comment")
-    )
-    assert first_agent < first_comment < second_agent
+    ][1]
+    assert first_agent < first_result < second_agent
 
 
 def test_a_denied_feature_run_records_the_tester_denial_and_halts():
@@ -1620,3 +1627,90 @@ def test_the_runtime_names_no_role():
 
     for role in ("implementer", "tester", "reviewer", "security", "architect"):
         assert role not in source.lower(), f"runtime.py names the {role!r} Role"
+
+
+# --- the Context Pack ------------------------------------------------------
+
+
+def test_every_role_is_handed_the_pack_resolved_from_the_frozen_plan():
+    """Six Agents rediscovering the same files is the cost the frozen Plan
+    exists to remove, and until the pack was resolved each of them paid it."""
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
+
+    forge(runner).implement(12, allow_commands=True)
+
+    prompts = [call[call.index("-p") + 1] for call in runner.matching("claude")]
+    assert prompts, "no Agent was invoked"
+    for prompt in prompts:
+        assert "## Context Pack" in prompt
+        assert "src/loader.py" in prompt
+        assert "tests/test_loader.py" in prompt
+
+
+def test_the_pack_is_posted_to_the_run_log_before_the_first_agent_runs():
+    """A Run that went wrong is diagnosed against what its Agents were shown,
+    and the record has to be written before they are shown it."""
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
+
+    forge(runner).implement(12, allow_commands=True)
+
+    assert "### Context Pack" in comments_on(runner)[0]
+    first_comment = next(
+        index for index, call in enumerate(runner.calls) if call[:3] == ("gh", "issue", "comment")
+    )
+    first_agent = next(index for index, call in enumerate(runner.calls) if call[0] == "claude")
+    assert first_comment < first_agent
+
+
+def test_the_pack_is_recorded_once_however_many_steps_run():
+    """It is resolved once per Run, so a Run Log with one entry per Step would
+    be saying the same thing four times."""
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
+
+    forge(runner).implement(12, allow_commands=True)
+
+    assert sum("### Context Pack" in comment for comment in comments_on(runner)) == 1
+
+
+def test_the_control_run_hands_every_role_nothing_and_says_so():
+    """A pack is supposed to make a Run cheaper. The only honest way to know is
+    to run the same Issue without one and compare the two totals."""
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
+
+    forge(runner).implement(12, allow_commands=True, resolve_context=False)
+
+    prompts = [call[call.index("-p") + 1] for call in runner.matching("claude")]
+    assert all("## Context Pack" not in prompt for prompt in prompts)
+    assert "Context Pack — none" in comments_on(runner)[0]
+
+
+def test_every_run_log_entry_carries_what_its_step_cost():
+    """Cost attributed to the Role that spent it, in the place a human is
+    already reading."""
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=recorded_claude_run())
+
+    state = forge(runner).implement(12, allow_commands=True)
+
+    entries = [comment for comment in comments_on(runner) if RESULT_OPEN in comment]
+    assert entries and all("**Cost:** $0.4312" in entry for entry in entries)
+    assert all(result.usage.cost_usd == pytest.approx(0.4312) for result in state.results)
+
+
+def test_the_run_that_ends_says_what_the_whole_thing_cost():
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=recorded_claude_run())
+
+    forge(runner).implement(12, allow_commands=True)
+
+    assert "- **Cost:** $" in comments_on(runner)[-1]

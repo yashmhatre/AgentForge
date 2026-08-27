@@ -19,6 +19,7 @@ from pathlib import Path
 
 from ..agents import RUNNERS, resolve_role
 from ..agents.orchestrator import Exchange, Interviewer, Orchestrator, Planned
+from ..context.resolver import resolve_pack
 from ..providers import DEFAULT_PROVIDER, get_provider
 from .config import load_config
 from .contracts import (
@@ -40,6 +41,7 @@ from .issues import (
     GitHub,
     Issue,
     IssueError,
+    render_context_comment,
     render_gate_comment,
     render_run_log_comment,
     render_terminal_comment,
@@ -171,12 +173,17 @@ class Forge:
         tier_overrides: dict[str, ModelTier] | None = None,
         tier: ModelTier | None = None,
         allow_commands: bool = False,
+        resolve_context: bool = True,
     ) -> RunState:
         """Run the Issue's Workflow. `tier` moves every Role; `tier_overrides` moves one.
 
         `allow_commands` is ADR-0007's gate. It is per-Run rather than
         configuration on purpose: a config key would persist a standing grant
         across every future Run in the repository.
+
+        `resolve_context` off is the control Run. A Context Pack is supposed to
+        make a Run cheaper, and the only honest way to know is to run the same
+        Issue without one and compare the totals the two Run Logs carry.
         """
         repo, github, provider = self._prepare(allow_commands=allow_commands)
 
@@ -216,6 +223,16 @@ class Forge:
             # time someone re-read a finished Issue.
             return state
 
+        # Resolved once, from the frozen Plan, before any Role is invoked
+        # (ADR-0010). Doing it per Step would let what a Role sees drift between
+        # Steps of one Run, which is the thing the frozen Plan exists to stop.
+        pack = (
+            resolve_pack(state.plan, repo.root, state.context)
+            if resolve_context
+            else ContextPack()
+        )
+        state = _with(state, context=pack)
+
         branch = branch_for_issue(number)
         repo.create_branch(branch)
         github.set_status(issue, RunStatus.RUNNING)
@@ -227,6 +244,11 @@ class Forge:
 
         for position, (step, behind) in enumerate(zip(workflow.steps, retired), start=1):
             if not behind:
+                # Before the first Agent of this invocation and never again: the
+                # pack is what the Agents below were shown, and a Run that only
+                # walked a Gate showed nobody anything.
+                if not invoked:
+                    github.post_comment(number, render_context_comment(state.context))
                 role = resolve_role(step.role)
                 at = overrides.get(role.name, tier or step.tier or role.tier)
                 # Derived from the Run Log rather than enumerated, because a

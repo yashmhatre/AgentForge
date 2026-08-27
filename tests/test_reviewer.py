@@ -284,3 +284,26 @@ def test_the_summary_is_scanned_and_not_only_the_detail():
 
     assert "delve" in prose_of(result)
     assert "retries three times" in prose_of(result)
+
+
+def test_a_rewrite_is_added_to_what_the_review_cost():
+    """A Role that spends three invocations and reports the last one's price
+    understates itself forever, and the tiering decision reads the understated
+    number."""
+    priced = json.dumps(
+        {
+            "type": "result",
+            "is_error": False,
+            "result": render_result_block(
+                {"outcome": "completed", "summary": "Reviewed.", "detail": "It matches."}
+            ),
+            "total_cost_usd": 0.25,
+            "usage": {"input_tokens": 1000, "output_tokens": 200},
+        }
+    )
+
+    result, _ = reviews(priced, False, True)
+
+    # The review and the one rewrite it took, at a quarter each.
+    assert result.usage.cost_usd == 0.5
+    assert result.usage.tokens == 2400

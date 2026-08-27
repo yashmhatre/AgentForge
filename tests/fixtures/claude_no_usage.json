@@ -1,0 +1,9 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "duration_ms": 9120,
+  "num_turns": 2,
+  "result": "Done.\n\n<!-- agentforge:result -->\n```json\n{\n  \"outcome\": \"completed\",\n  \"summary\": \"Renamed the loader.\",\n  \"files_changed\": [\"src/loader.py\"]\n}\n```\n<!-- /agentforge:result -->",
+  "session_id": "8c1d2e3f-4a5b-6c7d-8e9f-0a1b2c3d4e5f"
+}

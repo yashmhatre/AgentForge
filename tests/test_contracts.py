@@ -32,6 +32,7 @@ from agentforge.core.contracts import (
     Roster,
     RunState,
     RunStatus,
+    Usage,
     outstanding,
     retirement,
 )
@@ -395,3 +396,59 @@ def test_a_role_declares_the_vendored_skills_its_agent_needs():
     )
 
     assert role.skills == ("domain-modeling", "grilling")
+
+
+# --- what an invocation consumed -------------------------------------------
+
+
+def test_an_unreported_figure_writes_no_key_at_all():
+    """Absent and zero are different answers, and the serialized shape has to
+    keep them apart or a total cannot say how much of itself is missing."""
+    payload = Usage(provider="codex", total_tokens=21044).to_dict()
+
+    assert payload == {"provider": "codex", "total_tokens": 21044}
+    assert "cost_usd" not in payload
+
+
+def test_a_usage_round_trips_through_a_result():
+    usage = Usage(provider="claude", input_tokens=100, output_tokens=20, cost_usd=0.5)
+    result = AgentResult("implementer", ModelTier.STANDARD, Outcome.COMPLETED, "Done.", usage=usage)
+
+    assert AgentResult.from_dict(result.to_dict()).usage == usage
+
+
+def test_a_result_with_nothing_to_report_carries_no_usage_key():
+    """Every Run Log entry would otherwise end with an empty record saying the
+    Provider said nothing, which is what the cost line already says in words."""
+    result = AgentResult("implementer", ModelTier.STANDARD, Outcome.COMPLETED, "Done.")
+
+    assert "usage" not in result.to_dict()
+    assert AgentResult.from_dict(result.to_dict()).usage is None
+
+
+def test_a_split_and_an_unsplit_count_add_up_to_one_honest_figure():
+    """A Run whose Steps report differently has no honest input/output total, so
+    the total drops the split rather than assembling one."""
+    total = Usage.combine(
+        [Usage("codex", total_tokens=1000), Usage("codex", input_tokens=80, output_tokens=20)]
+    )
+
+    assert total.tokens == 1100
+    assert total.input_tokens is None
+    assert total.cost_usd is None
+
+
+def test_a_total_over_two_providers_names_neither():
+    """The line would otherwise say a `codex` CLI reported a `claude` price."""
+    total = Usage.combine([Usage("codex", total_tokens=10), Usage("claude", cost_usd=1.0)])
+
+    assert total.provider == ""
+
+
+def test_a_figure_a_human_mangled_in_the_issue_body_reads_as_absent():
+    """Issue bodies are editable, and a cost line that crashed a resumed Run
+    would make the measurement cost more than the thing it measures."""
+    usage = Usage.from_dict({"provider": "claude", "cost_usd": "free", "input_tokens": None})
+
+    assert usage.cost_usd is None
+    assert not usage.reported

@@ -59,8 +59,20 @@ Without `--allow-commands`, the Implementer remains default-deny and the Tester
 reports that it could not run the suite; it never substitutes reading tests and
 claims completion. Security, the Reviewer, and the Architect need no such flag —
 auditing, reviewing, and designing are reading. All six Roles `CONTEXT.md` names
-now run. Still to come: context packs; plugins; and `agentforge init`. See
+now run. Still to come: plugins and `agentforge init`. See
 [`docs/PLAN.md`](docs/PLAN.md).
+
+Before the first Role is invoked, AgentForge resolves a Context Pack from the
+frozen plan — the files it names, the symbols and imports inside them, the
+tables a query touches, the keys a config file sets — and hands the same pack to
+every Role, so six Agents do not each rediscover one repository. The pack is a
+head start rather than a boundary: a Role that needs a file it does not name
+reads that file. Every Run Log entry then ends with what that Step consumed, in
+whatever unit the Provider reports it — dollars from `claude`, tokens from
+`codex`, and "not reported" where a CLI says nothing, because a blank reads as
+free. The last comment carries the Run's total. To find out what the pack is
+worth on your own repository, run the same issue again with
+`--no-context-pack` and compare the two totals.
 
 The Reviewer writes the prose a human reads at Sign-off, and that prose is
 scanned by the vendored `unslop` scanners before it is posted. The first draft is

@@ -24,7 +24,15 @@ from pathlib import Path
 from typing import ClassVar
 
 from ..core.config import CapabilityTier, Config
-from ..core.contracts import AgentResult, ContextPack, Finding, ModelTier, Outcome, Role
+from ..core.contracts import (
+    AgentResult,
+    ContextPack,
+    Finding,
+    ModelTier,
+    Outcome,
+    Role,
+    Usage,
+)
 from ..core.plan_format import extract_result_block
 from ..core.process import CommandResult, CommandRunner, MissingBinary, require
 from ..core.skills import expand, read_skill
@@ -63,10 +71,18 @@ class Provider(ABC):
 
 @dataclass(frozen=True)
 class ProviderOutput:
-    """What an adapter recovered from its CLI's envelope."""
+    """What an adapter recovered from its CLI's envelope.
+
+    `usage` is what the CLI said the invocation consumed, and it is recovered
+    here rather than centrally because the envelope is the adapter's business:
+    ADR-0009 keeps a third Provider from adding a third place that knows how the
+    second one reports itself. `None` means the CLI reported nothing, which is
+    not the same as a free invocation.
+    """
 
     text: str
     error: str | None = None
+    usage: Usage | None = None
 
 
 class CliProvider(Provider):
@@ -175,6 +191,11 @@ def to_agent_result(*, role: Role, tier: ModelTier, output: ProviderOutput) -> A
     A Role that reports nothing parseable is a failure, not a quiet success. The
     alternative — treating unstructured text as a completed step — is how a Run
     opens a pull request containing no changes and says it worked.
+
+    Every way out of here carries the usage the adapter recovered, failures
+    included. A Run that spent four dollars discovering its CLI was misconfigured
+    spent four dollars, and a total that quietly omitted them would be the one
+    figure a reader most wants.
     """
     if output.error:
         return AgentResult(
@@ -184,6 +205,7 @@ def to_agent_result(*, role: Role, tier: ModelTier, output: ProviderOutput) -> A
             summary=output.error,
             detail=output.text,
             raw=output.text,
+            usage=output.usage,
         )
 
     payload = extract_result_block(output.text)
@@ -198,6 +220,7 @@ def to_agent_result(*, role: Role, tier: ModelTier, output: ProviderOutput) -> A
             ),
             detail=output.text,
             raw=output.text,
+            usage=output.usage,
         )
 
     try:
@@ -218,6 +241,7 @@ def to_agent_result(*, role: Role, tier: ModelTier, output: ProviderOutput) -> A
         files_changed=tuple(payload.get("files_changed") or ()),
         findings=tuple(Finding.coerce(item) for item in payload.get("findings") or ()),
         raw=output.text,
+        usage=output.usage,
     )
 
 

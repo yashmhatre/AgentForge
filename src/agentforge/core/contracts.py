@@ -10,7 +10,7 @@ Terms are defined in `CONTEXT.md`. This file is where they acquire a shape.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from typing import TypeVar
@@ -273,19 +273,41 @@ class Roster:
 class ContextPack:
     """The bounded set of files, symbols, and conventions handed to an Agent.
 
-    M1 passes a minimal pack so the Provider contract is exercised. Assembling a
-    pack that actually saves tokens is M3.
+    Two things fill one in. The Orchestrator declares what it believes the work
+    touches, and that travels in the Issue body; `context.resolver` resolves
+    that declaration against the frozen Plan and the repository at the start of
+    a Run, which is the pack an Agent is actually handed. See ADR-0010.
+
+    A pack is a head start and never a boundary. A Role that needs a file the
+    pack does not name reads it, so a resolver mistake costs tokens rather than
+    correctness.
     """
 
     files: tuple[str, ...] = ()
     symbols: tuple[str, ...] = ()
     conventions: tuple[str, ...] = ()
+    #: What those files reach for outside themselves — a module's imports, a
+    #: query's source tables. Written by the resolver rather than declared by
+    #: the Orchestrator: it is read out of the files, and a Role reads it to
+    #: find out what its change can break.
+    references: tuple[str, ...] = ()
+
+    def __bool__(self) -> bool:
+        """Whether the pack carries anything at all.
+
+        The runtime asks this to tell a resolved pack from the empty one a Run
+        started with, and every call site spelling out the four fields is the
+        same question asked four ways — one of which gets forgotten the next
+        time a field is added.
+        """
+        return bool(self.files or self.symbols or self.conventions or self.references)
 
     def to_dict(self) -> dict:
         return {
             "files": list(self.files),
             "symbols": list(self.symbols),
             "conventions": list(self.conventions),
+            "references": list(self.references),
         }
 
     @classmethod
@@ -295,7 +317,114 @@ class ContextPack:
             files=tuple(data.get("files") or ()),
             symbols=tuple(data.get("symbols") or ()),
             conventions=tuple(data.get("conventions") or ()),
+            references=tuple(data.get("references") or ()),
         )
+
+
+@dataclass(frozen=True)
+class Usage:
+    """What one Provider invocation consumed, in whatever unit its CLI reports.
+
+    Every figure is optional and none of them defaults to zero, because the
+    Providers disagree about what they will tell you: `claude` reports dollars
+    and a token split, `codex` prints one token count and no price, and a CLI
+    may report nothing at all. A zero would make all three look like a free
+    invocation, so absent stays absent and a total can say how much of itself
+    is missing. See ADR-0009.
+
+    `provider` names the CLI the figures came from, so a Run Log line can say
+    why a dollar figure is missing rather than leaving a blank where one would
+    have been.
+    """
+
+    provider: str = ""
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    #: One figure for the whole invocation, for a CLI that reports no split.
+    total_tokens: int | None = None
+    cost_usd: float | None = None
+
+    @property
+    def tokens(self) -> int | None:
+        """Every token this invocation used, however the CLI broke them down."""
+        if self.total_tokens is not None:
+            return self.total_tokens
+        if self.input_tokens is None and self.output_tokens is None:
+            return None
+        return (self.input_tokens or 0) + (self.output_tokens or 0)
+
+    @property
+    def reported(self) -> bool:
+        """Whether the Provider said anything at all about what this cost."""
+        return self.cost_usd is not None or self.tokens is not None
+
+    @classmethod
+    def combine(cls, usages: Iterable[Usage | None]) -> Usage:
+        """Add up what a Run spent, keeping absent figures absent.
+
+        The split is dropped: a Run whose Steps report a mix of split and
+        unsplit counts has no honest input/output total, and one token figure
+        that is true beats two that are assembled.
+        """
+        cost: float | None = None
+        tokens: int | None = None
+        providers = set()
+
+        for usage in usages:
+            if usage is None:
+                continue
+            if usage.provider:
+                providers.add(usage.provider)
+            if usage.cost_usd is not None:
+                cost = (cost or 0.0) + usage.cost_usd
+            if usage.tokens is not None:
+                tokens = (tokens or 0) + usage.tokens
+
+        return cls(
+            provider=providers.pop() if len(providers) == 1 else "",
+            total_tokens=tokens,
+            cost_usd=cost,
+        )
+
+    def to_dict(self) -> dict:
+        """Only what was reported. An absent key is the absent figure."""
+        payload: dict = {}
+        if self.provider:
+            payload["provider"] = self.provider
+        for name in ("input_tokens", "output_tokens", "total_tokens"):
+            value = getattr(self, name)
+            if value is not None:
+                payload[name] = int(value)
+        if self.cost_usd is not None:
+            payload["cost_usd"] = float(self.cost_usd)
+        return payload
+
+    @classmethod
+    def from_dict(cls, data: dict | None) -> Usage | None:
+        """A usage record, or `None` where a Run Log entry carries none."""
+        if not data:
+            return None
+        return cls(
+            provider=str(data.get("provider") or ""),
+            input_tokens=_number(data.get("input_tokens"), int),
+            output_tokens=_number(data.get("output_tokens"), int),
+            total_tokens=_number(data.get("total_tokens"), int),
+            cost_usd=_number(data.get("cost_usd"), float),
+        )
+
+
+def _number(value: object, cast):
+    """A figure a Run Log carried, or `None` if it carried nothing usable.
+
+    A human edits Issue bodies, and a cost line that crashed a resumed Run
+    would make the measurement more expensive than the thing it measures.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return cast(value)
+    except (TypeError, ValueError):
+        return None
 
 
 @dataclass(frozen=True)
@@ -350,6 +479,11 @@ class AgentResult:
     `findings` is what the Agent noticed and left for somebody else. Empty means
     it looked and found nothing, which is why a Role that could not look at all
     escalates instead: a Gate reading this cannot tell the two apart otherwise.
+
+    `usage` is what this invocation consumed, and it hangs here rather than on
+    the Run because that is the granularity a tiering decision is made at: a
+    Run's total says the Run was expensive, and only a per-Role figure says
+    which Role to move.
     """
 
     role: str
@@ -359,6 +493,7 @@ class AgentResult:
     detail: str = ""
     files_changed: tuple[str, ...] = ()
     findings: tuple[Finding, ...] = ()
+    usage: Usage | None = None
 
     #: The adapter's full text output. Transport only — it carries the
     #: Orchestrator's plan block out of a Provider invocation and gives a
@@ -389,6 +524,10 @@ class AgentResult:
         # is not something the Implementer was asked.
         if self.findings:
             payload["findings"] = [finding.to_dict() for finding in self.findings]
+        # Same rule, for the same reason: a Provider that reported nothing
+        # writes no key, so a later reader can tell silence from a free Run.
+        if self.usage is not None and self.usage.to_dict():
+            payload["usage"] = self.usage.to_dict()
         return payload
 
     @classmethod
@@ -401,6 +540,7 @@ class AgentResult:
             detail=str(data.get("detail") or ""),
             files_changed=tuple(data.get("files_changed") or ()),
             findings=tuple(Finding.coerce(item) for item in data.get("findings") or ()),
+            usage=Usage.from_dict(data.get("usage")),
         )
 
 

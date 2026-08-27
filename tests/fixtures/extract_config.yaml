@@ -1,0 +1,11 @@
+# A project's AgentForge configuration, as `agentforge init` will write it.
+providers:
+  claude:
+    capability_tier: native
+gates:
+  tests:
+    suite: pytest -q
+workflows:
+  - name: feature
+    steps:
+      - role: implementer

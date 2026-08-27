@@ -45,5 +45,9 @@ dev = [
 # Vendored third-party skills are never edited in place, so linting them reports
 # 76 findings nobody here is allowed to act on. Same rule as ADR-0006: a bundle's
 # internal style is upstream's business.
+#
+# `tests/fixtures` is recorded data rather than code. A fixture read by the
+# Python extractor has to keep an unused import in it, because that import is
+# the thing being extracted.
 [tool.ruff]
-extend-exclude = ["src/agentforge/skills"]
+extend-exclude = ["src/agentforge/skills", "tests/fixtures"]

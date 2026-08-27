@@ -15,6 +15,7 @@ import pytest
 from agentforge.agents.implementer import IMPLEMENTER
 from agentforge.core.contracts import (
     AgentResult,
+    ContextPack,
     Finding,
     GateEntry,
     GateVerdict,
@@ -24,6 +25,7 @@ from agentforge.core.contracts import (
     Roster,
     RunState,
     RunStatus,
+    Usage,
 )
 from agentforge.core.issues import (
     Comment,
@@ -32,7 +34,10 @@ from agentforge.core.issues import (
     IssueError,
     parse_gate_log,
     parse_run_log,
+    render_context_comment,
+    render_cost_line,
     render_gate_comment,
+    render_run_cost,
     render_run_log_comment,
     render_terminal_comment,
     run_state,
@@ -629,3 +634,114 @@ def test_an_issue_nobody_planned_is_refused_with_a_reason():
 
     with pytest.raises(PlanFormatError):
         run_state(issue)
+
+
+# --- what a Step cost, in the place the reader already is ------------------
+
+
+def test_a_run_log_entry_ends_with_what_the_step_cost():
+    """Learning the price where you are already reading, rather than in a
+    dashboard nobody opens."""
+    result = AgentResult(
+        "implementer",
+        ModelTier.STANDARD,
+        Outcome.COMPLETED,
+        "Added the retry.",
+        usage=Usage("claude", input_tokens=18422, output_tokens=2317, cost_usd=0.4312),
+    )
+
+    comment = render_run_log_comment(result)
+
+    assert "**Cost:** $0.4312" in comment
+    assert "18,422 in, 2,317 out" in comment
+
+
+def test_a_provider_that_counts_tokens_and_sets_no_price_says_so():
+    """Story fourteen: a missing dollar figure must not read as a free Run."""
+    line = render_cost_line(Usage("codex", total_tokens=21044))
+
+    assert "21,044 tokens" in line
+    assert "reports tokens and not dollars" in line
+
+
+def test_a_provider_that_reports_nothing_says_that_too():
+    """A blank is indistinguishable from free, which is why there is no blank."""
+    line = render_cost_line(None)
+
+    assert "not reported" in line
+    assert "does not report what an invocation consumes" in line
+
+
+def test_the_cost_survives_the_round_trip_through_the_run_log():
+    """A resumed Run reads its own history back, and a total assembled from
+    entries that lost their prices would be a different number every time."""
+    usage = Usage("claude", input_tokens=100, output_tokens=20, cost_usd=0.5)
+    result = AgentResult("implementer", ModelTier.STANDARD, Outcome.COMPLETED, "Done.", usage=usage)
+
+    issue = Issue(12, "t", "b", comments=(Comment("forge", render_run_log_comment(result)),))
+
+    assert parse_run_log(issue)[0].usage == usage
+
+
+def test_the_last_comment_on_a_run_carries_its_total():
+    """One number in one place, which is the answer to "what did that cost me"."""
+    first = AgentResult(
+        "implementer", ModelTier.STANDARD, Outcome.COMPLETED, "Done.",
+        usage=Usage("claude", cost_usd=0.25),
+    )
+    second = AgentResult(
+        "reviewer", ModelTier.DEEP, Outcome.COMPLETED, "Reviewed.",
+        usage=Usage("claude", cost_usd=0.75),
+    )
+
+    comment = render_terminal_comment(a_state(RunStatus.AWAITING_SIGNOFF, first, second))
+
+    assert "- **Cost:** $1.0000" in comment
+    assert "across 2 Steps" in comment
+
+
+def test_a_total_says_how_much_of_itself_is_missing():
+    """Story seventeen. Absent rather than zero is what makes this sayable at
+    all: a sum of zeros would have read as a cheap Run."""
+    priced = AgentResult(
+        "implementer", ModelTier.STANDARD, Outcome.COMPLETED, "Done.",
+        usage=Usage("claude", cost_usd=0.25),
+    )
+    silent = AgentResult("tester", ModelTier.CHEAP, Outcome.COMPLETED, "Ran the suite.")
+
+    assert "across 1 of 2 Steps" in render_run_cost([priced, silent])
+
+
+def test_a_run_where_nobody_reported_anything_says_nobody_reported_anything():
+    silent = AgentResult("tester", ModelTier.CHEAP, Outcome.COMPLETED, "Ran the suite.")
+
+    assert render_run_cost([silent]).startswith("not reported")
+
+
+# --- the pack, recorded where a Run is diagnosed ---------------------------
+
+
+def test_the_run_log_records_the_pack_the_agents_were_shown():
+    """A Run that went wrong is diagnosed against what its Agents could see."""
+    comment = render_context_comment(
+        ContextPack(
+            files=("src/loader.py",),
+            symbols=("src/loader.py::fetch",),
+            references=("requests",),
+            conventions=("no new dependencies",),
+        )
+    )
+
+    assert "### Context Pack" in comment
+    assert "`src/loader.py`" in comment
+    assert "`src/loader.py::fetch`" in comment
+    assert "no new dependencies" in comment
+
+
+def test_a_run_with_no_pack_says_that_it_is_the_control():
+    """The measurement in story twenty needs two Runs and a way to tell which
+    of them was which."""
+    comment = render_context_comment(ContextPack())
+
+    assert "Context Pack — none" in comment
+    assert "--no-context-pack" in comment

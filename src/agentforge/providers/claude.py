@@ -17,7 +17,7 @@ import json
 from collections.abc import Sequence
 from typing import ClassVar
 
-from ..core.contracts import ModelTier
+from ..core.contracts import ModelTier, Usage
 from ..core.process import CommandResult
 from ..core.skills import SKILLS_ROOT
 from .base import CliProvider, ProviderOutput
@@ -91,12 +91,55 @@ class ClaudeProvider(CliProvider):
 
         record = _final_record(envelope)
         text = str(record.get("result") or record.get("text") or "")
+        usage = _usage(record)
 
         if record.get("is_error") or not result.ok:
             reason = text.strip() or result.stderr.strip() or f"exit status {result.returncode}"
-            return ProviderOutput(text=text, error=f"the claude CLI reported an error: {reason}")
+            return ProviderOutput(
+                text=text,
+                error=f"the claude CLI reported an error: {reason}",
+                usage=usage,
+            )
 
-        return ProviderOutput(text=text)
+        return ProviderOutput(text=text, usage=usage)
+
+
+#: What the envelope calls the tokens that went in. Cached ones are counted
+#: with the rest: they are cheaper, not free, and the price the CLI charged for
+#: them is already inside `total_cost_usd` — a token figure that omitted them
+#: would disagree with the dollar figure beside it.
+_INPUT_FIELDS = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
+
+
+def _usage(record: dict) -> Usage | None:
+    """What this envelope says the invocation consumed.
+
+    This CLI is the generous one: dollars and a token split, both in the record
+    AgentForge was already parsing for the result text. `None` when the envelope
+    carries neither, so that a Run Log line can say the CLI reported nothing
+    rather than printing a zero nobody measured.
+    """
+    counts = record.get("usage")
+    counts = counts if isinstance(counts, dict) else {}
+
+    inputs = [_number(counts.get(field), int) for field in _INPUT_FIELDS]
+    counted = [value for value in inputs if value is not None]
+
+    usage = Usage(
+        provider=ClaudeProvider.name,
+        input_tokens=sum(counted) if counted else None,
+        output_tokens=_number(counts.get("output_tokens"), int),
+        cost_usd=_number(record.get("total_cost_usd"), float),
+    )
+    return usage if usage.reported else None
+
+
+def _number(value: object, cast):
+    """One figure out of the envelope, or `None` where it had none to give."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return cast(value)
+
 
 
 def _final_record(envelope: object) -> dict:
