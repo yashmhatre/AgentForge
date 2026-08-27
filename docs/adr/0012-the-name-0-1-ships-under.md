@@ -16,6 +16,8 @@ Two alternatives were live. **Keeping the name and publishing under a different 
 
 The rename covers the repository, the distribution, the import path, the console script, the two markers and the gate marker, the status labels, and the documentation. It is one sweep rather than an expand-and-contract migration, because nothing outside this repository depends on any of those yet, and that is the whole reason for doing it before the tag rather than after.
 
+No `agentforge:*` label is read back, and `LEGACY_LABELS` is left empty rather than filled. One Issue anywhere wore one of them — `agentforge:awaiting-signoff`, on the smoke repository — and relabelling it by hand cost one command against the alternative of reading a dead spelling for as long as the project lives. The `agentforge:escalated` entry that was already there went the same way: no Issue in either repository still wore it, so the Escalated-to-Halted rename it was carrying is finished. The mechanism stays where it is, empty, for the first rename that lands with somebody else's Issues open.
+
 The name question was always described as gating publication rather than the tag, and that stays true of the question. This particular answer puts the rename ahead of the tag anyway: a first release carrying a name the project is already leaving would make the 0.1 artifact the one thing nobody can correct afterwards. A renamed repository keeps resolving its old links; a published artifact does not.
 
 So the sweep lands before CI builds a wheel rather than after. The artifact and the console script it runs both carry the name, and building one in order to throw it away is the kind of work that only gets done twice.

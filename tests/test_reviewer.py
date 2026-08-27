@@ -9,7 +9,7 @@ import json
 import sys
 from pathlib import Path
 
-from agentforge.agents.reviewer import (
+from agentbastion.agents.reviewer import (
     MAX_REWRITES,
     REVIEWER,
     WRITING_SKILLS,
@@ -17,11 +17,11 @@ from agentforge.agents.reviewer import (
     build_rewrite_prompt,
     prose_of,
 )
-from agentforge.agents.reviewer import Reviewer as _ReviewerRunner
-from agentforge.core.contracts import AgentResult, ContextPack, ModelTier, Outcome
-from agentforge.core.plan_format import render_result_block
-from agentforge.core.skills import UNSLOP_SCANNERS, run_unslop
-from agentforge.providers.claude import ClaudeProvider
+from agentbastion.agents.reviewer import Reviewer as _ReviewerRunner
+from agentbastion.core.contracts import AgentResult, ContextPack, ModelTier, Outcome
+from agentbastion.core.plan_format import render_result_block
+from agentbastion.core.skills import UNSLOP_SCANNERS, run_unslop
+from agentbastion.providers.claude import ClaudeProvider
 
 from .fakes import FakeRunner
 from .test_contracts import a_plan
@@ -79,7 +79,7 @@ def scanners_say(runner: FakeRunner, *verdicts: bool) -> FakeRunner:
                 self.calls.append(argv)
                 self.cwds.append(None)
                 stdout, code = next(answers)
-                from agentforge.core.process import CommandResult
+                from agentbastion.core.process import CommandResult
 
                 return CommandResult(argv=argv, returncode=code, stdout=stdout)
             return super().run(argv, cwd=cwd, stdin=stdin, timeout=timeout)
@@ -133,7 +133,7 @@ def test_the_first_draft_is_written_with_the_prose_skill_in_front_of_it():
     _, runner = reviews(review_says("The change matches the Plan."), True)
 
     assert REVIEWER.skills == WRITING_SKILLS
-    assert "/agentforge:write-plainly" in prompts_of(runner)[0]
+    assert "/agentbastion:write-plainly" in prompts_of(runner)[0]
 
 
 def test_a_rewrite_is_not_handed_the_doctrine_a_second_time():
@@ -144,7 +144,7 @@ def test_a_rewrite_is_not_handed_the_doctrine_a_second_time():
 
     first, rewrite = prompts_of(runner)
 
-    assert "/agentforge:write-plainly" in first
+    assert "/agentbastion:write-plainly" in first
     assert "write-plainly" not in rewrite
 
 
@@ -209,7 +209,7 @@ def test_the_report_reaches_the_run_log_on_the_failing_path_too():
 
 def test_the_rewrite_is_handed_the_findings_rather_than_the_skill():
     """Each finding carries the phrase, the line, and a suggestion. Inlining the
-    skill's doctrine on top would be AgentForge teaching a Role to write."""
+    skill's doctrine on top would be AgentBastion teaching a Role to write."""
     runner = scanners_say(
         FakeRunner().script("claude", stdout=review_says("The change matches the Plan.")),
         False,
@@ -261,7 +261,7 @@ def test_a_reviewer_that_escalated_is_not_scanned_or_rewritten():
 
 
 def test_the_prose_is_scanned_outside_the_working_tree():
-    """AgentForge commits whatever a Role leaves behind, so a scratch file in
+    """AgentBastion commits whatever a Role leaves behind, so a scratch file in
     the repository would be committed and read by nobody."""
     _, runner = reviews(review_says("The change matches the Plan."), True)
 

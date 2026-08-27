@@ -13,15 +13,15 @@ from typing import ClassVar
 
 import pytest
 
-from agentforge.agents.implementer import IMPLEMENTER
-from agentforge.core.config import CapabilityTier, Config, load_config
-from agentforge.core.contracts import ContextPack, ModelTier, Outcome, Role
-from agentforge.core.process import CommandResult
-from agentforge.core.skills import read_skill
-from agentforge.providers import PROVIDERS, get_provider
-from agentforge.providers.base import Provider, ProviderError
-from agentforge.providers.claude import ClaudeProvider
-from agentforge.providers.codex import CodexProvider
+from agentbastion.agents.implementer import IMPLEMENTER
+from agentbastion.core.config import CapabilityTier, Config, load_config
+from agentbastion.core.contracts import ContextPack, ModelTier, Outcome, Role
+from agentbastion.core.process import CommandResult
+from agentbastion.core.skills import read_skill
+from agentbastion.providers import PROVIDERS, get_provider
+from agentbastion.providers.base import Provider, ProviderError
+from agentbastion.providers.claude import ClaudeProvider
+from agentbastion.providers.codex import CodexProvider
 
 from .fakes import FakeRunner
 
@@ -75,7 +75,7 @@ def test_claude_delivers_a_declared_skill_natively_without_inlining_it():
     call = runner.only("claude")
     prompt = call[call.index("-p") + 1]
     assert "--plugin-dir" in call
-    assert "/agentforge:grilling" in prompt
+    assert "/agentbastion:grilling" in prompt
     assert "Grill the user" not in prompt
 
 
@@ -148,8 +148,8 @@ def test_a_composite_is_named_once_to_a_native_provider():
     )
 
     prompt = runner.only("claude")[runner.only("claude").index("-p") + 1]
-    assert "/agentforge:grill-with-docs" in prompt
-    assert "/agentforge:grilling" not in prompt
+    assert "/agentbastion:grill-with-docs" in prompt
+    assert "/agentbastion:grilling" not in prompt
 
 
 def test_an_unknown_declared_skill_fails_before_the_provider_is_invoked():
@@ -169,7 +169,7 @@ def test_an_unknown_declared_skill_fails_before_the_provider_is_invoked():
 
 
 def test_provider_selection_uses_the_capability_tier_from_the_shared_loader(tmp_path):
-    config_dir = tmp_path / ".agentforge"
+    config_dir = tmp_path / ".agentbastion"
     config_dir.mkdir()
     (config_dir / "config.yaml").write_text(
         "providers:\n  claude:\n    capability_tier: fragment\n",

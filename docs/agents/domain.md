@@ -2,9 +2,9 @@
 
 How the engineering skills should consume this repo's domain documentation when exploring the codebase.
 
-**AgentForge is single-context.** One `CONTEXT.md` and one `docs/adr/` at the repo root. There is no `CONTEXT-MAP.md` and no per-package context; don't look for either.
+**AgentBastion is single-context.** One `CONTEXT.md` and one `docs/adr/` at the repo root. There is no `CONTEXT-MAP.md` and no per-package context; don't look for either.
 
-A caution specific to this repo: `CONTEXT.md` defines the vocabulary of the framework AgentForge *is*, and several of its terms also name things AgentForge *operates on*. An Issue is the handoff contract this framework writes, not a GitHub issue in general. A Role is a definition and an Agent is that Role in execution, and the two are not interchangeable. Check the `_Avoid_` lines before reaching for a synonym.
+A caution specific to this repo: `CONTEXT.md` defines the vocabulary of the framework AgentBastion *is*, and several of its terms also name things AgentBastion *operates on*. An Issue is the handoff contract this framework writes, not a GitHub issue in general. A Role is a definition and an Agent is that Role in execution, and the two are not interchangeable. Check the `_Avoid_` lines before reaching for a synonym.
 
 ## Before exploring, read these
 

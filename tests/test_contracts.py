@@ -1,6 +1,6 @@
 """The serialized shape of the contracts is a compatibility surface.
 
-An Issue filed today is parsed by an `agentforge implement` running next month,
+An Issue filed today is parsed by an `agentbastion implement` running next month,
 so a change to any of these shapes has to be a deliberate act. That is what
 round-tripping asserts: not that the dataclasses work, but that what goes into
 an Issue body comes back out unchanged.
@@ -12,10 +12,10 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from agentforge import agents
-from agentforge.agents import UnknownRole, resolve_role
-from agentforge.agents.implementer import IMPLEMENTER
-from agentforge.core.contracts import (
+from agentbastion import agents
+from agentbastion.agents import UnknownRole, resolve_role
+from agentbastion.agents.implementer import IMPLEMENTER
+from agentbastion.core.contracts import (
     LEGACY_LABELS,
     RUN_LABELS,
     AgentResult,
@@ -162,33 +162,41 @@ def test_tier_overrides_leave_the_role_definition_alone():
 
 
 def test_run_labels_are_namespaced_so_they_do_not_collide_with_a_project_scheme():
-    assert RunStatus.HALTED.label == "agentforge:halted"
-    assert all(label.startswith("agentforge:") for label in (s.label for s in RunStatus))
+    assert RunStatus.HALTED.label == "agentbastion:halted"
+    assert all(label.startswith("agentbastion:") for label in (s.label for s in RunStatus))
 
 
 def test_suspended_halted_and_failed_are_three_states_and_not_three_words():
     """The distinction the design session settled, pinned where it is defined.
 
     A Run waiting on a Gate it can still clear is suspended. A Run an Escalation
-    or an errored Gate stopped is halted. A Run AgentForge could not finish is
+    or an errored Gate stopped is halted. A Run AgentBastion could not finish is
     failed. Collapsing any two of them loses the only question #8 and #9 ask.
     """
     three = (RunStatus.SUSPENDED, RunStatus.HALTED, RunStatus.FAILED)
 
     assert len(set(three)) == 3
     assert [status.label for status in three] == [
-        "agentforge:suspended",
-        "agentforge:halted",
-        "agentforge:failed",
+        "agentbastion:suspended",
+        "agentbastion:halted",
+        "agentbastion:failed",
     ]
 
 
-def test_the_escalated_label_this_project_already_applied_still_reads():
-    """`agentforge:escalated` predates the vocabulary that made Escalation the
-    verdict and Halted the state. Issues carrying it are still runnable."""
-    assert LEGACY_LABELS["agentforge:escalated"] is RunStatus.HALTED
-    assert "agentforge:escalated" in RUN_LABELS, "a stale label AgentForge cannot clear is a leak"
-    assert "agentforge:escalated" not in [status.label for status in RunStatus]
+def test_no_label_from_before_the_rename_is_read_back():
+    """ADR-0012 renamed every label in one sweep and carried none of the old
+    spellings forward. One Issue anywhere wore an `agentforge:*` label — on the
+    smoke repository — and it was relabelled by hand; nothing outside this
+    repository has ever written one. `agentforge:escalated`, which the table did
+    carry, went the same way once no Issue still wore it.
+
+    The table is empty on purpose. This test is what makes refilling it a
+    deliberate act rather than a reflex, and the mechanism it feeds is exercised
+    in `test_issues.py` against a stand-in.
+    """
+    assert LEGACY_LABELS == {}
+    assert RUN_LABELS == tuple(status.label for status in RunStatus)
+    assert not [label for label in RUN_LABELS if "agentforge" in label]
 
 
 def test_the_current_step_is_derived_from_the_run_log_rather_than_stored():

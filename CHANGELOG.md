@@ -1,6 +1,6 @@
 # Changelog
 
-What changed in each release of AgentForge. Dates are the day the tag was cut.
+What changed in each release of AgentBastion. Dates are the day the tag was cut.
 
 ## Unreleased
 
@@ -8,22 +8,28 @@ Nothing yet.
 
 ## 0.1.0 — 2026-08-27
 
-The first release. You state a task in your own words; AgentForge files a
+The first release. You state a task in your own words; AgentBastion files a
 GitHub issue carrying a frozen plan, and running that issue produces a draft
 pull request that only a human merges.
 
+This project was called AgentForge while it was being built, and nothing was
+ever published under that name. It is AgentBastion from here on, including the
+issue markers and the status labels; an older, larger project holds the name and
+the `agentforge` import path, and one machine cannot have both. See
+[ADR-0012](docs/adr/0012-the-name-0-1-ships-under.md).
+
 ### The two commands that do the work
 
-- `agentforge plan "<task>"` interviews you while you are still at the keyboard,
+- `agentbastion plan "<task>"` interviews you while you are still at the keyboard,
   then files one issue carrying the plan, the Roster, and the Workflow to run.
   With nothing interactive attached it plans from what you typed rather than
   waiting for an answer that will never come.
-- `agentforge implement <n>` runs that issue's Workflow and opens a draft pull
+- `agentbastion implement <n>` runs that issue's Workflow and opens a draft pull
   request. An issue number is all it needs: no session, no local state, no
   memory of the machine that filed it.
 
-Also `agentforge unslop <path>` to scan prose on its own, and
-`agentforge --version`. `agentforge init` is listed in `--help` and exits
+Also `agentbastion unslop <path>` to scan prose on its own, and
+`agentbastion --version`. `agentbastion init` is listed in `--help` and exits
 non-zero; it is not built.
 
 ### What runs
@@ -37,7 +43,7 @@ non-zero; it is not built.
   between two steps until a person looks, a suite passes, or an audit comes back
   clean.
 - **Two coding-agent CLIs.** `claude` is supported; `codex` exists to keep the
-  provider boundary honest. AgentForge touches no model API and holds no
+  provider boundary honest. AgentBastion touches no model API and holds no
   credentials of its own.
 
 ### The issue is the handoff and the log
@@ -52,7 +58,7 @@ rather than improvising a correction.
 
 ### Context Packs and what a run costs
 
-- Before the first Role is invoked, AgentForge resolves a **Context Pack** from
+- Before the first Role is invoked, AgentBastion resolves a **Context Pack** from
   the frozen plan and hands the same one to every Role, so six agents do not
   each rediscover one repository. It is a head start rather than a boundary: a
   Role that needs a file the pack does not name reads that file.
@@ -81,13 +87,13 @@ real cost for a stylistic one.
 
 ### Stability
 
-The stable surface is the issue body: what AgentForge writes into an issue keeps
+The stable surface is the issue body: what AgentBastion writes into an issue keeps
 parsing, so a run filed by one version resumes under a later one. Everything
-importable under `agentforge.*` is private and changes without notice. See
+importable under `agentbastion.*` is private and changes without notice. See
 [ADR-0011](docs/adr/0011-the-issue-body-is-the-stable-surface.md).
 
 ### Not in this release
 
-`agentforge init`, which will detect a project's languages and write its
+`agentbastion init`, which will detect a project's languages and write its
 configuration. Plugins carrying the conventions of one technology. Publication
 to PyPI — install from the wheel attached to the release, or from a clone.

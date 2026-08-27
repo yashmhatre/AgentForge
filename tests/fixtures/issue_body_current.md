@@ -38,7 +38,7 @@ Running the `feature` Workflow, in this order. A Gate between two Steps holds th
 
 ---
 
-<!-- agentforge:plan -->
+<!-- agentbastion:plan -->
 ```json
 {
   "context": {
@@ -91,6 +91,6 @@ Running the `feature` Workflow, in this order. A Gate between two Steps holds th
   "workflow": "feature"
 }
 ```
-<!-- /agentforge:plan -->
+<!-- /agentbastion:plan -->
 
-*Filed by AgentForge. The block above is the frozen execution contract (ADR-0003). Every Role parses it; edit it rather than the prose.*
+*Filed by AgentBastion. The block above is the frozen execution contract (ADR-0003). Every Role parses it; edit it rather than the prose.*

@@ -1,6 +1,6 @@
 # ADR-0004: Roles declare a Model Tier, never a model
 
-Running every Role on the strongest available model is the largest avoidable cost in the system, and ADR-0001 removed the easy fix — a Provider shelling out to three CLIs cannot rely on per-agent model frontmatter, and each CLI accepts different model identifiers. A Role therefore declares an intent-named tier, and each Provider maps tiers onto its own CLI's model flag; users override the mapping in `.agentforge/config.yaml` without touching Role definitions.
+Running every Role on the strongest available model is the largest avoidable cost in the system, and ADR-0001 removed the easy fix — a Provider shelling out to three CLIs cannot rely on per-agent model frontmatter, and each CLI accepts different model identifiers. A Role therefore declares an intent-named tier, and each Provider maps tiers onto its own CLI's model flag; users override the mapping in `.agentbastion/config.yaml` without touching Role definitions.
 
 Default assignment:
 
@@ -17,7 +17,7 @@ One exception to "a Role declares a tier": the Reviewer's rewrites run at `cheap
 
 ## Consequences
 
-Three tiers is a coarse instrument: a Provider whose CLI exposes no model flag collapses to one, and AgentForge cannot detect that in advance.
+Three tiers is a coarse instrument: a Provider whose CLI exposes no model flag collapses to one, and AgentBastion cannot detect that in advance.
 
 **Amended, 2026-08-26.** This ADR predicted that the Reviewer at `cheap` was the assignment most likely to be wrong, and that it would move to `standard`. It moved further, to `deep`. The reason is the one the original gave — it writes the prose a human reads at Sign-off — plus one the original missed: it is the last Role to speak, so nothing downstream catches a review that is wrong or thin. The next thing after it is a person deciding whether to merge.
 

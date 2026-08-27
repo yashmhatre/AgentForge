@@ -16,22 +16,22 @@ from pathlib import Path
 
 import pytest
 
-from agentforge.agents import TESTER
-from agentforge.core.contracts import (
+from agentbastion.agents import TESTER
+from agentbastion.core.contracts import (
     GateEntry,
     GateVerdict,
     ModelTier,
     Outcome,
     RunStatus,
 )
-from agentforge.core.gates import GATES
-from agentforge.core.issues import render_gate_comment
-from agentforge.core.plan_format import (
+from agentbastion.core.gates import GATES
+from agentbastion.core.issues import render_gate_comment
+from agentbastion.core.plan_format import (
     RESULT_OPEN,
     parse_issue_body,
     render_result_block,
 )
-from agentforge.core.runtime import Forge, RunFailed
+from agentbastion.core.runtime import Bastion, RunFailed
 
 from .fakes import FakeRunner, github_repository
 from .test_agents import orchestrator_output, plan_block
@@ -51,7 +51,7 @@ def agent_says(outcome: str, summary: str, files=("src/loader.py",), findings=()
     )
 
 
-def issue_json(body: str = BODY, labels=("agentforge:planned",), comments=()) -> str:
+def issue_json(body: str = BODY, labels=("agentbastion:planned",), comments=()) -> str:
     return json.dumps(
         {
             "number": 12,
@@ -72,8 +72,8 @@ def a_runner() -> FakeRunner:
     return runner
 
 
-def forge(runner: FakeRunner) -> Forge:
-    return Forge(cwd=ROOT, provider="claude", runner=runner)
+def bastion(runner: FakeRunner) -> Bastion:
+    return Bastion(cwd=ROOT, provider="claude", runner=runner)
 
 
 def recorded_claude_run() -> str:
@@ -81,14 +81,14 @@ def recorded_claude_run() -> str:
     return (FIXTURES / "claude_completed.json").read_text(encoding="utf-8")
 
 
-# --- agentforge plan -------------------------------------------------------
+# --- agentbastion plan -------------------------------------------------------
 
 
 def test_planning_files_an_issue_a_human_can_judge_before_any_code_is_written():
     runner = a_runner()
     runner.script("claude", stdout=orchestrator_output([{"role": "implementer"}]))
 
-    outcome = forge(runner).plan("add a retry to the loader")
+    outcome = bastion(runner).plan("add a retry to the loader")
 
     assert outcome.filed
     assert outcome.issue.number == 12
@@ -103,7 +103,7 @@ def test_the_filed_body_is_the_body_implement_will_parse_back():
     runner = a_runner()
     runner.script("claude", stdout=orchestrator_output([{"role": "implementer"}]))
 
-    forge(runner).plan("add a retry to the loader")
+    bastion(runner).plan("add a retry to the loader")
 
     body = runner.argument_after("--body", "gh", "issue", "create")
     document = parse_issue_body(body)
@@ -113,14 +113,14 @@ def test_the_filed_body_is_the_body_implement_will_parse_back():
 
 def test_exactly_one_issue_is_filed_per_plan_and_it_is_ours():
     """The vendored `to-spec` skill ends by publishing to a tracker and applying
-    its own `ready-for-agent` label. AgentForge files the Issue, under its own
+    its own `ready-for-agent` label. AgentBastion files the Issue, under its own
     label — and ADR-0007's default-deny is what makes that structural: a
     planning pass cannot reach `gh` to file a second one even if the skill text
     tells it to."""
     runner = a_runner()
     runner.script("claude", stdout=orchestrator_output([{"role": "implementer"}]))
 
-    forge(runner).plan("add a retry")
+    bastion(runner).plan("add a retry")
 
     created = runner.matching("gh", "issue", "create")
     assert len(created) == 1
@@ -135,7 +135,7 @@ def test_the_workflow_the_orchestrator_chose_survives_to_the_run():
     runner = a_runner()
     runner.script("claude", stdout=orchestrator_output([{"role": "implementer"}], workflow="review"))
 
-    forge(runner).plan("review the incoming branch")
+    bastion(runner).plan("review the incoming branch")
 
     body = runner.argument_after("--body", "gh", "issue", "create")
     assert "Running the `review` Workflow" in body
@@ -146,10 +146,10 @@ def test_a_freshly_filed_issue_is_labelled_planned():
     runner = a_runner()
     runner.script("claude", stdout=orchestrator_output([{"role": "implementer"}]))
 
-    forge(runner).plan("add a retry")
+    bastion(runner).plan("add a retry")
 
     create = runner.only("gh", "issue", "create")
-    assert create[create.index("--label") + 1] == "agentforge:planned"
+    assert create[create.index("--label") + 1] == "agentbastion:planned"
 
 
 def test_an_escalating_orchestrator_files_nothing():
@@ -169,7 +169,7 @@ def test_an_escalating_orchestrator_files_nothing():
         ),
     )
 
-    outcome = forge(runner).plan("fix the loader")
+    outcome = bastion(runner).plan("fix the loader")
 
     assert not outcome.filed
     assert not runner.ran("gh", "issue", "create")
@@ -179,7 +179,7 @@ def test_a_tier_override_moves_the_orchestrator():
     runner = a_runner()
     runner.script("claude", stdout=orchestrator_output([{"role": "implementer"}]))
 
-    forge(runner).plan("add a retry", tier=ModelTier.CHEAP)
+    bastion(runner).plan("add a retry", tier=ModelTier.CHEAP)
 
     assert runner.argument_after("--model", "claude") == "haiku"
 
@@ -208,7 +208,7 @@ def test_planning_interviews_the_human_and_files_one_issue():
         ],
     )
 
-    outcome = forge(runner).plan("add a retry", interviewer=lambda q: "The orders loader.")
+    outcome = bastion(runner).plan("add a retry", interviewer=lambda q: "The orders loader.")
 
     assert outcome.filed
     assert len(runner.matching("gh", "issue", "create")) == 1
@@ -223,7 +223,7 @@ def test_what_the_interview_left_in_the_working_tree_is_reported():
     runner.script("git", "status", "--porcelain", stdout=["", " M CONTEXT.md\n"])
     runner.script("claude", stdout=orchestrator_output([{"role": "implementer"}]))
 
-    outcome = forge(runner).plan("add a retry", interviewer=lambda q: "yes")
+    outcome = bastion(runner).plan("add a retry", interviewer=lambda q: "yes")
 
     assert outcome.touched == ("CONTEXT.md",)
 
@@ -233,7 +233,7 @@ def test_a_file_the_human_had_already_changed_is_not_blamed_on_the_interview():
     runner.script("git", "status", "--porcelain", stdout=" M src/loader.py\n")
     runner.script("claude", stdout=orchestrator_output([{"role": "implementer"}]))
 
-    outcome = forge(runner).plan("add a retry", interviewer=lambda q: "yes")
+    outcome = bastion(runner).plan("add a retry", interviewer=lambda q: "yes")
 
     assert outcome.touched == ()
 
@@ -243,12 +243,12 @@ def test_a_plan_with_nobody_to_interview_asks_git_nothing():
     runner = a_runner()
     runner.script("claude", stdout=orchestrator_output([{"role": "implementer"}]))
 
-    forge(runner).plan("add a retry")
+    bastion(runner).plan("add a retry")
 
     assert not runner.ran("git", "status")
 
 
-# --- agentforge implement --------------------------------------------------
+# --- agentbastion implement --------------------------------------------------
 
 
 def test_an_issue_number_is_the_whole_input():
@@ -258,7 +258,7 @@ def test_an_issue_number_is_the_whole_input():
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
 
-    state = forge(runner).implement(12, allow_commands=True)
+    state = bastion(runner).implement(12, allow_commands=True)
 
     assert state.status is RunStatus.AWAITING_SIGNOFF
     assert state.pull_request.endswith("/pull/13")
@@ -270,11 +270,11 @@ def test_the_agent_works_on_a_branch_named_for_the_issue():
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
 
-    forge(runner).implement(12, allow_commands=True)
+    bastion(runner).implement(12, allow_commands=True)
 
     assert runner.ran("git", "checkout", "-b")
-    assert runner.only("git", "checkout", "-b")[3] == "agentforge/issue-12"
-    assert runner.argument_after("--head", "gh", "pr", "create") == "agentforge/issue-12"
+    assert runner.only("git", "checkout", "-b")[3] == "agentbastion/issue-12"
+    assert runner.argument_after("--head", "gh", "pr", "create") == "agentbastion/issue-12"
 
 
 def test_each_result_is_posted_to_the_issue_before_the_run_moves_on():
@@ -282,7 +282,7 @@ def test_each_result_is_posted_to_the_issue_before_the_run_moves_on():
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
 
-    forge(runner).implement(12, allow_commands=True)
+    bastion(runner).implement(12, allow_commands=True)
 
     # Agent Results only: the Run's terminal comment is an ending, not a Step.
     comments = [c for c in comments_on(runner) if RESULT_OPEN in c]
@@ -310,7 +310,7 @@ def test_a_denied_feature_run_records_the_tester_denial_and_halts():
     runner = a_runner()
     runner.script("claude", stdout=agent_says("completed", "Implemented the change."))
 
-    state = forge(runner).implement(12)
+    state = bastion(runner).implement(12)
 
     assert [result.role for result in state.results] == ["implementer", "tester"]
     assert state.results[-1].outcome is Outcome.ESCALATED
@@ -342,15 +342,15 @@ def test_opening_a_denied_run_resumes_at_the_tester():
         "issue",
         "view",
         stdout=issue_json(
-            # The label an older AgentForge applied: still read, no longer written.
-            labels=("agentforge:escalated",),
+            # The label an older AgentBastion applied: still read, no longer written.
+            labels=("agentbastion:escalated",),
             comments=(implemented, denied),
         ),
     )
     runner.script("git", "status", "--porcelain", stdout=["", " M tests/test_loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "pytest: 24 passed"))
 
-    state = forge(runner).implement(12, allow_commands=True)
+    state = bastion(runner).implement(12, allow_commands=True)
 
     prompts = [call[call.index("-p") + 1] for call in runner.matching("claude")]
 
@@ -366,7 +366,7 @@ def test_the_run_ends_in_a_draft_pull_request_and_never_a_merge():
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
 
-    forge(runner).implement(12, allow_commands=True)
+    bastion(runner).implement(12, allow_commands=True)
 
     assert "--draft" in runner.only("gh", "pr", "create")
     assert not runner.ran("gh", "pr", "merge")
@@ -379,7 +379,7 @@ def test_the_agent_runs_in_the_repository_root_rather_than_the_invocation_direct
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "done"))
 
-    Forge(cwd=ROOT / "src" / "deep", provider="claude", runner=runner).implement(12)
+    Bastion(cwd=ROOT / "src" / "deep", provider="claude", runner=runner).implement(12)
 
     index = next(i for i, call in enumerate(runner.calls) if call[0] == "claude")
     assert runner.cwds[index] == str(ROOT)
@@ -390,7 +390,7 @@ def test_a_run_log_entry_names_the_tier_it_cost():
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "done"))
 
-    forge(runner).implement(12)
+    bastion(runner).implement(12)
 
     comments = [c[c.index("--body") + 1] for c in runner.matching("gh", "issue", "comment")]
     assert any("**Model Tier:** `standard`" in c for c in comments)
@@ -401,7 +401,7 @@ def test_a_role_can_be_moved_up_a_tier_for_a_task_the_user_knows_is_hard():
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "done"))
 
-    forge(runner).implement(12, tier_overrides={"implementer": ModelTier.DEEP})
+    bastion(runner).implement(12, tier_overrides={"implementer": ModelTier.DEEP})
 
     assert runner.argument_after("--model", "claude") == "opus"
 
@@ -418,7 +418,7 @@ def test_a_run_that_reaches_sign_off_ends_with_a_terminal_comment():
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
 
-    forge(runner).implement(12, allow_commands=True)
+    bastion(runner).implement(12, allow_commands=True)
 
     last = comments_on(runner)[-1]
     assert "### Run complete" in last
@@ -440,24 +440,24 @@ def test_a_run_moves_from_planned_through_running_to_how_it_ended():
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
 
-    forge(runner).implement(12, allow_commands=True)
+    bastion(runner).implement(12, allow_commands=True)
 
-    assert labels_applied(runner) == ["agentforge:running", "agentforge:awaiting-signoff"]
+    assert labels_applied(runner) == ["agentbastion:running", "agentbastion:awaiting-signoff"]
     removed = [
         c[c.index("--remove-label") + 1]
         for c in runner.matching("gh", "issue", "edit")
         if "--remove-label" in c
     ]
-    assert removed == ["agentforge:planned", "agentforge:running"], "one status label at a time"
+    assert removed == ["agentbastion:planned", "agentbastion:running"], "one status label at a time"
 
 
 def test_a_run_that_halts_ends_labelled_halted_rather_than_running():
     runner = a_runner()
     runner.script("claude", stdout=agent_says("escalated", "Step s1 names a file that is gone.", ()))
 
-    forge(runner).implement(12, allow_commands=True)
+    bastion(runner).implement(12, allow_commands=True)
 
-    assert labels_applied(runner) == ["agentforge:running", "agentforge:halted"]
+    assert labels_applied(runner) == ["agentbastion:running", "agentbastion:halted"]
 
 
 def test_a_halted_run_ends_with_a_terminal_comment_naming_the_step_that_escalated():
@@ -473,7 +473,7 @@ def test_a_halted_run_ends_with_a_terminal_comment_naming_the_step_that_escalate
         ],
     )
 
-    forge(runner).implement(12, allow_commands=True)
+    bastion(runner).implement(12, allow_commands=True)
 
     last = comments_on(runner)[-1]
     assert "### Run halted" in last
@@ -484,7 +484,7 @@ def test_a_failed_run_ends_with_a_terminal_comment_too():
     runner = a_runner()
     runner.script("claude", stdout="", stderr="rate limited", returncode=1)
 
-    forge(runner).implement(12)
+    bastion(runner).implement(12)
 
     last = comments_on(runner)[-1]
     assert "### Run failed" in last
@@ -512,12 +512,12 @@ def test_a_run_with_nothing_left_to_do_says_nothing():
         "issue",
         "view",
         stdout=issue_json(
-            labels=("agentforge:awaiting-signoff",),
+            labels=("agentbastion:awaiting-signoff",),
             comments=(implementer, tester, audit, reviewed),
         ),
     )
 
-    forge(runner).implement(12)
+    bastion(runner).implement(12)
 
     assert comments_on(runner) == []
 
@@ -529,7 +529,7 @@ def test_an_escalation_halts_the_run_before_a_pull_request_exists():
     runner = a_runner()
     runner.script("claude", stdout=agent_says("escalated", "Step s1 names a file that is gone.", ()))
 
-    state = forge(runner).implement(12, allow_commands=True)
+    state = bastion(runner).implement(12, allow_commands=True)
 
     assert state.status is RunStatus.HALTED
     assert not runner.ran("gh", "pr", "create")
@@ -540,14 +540,14 @@ def test_an_escalation_labels_the_issue_and_states_the_reason():
     runner = a_runner()
     runner.script("claude", stdout=agent_says("escalated", "Step s1 names a file that is gone.", ()))
 
-    forge(runner).implement(12)
+    bastion(runner).implement(12)
 
     labels = [
         c[c.index("--add-label") + 1]
         for c in runner.matching("gh", "issue", "edit")
         if "--add-label" in c
     ]
-    assert "agentforge:halted" in labels
+    assert "agentbastion:halted" in labels
     comments = comments_on(runner)
     assert any("Step s1 names a file that is gone." in c for c in comments)
 
@@ -558,7 +558,7 @@ def test_an_escalation_stops_the_run_before_the_next_step_is_invoked():
     runner = a_runner()
     runner.script("claude", stdout=agent_says("escalated", "Step s1 names a file that is gone.", ()))
 
-    forge(runner).implement(12, allow_commands=True)
+    bastion(runner).implement(12, allow_commands=True)
 
     assert len(runner.matching("claude")) == 1, "the tester ran on a plan known to be wrong"
     entries = [c for c in comments_on(runner) if RESULT_OPEN in c]
@@ -579,7 +579,7 @@ def test_the_escalating_roles_own_comment_names_its_step_and_the_mismatch():
         ],
     )
 
-    forge(runner).implement(12, allow_commands=True)
+    bastion(runner).implement(12, allow_commands=True)
 
     entries = [c for c in comments_on(runner) if RESULT_OPEN in c]
     assert "### implementer — completed (step 1 of 4)" in entries[0]
@@ -603,11 +603,11 @@ def test_a_hand_edited_plan_naming_a_module_that_is_not_there_halts_rather_than_
         ),
     )
 
-    state = forge(runner).implement(12, allow_commands=True)
+    state = bastion(runner).implement(12, allow_commands=True)
 
     assert "src/nowhere/loader_v2.py" in runner.argument_after("-p", "claude")
     assert state.status is RunStatus.HALTED
-    assert labels_applied(runner)[-1] == "agentforge:halted"
+    assert labels_applied(runner)[-1] == "agentbastion:halted"
 
     entry = [c for c in comments_on(runner) if RESULT_OPEN in c][-1]
     assert "### implementer — escalated (step 1 of 4)" in entry
@@ -632,7 +632,7 @@ def test_a_corrected_plan_resumes_rather_than_restarting_the_completed_steps():
         ],
     )
 
-    forge(first).implement(12, allow_commands=True)
+    bastion(first).implement(12, allow_commands=True)
     log = comments_on(first)
 
     second = a_runner()
@@ -640,12 +640,12 @@ def test_a_corrected_plan_resumes_rather_than_restarting_the_completed_steps():
         "gh",
         "issue",
         "view",
-        stdout=issue_json(labels=("agentforge:halted",), comments=tuple(log)),
+        stdout=issue_json(labels=("agentbastion:halted",), comments=tuple(log)),
     )
     second.script("git", "status", "--porcelain", stdout=["", " M tests/test_loader.py\n"])
     second.script("claude", stdout=agent_says("completed", "pytest: 24 passed."))
 
-    state = forge(second).implement(12, allow_commands=True)
+    state = bastion(second).implement(12, allow_commands=True)
 
     # The escalated attempt stays in the log beside the completed one; only
     # completed results retire a Step.
@@ -671,12 +671,12 @@ def test_an_escalated_run_re_runs_the_role_that_escalated():
     )
     runner = a_runner()
     runner.script(
-        "gh", "issue", "view", stdout=issue_json(labels=("agentforge:halted",), comments=(escalated,))
+        "gh", "issue", "view", stdout=issue_json(labels=("agentbastion:halted",), comments=(escalated,))
     )
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "Fixed now."))
 
-    state = forge(runner).implement(12, allow_commands=True)
+    state = bastion(runner).implement(12, allow_commands=True)
 
     assert state.status is RunStatus.AWAITING_SIGNOFF
     assert runner.ran("claude")
@@ -701,12 +701,12 @@ def test_a_finished_run_does_not_run_again():
         "issue",
         "view",
         stdout=issue_json(
-            labels=("agentforge:awaiting-signoff",),
+            labels=("agentbastion:awaiting-signoff",),
             comments=(implementer, tester, audit, reviewed),
         ),
     )
 
-    state = forge(runner).implement(12)
+    state = bastion(runner).implement(12)
 
     assert not runner.ran("claude")
     assert state.remaining == ()
@@ -723,7 +723,7 @@ def test_an_agent_that_claims_success_but_changed_nothing_fails_loudly():
     runner.script("git", "rev-list", "--count", stdout="0\n")
     runner.script("claude", stdout=agent_says("completed", "All good!", ()))
 
-    state = forge(runner).implement(12, allow_commands=True)
+    state = bastion(runner).implement(12, allow_commands=True)
 
     assert state.status is RunStatus.FAILED
     assert not runner.ran("gh", "pr", "create")
@@ -734,7 +734,7 @@ def test_a_failing_provider_halts_the_run():
     runner = a_runner()
     runner.script("claude", stdout="", stderr="rate limited", returncode=1)
 
-    state = forge(runner).implement(12)
+    state = bastion(runner).implement(12)
 
     assert state.status is RunStatus.FAILED
     assert not runner.ran("gh", "pr", "create")
@@ -747,7 +747,7 @@ def test_a_directory_that_is_not_a_repository_is_refused_immediately():
     runner = FakeRunner().script("git", "rev-parse", "--show-toplevel", returncode=128)
 
     with pytest.raises(RunFailed, match="not inside a git repository"):
-        forge(runner).plan("add a retry")
+        bastion(runner).plan("add a retry")
 
     assert not runner.ran("claude")
 
@@ -757,7 +757,7 @@ def test_a_repository_with_no_remote_is_refused_before_anything_is_spent():
     runner.script("git", "remote", "get-url", stdout="", returncode=1)
 
     with pytest.raises(RunFailed, match="no `origin` remote"):
-        forge(runner).plan("add a retry")
+        bastion(runner).plan("add a retry")
 
     assert not runner.ran("claude")
 
@@ -767,21 +767,21 @@ def test_a_remote_that_is_not_github_says_so_rather_than_failing_later():
     runner.script("git", "remote", "get-url", stdout="git@ssh.dev.azure.com:v3/acme/pipelines\n")
 
     with pytest.raises(RunFailed, match="not GitHub"):
-        forge(runner).plan("add a retry")
+        bastion(runner).plan("add a retry")
 
 
 def test_a_missing_coding_agent_cli_names_the_binary_to_install():
     runner = a_runner().uninstall("claude")
 
     with pytest.raises(RunFailed, match="claude"):
-        forge(runner).plan("add a retry")
+        bastion(runner).plan("add a retry")
 
 
 def test_a_missing_gh_names_the_binary_to_install():
     runner = a_runner().uninstall("gh")
 
     with pytest.raises(RunFailed, match="gh"):
-        forge(runner).plan("add a retry")
+        bastion(runner).plan("add a retry")
 
 
 def test_a_dirty_working_tree_is_refused_rather_than_swept_into_the_commit():
@@ -789,7 +789,7 @@ def test_a_dirty_working_tree_is_refused_rather_than_swept_into_the_commit():
     runner.script("git", "status", "--porcelain", stdout=" M notes.md\n")
 
     with pytest.raises(RunFailed, match="uncommitted changes"):
-        forge(runner).implement(12)
+        bastion(runner).implement(12)
 
     assert not runner.ran("claude")
 
@@ -799,17 +799,17 @@ def test_an_issue_with_no_plan_block_is_refused_with_a_reason():
     runner.script("gh", "issue", "view", stdout=issue_json(body="please make this faster"))
 
     with pytest.raises(RunFailed, match="cannot be implemented"):
-        forge(runner).implement(12)
+        bastion(runner).implement(12)
 
 
 def test_an_issue_naming_a_role_that_cannot_run_says_which_one():
-    """A hand-edited plan block, or one filed by a newer AgentForge than this."""
+    """A hand-edited plan block, or one filed by a newer AgentBastion than this."""
     body = plan_block([{"role": "dramaturge"}], plan=a_plan())
     runner = a_runner()
     runner.script("gh", "issue", "view", stdout=issue_json(body=body))
 
     with pytest.raises(RunFailed, match="dramaturge"):
-        forge(runner).implement(12)
+        bastion(runner).implement(12)
 
 
 # --- the Workflow drives the Run -------------------------------------------
@@ -826,7 +826,7 @@ def test_a_workflow_that_does_not_exist_is_refused_before_any_agent_is_invoked()
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
 
     with pytest.raises(RunFailed, match="nonesuch"):
-        forge(runner).implement(12)
+        bastion(runner).implement(12)
 
     assert not runner.ran("claude"), "a bad Workflow name must cost nothing"
 
@@ -837,12 +837,12 @@ def test_a_workflow_with_no_steps_is_refused_before_any_agent_is_invoked(
     """Every shipped definition declares Steps now, so this is a definition a
     project wrote. Running it is a no-op rather than a Run."""
     (tmp_path / "feature.yaml").write_text("name: feature\nsteps: []\n", encoding="utf-8")
-    monkeypatch.setattr("agentforge.core.workflow.WORKFLOWS_ROOT", tmp_path)
+    monkeypatch.setattr("agentbastion.core.workflow.WORKFLOWS_ROOT", tmp_path)
     runner = a_runner()
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
 
     with pytest.raises(RunFailed, match="feature"):
-        forge(runner).implement(12)
+        bastion(runner).implement(12)
 
     assert not runner.ran("claude")
 
@@ -855,7 +855,7 @@ def test_an_issue_filed_before_workflows_existed_still_runs():
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
 
-    forge(runner).implement(12, allow_commands=True)
+    bastion(runner).implement(12, allow_commands=True)
 
     assert runner.ran("claude")
     assert "--draft" in runner.only("gh", "pr", "create")
@@ -866,13 +866,13 @@ def test_a_step_tier_override_moves_the_role_without_a_command_line_flag(tmp_pat
     (tmp_path / "feature.yaml").write_text(
         "name: feature\nsteps:\n  - role: implementer\n    tier: deep\n", encoding="utf-8"
     )
-    monkeypatch.setattr("agentforge.core.workflow.WORKFLOWS_ROOT", tmp_path)
+    monkeypatch.setattr("agentbastion.core.workflow.WORKFLOWS_ROOT", tmp_path)
 
     runner = a_runner()
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "done"))
 
-    forge(runner).implement(12)
+    bastion(runner).implement(12)
 
     assert runner.argument_after("--model", "claude") == "opus"
 
@@ -882,13 +882,13 @@ def test_a_command_line_tier_still_beats_the_step_override(tmp_path, monkeypatch
     (tmp_path / "feature.yaml").write_text(
         "name: feature\nsteps:\n  - role: implementer\n    tier: deep\n", encoding="utf-8"
     )
-    monkeypatch.setattr("agentforge.core.workflow.WORKFLOWS_ROOT", tmp_path)
+    monkeypatch.setattr("agentbastion.core.workflow.WORKFLOWS_ROOT", tmp_path)
 
     runner = a_runner()
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "done"))
 
-    forge(runner).implement(12, tier_overrides={"implementer": ModelTier.CHEAP})
+    bastion(runner).implement(12, tier_overrides={"implementer": ModelTier.CHEAP})
 
     assert runner.argument_after("--model", "claude") == "haiku"
 
@@ -898,12 +898,12 @@ def test_a_tester_step_override_leaves_the_roles_default_unchanged(tmp_path, mon
         "name: feature\nsteps:\n  - role: implementer\n  - role: tester\n    tier: deep\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr("agentforge.core.workflow.WORKFLOWS_ROOT", tmp_path)
+    monkeypatch.setattr("agentbastion.core.workflow.WORKFLOWS_ROOT", tmp_path)
     runner = a_runner()
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "done"))
 
-    forge(runner).implement(12, allow_commands=True)
+    bastion(runner).implement(12, allow_commands=True)
 
     assert [call[call.index("--model") + 1] for call in runner.matching("claude")] == [
         "sonnet",
@@ -924,13 +924,13 @@ def test_a_definition_naming_an_unrunnable_role_costs_no_provider_call(tmp_path,
     (tmp_path / "feature.yaml").write_text(
         "name: feature\nsteps:\n  - role: dramaturge\n", encoding="utf-8"
     )
-    monkeypatch.setattr("agentforge.core.workflow.WORKFLOWS_ROOT", tmp_path)
+    monkeypatch.setattr("agentbastion.core.workflow.WORKFLOWS_ROOT", tmp_path)
 
     runner = a_runner()
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
 
     with pytest.raises(RunFailed, match="dramaturge"):
-        forge(runner).implement(12)
+        bastion(runner).implement(12)
 
     assert not runner.ran("claude")
     assert not runner.ran("git", "checkout", "-b"), "a bad definition must not touch the repo"
@@ -947,7 +947,7 @@ HUMAN_GATED = (
 def _workflow(tmp_path, monkeypatch, text: str) -> None:
     """A definition of the Run's own making, since only `feature` ships steps."""
     (tmp_path / "feature.yaml").write_text(text, encoding="utf-8")
-    monkeypatch.setattr("agentforge.core.workflow.WORKFLOWS_ROOT", tmp_path)
+    monkeypatch.setattr("agentbastion.core.workflow.WORKFLOWS_ROOT", tmp_path)
 
 
 def entries_on(runner: FakeRunner) -> list[str]:
@@ -980,7 +980,7 @@ def test_a_step_followed_by_a_human_gate_suspends_the_run_rather_than_failing_it
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
 
-    state = forge(runner).implement(12, allow_commands=True)
+    state = bastion(runner).implement(12, allow_commands=True)
 
     assert state.status is RunStatus.SUSPENDED
     assert len(runner.matching("claude")) == 1, "the Step after the Gate ran anyway"
@@ -995,9 +995,9 @@ def test_a_suspended_run_is_labelled_so_a_stalled_run_is_not_a_crashed_one(
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
 
-    forge(runner).implement(12, allow_commands=True)
+    bastion(runner).implement(12, allow_commands=True)
 
-    assert labels_applied(runner) == ["agentforge:running", "agentforge:suspended"]
+    assert labels_applied(runner) == ["agentbastion:running", "agentbastion:suspended"]
     last = comments_on(runner)[-1]
     assert "### Run suspended" in last
     assert "**Waiting on:** the `human` Gate after step 1" in last
@@ -1009,7 +1009,7 @@ def test_the_gate_that_stopped_the_run_says_so_in_the_run_log(tmp_path, monkeypa
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
 
-    forge(runner).implement(12, allow_commands=True)
+    bastion(runner).implement(12, allow_commands=True)
 
     gate = [c for c in comments_on(runner) if "Gate —" in c]
     assert len(gate) == 1
@@ -1025,10 +1025,10 @@ def test_a_suspended_run_leaves_its_work_committed_on_the_branch(tmp_path, monke
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
 
-    forge(runner).implement(12, allow_commands=True)
+    bastion(runner).implement(12, allow_commands=True)
 
     assert runner.ran("git", "commit")
-    assert runner.only("git", "push")[-1] == "agentforge/issue-12"
+    assert runner.only("git", "push")[-1] == "agentbastion/issue-12"
     assert not runner.ran("gh", "pr", "create"), "a suspended Run is not a finished one"
 
 
@@ -1042,7 +1042,7 @@ def test_a_second_invocation_resumes_from_the_suspension_point(tmp_path, monkeyp
     first.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     first.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
 
-    suspended = forge(first).implement(12, allow_commands=True)
+    suspended = bastion(first).implement(12, allow_commands=True)
     log = comments_on(first)
 
     second = a_runner()
@@ -1050,12 +1050,12 @@ def test_a_second_invocation_resumes_from_the_suspension_point(tmp_path, monkeyp
         "gh",
         "issue",
         "view",
-        stdout=issue_json(labels=("agentforge:suspended",), comments=tuple(log)),
+        stdout=issue_json(labels=("agentbastion:suspended",), comments=tuple(log)),
     )
     second.script("git", "status", "--porcelain", stdout=["", " M tests/test_loader.py\n"])
     second.script("claude", stdout=agent_says("completed", "pytest: 24 passed."))
 
-    resumed = forge(second).implement(12, allow_commands=True)
+    resumed = bastion(second).implement(12, allow_commands=True)
 
     assert suspended.status is RunStatus.SUSPENDED
     assert resumed.status is RunStatus.AWAITING_SIGNOFF
@@ -1072,18 +1072,18 @@ def test_resuming_past_a_gate_duplicates_no_run_log_comment(tmp_path, monkeypatc
     first = a_runner()
     first.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     first.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
-    forge(first).implement(12, allow_commands=True)
+    bastion(first).implement(12, allow_commands=True)
 
     second = a_runner()
     second.script(
         "gh",
         "issue",
         "view",
-        stdout=issue_json(labels=("agentforge:suspended",), comments=tuple(comments_on(first))),
+        stdout=issue_json(labels=("agentbastion:suspended",), comments=tuple(comments_on(first))),
     )
     second.script("git", "status", "--porcelain", stdout=["", " M tests/test_loader.py\n"])
     second.script("claude", stdout=agent_says("completed", "pytest: 24 passed."))
-    forge(second).implement(12, allow_commands=True)
+    bastion(second).implement(12, allow_commands=True)
 
     steps = [c.splitlines()[0] for c in entries_on(first) + entries_on(second)]
     assert steps == [
@@ -1107,19 +1107,19 @@ def test_a_gate_blocking_on_a_roles_output_re_runs_that_step_on_resume(
     first = a_runner()
     first.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     first.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
-    suspended = forge(first).implement(12, allow_commands=True)
+    suspended = bastion(first).implement(12, allow_commands=True)
 
     second = a_runner()
     second.script(
         "gh",
         "issue",
         "view",
-        stdout=issue_json(labels=("agentforge:suspended",), comments=tuple(comments_on(first))),
+        stdout=issue_json(labels=("agentbastion:suspended",), comments=tuple(comments_on(first))),
     )
     second.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     second.script("claude", stdout=agent_says("completed", "Fixed and re-run."))
 
-    resumed = forge(second).implement(12, allow_commands=True)
+    resumed = bastion(second).implement(12, allow_commands=True)
 
     assert suspended.done_roles == (), "the Gate did not mark its Step for re-run"
     assert suspended.current_step == 1
@@ -1144,10 +1144,10 @@ def test_an_errored_gate_halts_the_run_rather_than_suspending_it(tmp_path, monke
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
 
-    state = forge(runner).implement(12, allow_commands=True)
+    state = bastion(runner).implement(12, allow_commands=True)
 
     assert state.status is RunStatus.HALTED
-    assert labels_applied(runner) == ["agentforge:running", "agentforge:halted"]
+    assert labels_applied(runner) == ["agentbastion:running", "agentbastion:halted"]
     assert not runner.ran("gh", "pr", "create")
     assert "no reviewer configured" in next(c for c in comments_on(runner) if "Gate —" in c)
 
@@ -1167,7 +1167,7 @@ def test_a_gate_with_nothing_to_read_halts_rather_than_passing_quietly(
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
 
-    state = forge(runner).implement(12, allow_commands=True)
+    state = bastion(runner).implement(12, allow_commands=True)
 
     assert state.status is RunStatus.HALTED
     assert not runner.ran("gh", "pr", "create")
@@ -1185,7 +1185,7 @@ def test_a_gated_workflow_still_ends_in_a_draft_pull_request_and_never_a_merge(
         "issue",
         "view",
         stdout=issue_json(
-            labels=("agentforge:suspended",),
+            labels=("agentbastion:suspended",),
             comments=(
                 render_result_block(
                     {
@@ -1202,7 +1202,7 @@ def test_a_gated_workflow_still_ends_in_a_draft_pull_request_and_never_a_merge(
     runner.script("git", "status", "--porcelain", stdout=["", " M tests/test_loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "pytest: 24 passed."))
 
-    forge(runner).implement(12, allow_commands=True)
+    bastion(runner).implement(12, allow_commands=True)
 
     assert "--draft" in runner.only("gh", "pr", "create")
     assert not runner.ran("gh", "pr", "merge")
@@ -1222,18 +1222,18 @@ def test_a_gate_after_the_last_step_suspends_before_the_pull_request(
     first = a_runner()
     first.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     first.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
-    suspended = forge(first).implement(12, allow_commands=True)
+    suspended = bastion(first).implement(12, allow_commands=True)
 
     second = a_runner()
     second.script(
         "gh",
         "issue",
         "view",
-        stdout=issue_json(labels=("agentforge:suspended",), comments=tuple(comments_on(first))),
+        stdout=issue_json(labels=("agentbastion:suspended",), comments=tuple(comments_on(first))),
     )
     # The work is committed already: this Run has a Gate to clear and no Step to run.
     second.script("git", "status", "--porcelain", stdout="")
-    resumed = forge(second).implement(12, allow_commands=True)
+    resumed = bastion(second).implement(12, allow_commands=True)
 
     assert suspended.status is RunStatus.SUSPENDED
     assert not first.ran("gh", "pr", "create")
@@ -1254,7 +1254,7 @@ def test_a_suspended_run_whose_gate_is_gone_finishes_rather_than_staying_suspend
         "issue",
         "view",
         stdout=issue_json(
-            labels=("agentforge:suspended",),
+            labels=("agentbastion:suspended",),
             comments=(
                 render_result_block(
                     {
@@ -1270,7 +1270,7 @@ def test_a_suspended_run_whose_gate_is_gone_finishes_rather_than_staying_suspend
     )
     runner.script("git", "status", "--porcelain", stdout="")
 
-    state = forge(runner).implement(12, allow_commands=True)
+    state = bastion(runner).implement(12, allow_commands=True)
 
     assert state.status is RunStatus.AWAITING_SIGNOFF
     assert not runner.ran("claude")
@@ -1298,10 +1298,10 @@ def test_a_failing_suite_suspends_the_run_rather_than_opening_a_pull_request(
     runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
     runner.script("pytest", stdout=FAILING_SUITE, returncode=1)
 
-    state = forge(runner).implement(12, allow_commands=True)
+    state = bastion(runner).implement(12, allow_commands=True)
 
     assert state.status is RunStatus.SUSPENDED
-    assert labels_applied(runner) == ["agentforge:running", "agentforge:suspended"]
+    assert labels_applied(runner) == ["agentbastion:running", "agentbastion:suspended"]
     assert not runner.ran("gh", "pr", "create")
 
 
@@ -1314,7 +1314,7 @@ def test_the_failing_suites_own_output_reaches_the_run_log(tmp_path, monkeypatch
     runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
     runner.script("pytest", stdout=FAILING_SUITE, returncode=1)
 
-    forge(runner).implement(12, allow_commands=True)
+    bastion(runner).implement(12, allow_commands=True)
 
     gate = next(c for c in comments_on(runner) if "Gate —" in c)
     assert "### tests Gate — blocked (after step 2 of 2)" in gate
@@ -1333,10 +1333,10 @@ def test_a_suite_that_cannot_be_run_halts_the_run_and_is_not_a_failing_suite(
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
 
-    state = forge(runner).implement(12, allow_commands=True)
+    state = bastion(runner).implement(12, allow_commands=True)
 
     assert state.status is RunStatus.HALTED
-    assert labels_applied(runner) == ["agentforge:running", "agentforge:halted"]
+    assert labels_applied(runner) == ["agentbastion:running", "agentbastion:halted"]
     assert "pytest" in next(c for c in comments_on(runner) if "Gate —" in c)
 
 
@@ -1350,20 +1350,20 @@ def test_a_resumed_run_re_runs_the_suite_and_re_runs_no_step(tmp_path, monkeypat
     first.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     first.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
     first.script("pytest", stdout=FAILING_SUITE, returncode=1)
-    suspended = forge(first).implement(12, allow_commands=True)
+    suspended = bastion(first).implement(12, allow_commands=True)
 
     second = a_runner().install("pytest")
     second.script(
         "gh",
         "issue",
         "view",
-        stdout=issue_json(labels=("agentforge:suspended",), comments=tuple(comments_on(first))),
+        stdout=issue_json(labels=("agentbastion:suspended",), comments=tuple(comments_on(first))),
     )
     # The human committed the fix before re-running; a Run refuses a dirty tree.
     second.script("git", "status", "--porcelain", stdout="")
     second.script("pytest", stdout="24 passed in 0.44s")
 
-    resumed = forge(second).implement(12, allow_commands=True)
+    resumed = bastion(second).implement(12, allow_commands=True)
 
     assert suspended.done_roles == ("implementer", "tester"), (
         "the test-suite Gate un-retired a Step, which is the ADR-0008 deadlock"
@@ -1406,10 +1406,10 @@ def test_findings_hold_the_run_rather_than_reaching_sign_off_quietly(
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=_audited(INTERPOLATED_SQL))
 
-    state = forge(runner).implement(12, allow_commands=True)
+    state = bastion(runner).implement(12, allow_commands=True)
 
     assert state.status is RunStatus.SUSPENDED
-    assert labels_applied(runner) == ["agentforge:running", "agentforge:suspended"]
+    assert labels_applied(runner) == ["agentbastion:running", "agentbastion:suspended"]
     assert not runner.ran("gh", "pr", "create")
 
 
@@ -1422,7 +1422,7 @@ def test_a_finding_reaches_the_run_log_with_somewhere_to_look(tmp_path, monkeypa
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=_audited(INTERPOLATED_SQL))
 
-    forge(runner).implement(12, allow_commands=True)
+    bastion(runner).implement(12, allow_commands=True)
 
     audit = next(c for c in comments_on(runner) if "### security" in c)
     assert "**Findings (1):**" in audit
@@ -1443,7 +1443,7 @@ def test_a_clean_audit_clears_the_gate_and_the_run_reaches_sign_off(
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=_audited())
 
-    state = forge(runner).implement(12, allow_commands=True)
+    state = bastion(runner).implement(12, allow_commands=True)
 
     assert state.status is RunStatus.AWAITING_SIGNOFF
     assert "--draft" in runner.only("gh", "pr", "create")
@@ -1463,20 +1463,20 @@ def test_a_resumed_run_re_audits_rather_than_reading_the_finding_back(
     first = a_runner()
     first.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     first.script("claude", stdout=_audited(INTERPOLATED_SQL))
-    suspended = forge(first).implement(12, allow_commands=True)
+    suspended = bastion(first).implement(12, allow_commands=True)
 
     second = a_runner()
     second.script(
         "gh",
         "issue",
         "view",
-        stdout=issue_json(labels=("agentforge:suspended",), comments=tuple(comments_on(first))),
+        stdout=issue_json(labels=("agentbastion:suspended",), comments=tuple(comments_on(first))),
     )
     # The fix is committed already; a Run refuses to start on a dirty tree.
     second.script("git", "status", "--porcelain", stdout="")
     second.script("claude", stdout=agent_says("completed", "Audit complete.", ()))
 
-    resumed = forge(second).implement(12, allow_commands=True)
+    resumed = bastion(second).implement(12, allow_commands=True)
 
     assert suspended.done_roles == ("implementer",), "the Gate did not un-retire its Step"
     prompts = [call[call.index("-p") + 1] for call in second.matching("claude")]
@@ -1497,19 +1497,19 @@ def test_an_audit_that_writes_nothing_still_opens_the_pull_request(
     first = a_runner()
     first.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     first.script("claude", stdout=_audited(INTERPOLATED_SQL))
-    forge(first).implement(12, allow_commands=True)
+    bastion(first).implement(12, allow_commands=True)
 
     second = a_runner()
     second.script(
         "gh",
         "issue",
         "view",
-        stdout=issue_json(labels=("agentforge:suspended",), comments=tuple(comments_on(first))),
+        stdout=issue_json(labels=("agentbastion:suspended",), comments=tuple(comments_on(first))),
     )
     second.script("git", "status", "--porcelain", stdout="")
     second.script("claude", stdout=agent_says("completed", "Audit complete.", ()))
 
-    state = forge(second).implement(12, allow_commands=True)
+    state = bastion(second).implement(12, allow_commands=True)
 
     assert state.status is RunStatus.AWAITING_SIGNOFF
     assert not second.ran("git", "commit"), "there was nothing to commit"
@@ -1530,7 +1530,7 @@ def test_the_feature_workflow_runs_its_four_roles_in_order():
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "Done."))
 
-    state = forge(runner).implement(12, allow_commands=True)
+    state = bastion(runner).implement(12, allow_commands=True)
 
     assert state.status is RunStatus.AWAITING_SIGNOFF
     assert state.done_roles == ("implementer", "tester", "security", "reviewer")
@@ -1543,7 +1543,7 @@ def test_the_bugfix_workflow_fixes_verifies_and_reports_without_an_audit():
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "Fixed."))
 
-    state = forge(runner).implement(12, allow_commands=True)
+    state = bastion(runner).implement(12, allow_commands=True)
 
     assert state.status is RunStatus.AWAITING_SIGNOFF
     assert state.done_roles == ("implementer", "tester", "reviewer")
@@ -1563,7 +1563,7 @@ def test_the_review_workflow_completes_on_a_diff_no_agent_wrote():
     runner.script("git", "status", "--porcelain", stdout="")
     runner.script("claude", stdout=agent_says("completed", "Reviewed.", ()))
 
-    state = forge(runner).implement(12, allow_commands=True)
+    state = bastion(runner).implement(12, allow_commands=True)
 
     assert state.status is RunStatus.AWAITING_SIGNOFF
     assert state.done_roles == ("security", "reviewer")
@@ -1579,7 +1579,7 @@ def test_a_review_run_on_a_branch_with_nothing_on_it_still_refuses():
     runner.script("git", "rev-list", "--count", stdout="0\n")
     runner.script("claude", stdout=agent_says("completed", "Reviewed.", ()))
 
-    state = forge(runner).implement(12, allow_commands=True)
+    state = bastion(runner).implement(12, allow_commands=True)
 
     assert state.status is RunStatus.FAILED
     assert not runner.ran("gh", "pr", "create")
@@ -1606,7 +1606,7 @@ def test_a_workflow_naming_the_architect_loads_and_runs(tmp_path, monkeypatch):
         ],
     )
 
-    state = forge(runner).implement(12, allow_commands=True)
+    state = bastion(runner).implement(12, allow_commands=True)
 
     assert state.status is RunStatus.AWAITING_SIGNOFF
     assert state.done_roles == ("architect", "implementer")
@@ -1622,7 +1622,7 @@ def test_the_runtime_names_no_role():
     `RUNNERS` lookup keyed by the Workflow step is the only dispatch there is.
     """
     source = (
-        Path(__file__).parent.parent / "src" / "agentforge" / "core" / "runtime.py"
+        Path(__file__).parent.parent / "src" / "agentbastion" / "core" / "runtime.py"
     ).read_text(encoding="utf-8")
 
     for role in ("implementer", "tester", "reviewer", "security", "architect"):
@@ -1639,7 +1639,7 @@ def test_every_role_is_handed_the_pack_resolved_from_the_frozen_plan():
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
 
-    forge(runner).implement(12, allow_commands=True)
+    bastion(runner).implement(12, allow_commands=True)
 
     prompts = [call[call.index("-p") + 1] for call in runner.matching("claude")]
     assert prompts, "no Agent was invoked"
@@ -1656,7 +1656,7 @@ def test_the_pack_is_posted_to_the_run_log_before_the_first_agent_runs():
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
 
-    forge(runner).implement(12, allow_commands=True)
+    bastion(runner).implement(12, allow_commands=True)
 
     assert "### Context Pack" in comments_on(runner)[0]
     first_comment = next(
@@ -1673,7 +1673,7 @@ def test_the_pack_is_recorded_once_however_many_steps_run():
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
 
-    forge(runner).implement(12, allow_commands=True)
+    bastion(runner).implement(12, allow_commands=True)
 
     assert sum("### Context Pack" in comment for comment in comments_on(runner)) == 1
 
@@ -1685,7 +1685,7 @@ def test_the_control_run_hands_every_role_nothing_and_says_so():
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
 
-    forge(runner).implement(12, allow_commands=True, resolve_context=False)
+    bastion(runner).implement(12, allow_commands=True, resolve_context=False)
 
     prompts = [call[call.index("-p") + 1] for call in runner.matching("claude")]
     assert all("## Context Pack" not in prompt for prompt in prompts)
@@ -1699,7 +1699,7 @@ def test_every_run_log_entry_carries_what_its_step_cost():
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=recorded_claude_run())
 
-    state = forge(runner).implement(12, allow_commands=True)
+    state = bastion(runner).implement(12, allow_commands=True)
 
     entries = [comment for comment in comments_on(runner) if RESULT_OPEN in comment]
     assert entries and all("**Cost:** $0.4312" in entry for entry in entries)
@@ -1711,6 +1711,6 @@ def test_the_run_that_ends_says_what_the_whole_thing_cost():
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=recorded_claude_run())
 
-    forge(runner).implement(12, allow_commands=True)
+    bastion(runner).implement(12, allow_commands=True)
 
     assert "- **Cost:** $" in comments_on(runner)[-1]

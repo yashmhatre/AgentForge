@@ -1,8 +1,8 @@
-# AgentForge
+# AgentBastion
 
-AgentForge is a standalone Python framework for coordinating specialized software agents through reusable workflows.
+AgentBastion is a standalone Python framework for coordinating specialized software agents through reusable workflows.
 
-A human states a Task. The Orchestrator files a GitHub issue carrying a frozen plan and the Roster of Roles that will execute it. `agentforge implement <n>` runs the Issue's Workflow and opens a draft pull request for a human to sign off. No workflow ever merges.
+A human states a Task. The Orchestrator files a GitHub issue carrying a frozen plan and the Roster of Roles that will execute it. `agentbastion implement <n>` runs the Issue's Workflow and opens a draft pull request for a human to sign off. No workflow ever merges.
 
 ![An Issue carries the frozen plan and the Roster. Each Agent reads that Issue and appends its result as the Run Log. The Workflow ends at a draft pull request that only a human can merge.](docs/assets/one-issue-number.svg)
 
@@ -13,7 +13,7 @@ Workflow invokes the Implementer, the Tester, Security, and then the Reviewer,
 posting each Agent Result to the Issue before starting the next Step.
 
 ```console
-$ agentforge plan "add a retry to the loader"
+$ agentbastion plan "add a retry to the loader"
 
 The Orchestrator has questions before it writes anything down.
 Answer them, or press Enter on an empty line to plan with what it has.
@@ -28,16 +28,16 @@ Filed issue #12: https://github.com/acme/pipelines/issues/12
   Roster: implementer (standard)
   Interview: 2 question(s) answered
 
-Run it with:  agentforge implement 12
+Run it with:  agentbastion implement 12
 
-$ agentforge implement 12 --allow-commands
+$ agentbastion implement 12 --allow-commands
   [ok] implementer (standard) — Wrapped the fetch in a bounded retry.
   [ok] tester (cheap) — pytest: 24 passed.
   [ok] security (deep) — Audited the change; no findings.
   [ok] reviewer (deep) — The change matches the plan. unslop: clean on attempt 2.
 
 Draft pull request: https://github.com/acme/pipelines/pull/13
-AgentForge stops at Sign-off. A human merges.
+AgentBastion stops at Sign-off. A human merges.
 ```
 
 The two commands can run on different machines. Nothing is shared between them but the issue number.
@@ -52,17 +52,17 @@ arrive is worse than planning from what was typed.
 
 A term you settle in the interview is recorded in the project's own `CONTEXT.md`
 so the same question is not asked next week. That leaves changes in your working
-tree; `agentforge plan` says which files, and they are yours to review and
+tree; `agentbastion plan` says which files, and they are yours to review and
 commit.
 
 Without `--allow-commands`, the Implementer remains default-deny and the Tester
 reports that it could not run the suite; it never substitutes reading tests and
 claims completion. Security, the Reviewer, and the Architect need no such flag —
 auditing, reviewing, and designing are reading. All six Roles `CONTEXT.md` names
-now run. Still to come: plugins and `agentforge init`. See
+now run. Still to come: plugins and `agentbastion init`. See
 [`docs/PLAN.md`](docs/PLAN.md).
 
-Before the first Role is invoked, AgentForge resolves a Context Pack from the
+Before the first Role is invoked, AgentBastion resolves a Context Pack from the
 frozen plan — the files it names, the symbols and imports inside them, the
 tables a query touches, the keys a config file sets — and hands the same pack to
 every Role, so six Agents do not each rediscover one repository. The pack is a
@@ -87,35 +87,35 @@ posted anyway with the report attached, because holding a finished Run on a
 cosmetic check trades a real cost for a stylistic one. The report reaches the
 Run Log either way.
 
-At 0.1 the stable surface is the Issue body: what AgentForge writes into an
+At 0.1 the stable surface is the Issue body: what AgentBastion writes into an
 issue keeps parsing, so a Run filed by one version resumes under a later one.
-Everything importable under `agentforge.*` is private and changes without
+Everything importable under `agentbastion.*` is private and changes without
 notice. See
 [ADR-0011](docs/adr/0011-the-issue-body-is-the-stable-surface.md).
 
 ## Install
 
-AgentForge publishes to no package index at 0.1, so neither route below is
-`pip install agentforge`. Both put the same `agentforge` command on your path.
+AgentBastion publishes to no package index at 0.1, so neither route below is
+`pip install agentbastion`. Both put the same `agentbastion` command on your path.
 
-**From a release wheel**, to run AgentForge against your own repositories.
+**From a release wheel**, to run AgentBastion against your own repositories.
 Download the wheel attached to the
-[latest release](https://github.com/yashmhatre/AgentForge/releases/latest) and
+[latest release](https://github.com/yashmhatre/AgentBastion/releases/latest) and
 install the file you downloaded:
 
 ```console
-$ pip install agentforge-0.1.0-py3-none-any.whl
-$ agentforge --version
-agentforge 0.1.0
+$ pip install agentbastion-0.1.0-py3-none-any.whl
+$ agentbastion --version
+agentbastion 0.1.0
 ```
 
-**From a clone**, to work on AgentForge itself. An editable install leaves the
+**From a clone**, to work on AgentBastion itself. An editable install leaves the
 command pointing at the checkout, so an edit takes effect without reinstalling,
 and `[dev]` adds the pytest and ruff that CI runs:
 
 ```console
-$ git clone https://github.com/yashmhatre/AgentForge.git
-$ cd AgentForge
+$ git clone https://github.com/yashmhatre/AgentBastion.git
+$ cd AgentBastion
 $ pip install -e ".[dev]"
 ```
 
@@ -128,15 +128,15 @@ What each release contains is in [CHANGELOG.md](CHANGELOG.md).
 - The [GitHub CLI](https://cli.github.com), authenticated
 - A coding-agent CLI. `claude` ships supported; `codex` exists to keep the provider port honest.
 
-AgentForge never touches a model API and handles no credentials of its own. Whatever your coding-agent CLI is already authenticated with is what a Run costs.
+AgentBastion never touches a model API and handles no credentials of its own. Whatever your coding-agent CLI is already authenticated with is what a Run costs.
 
 ## Commands
 
 | Command | What it does |
 | --- | --- |
-| `agentforge plan "<task>"` | Runs the Orchestrator at the `deep` tier and files an issue carrying the plan and roster. |
-| `agentforge implement <n>` | Reads Issue `<n>`, runs its Workflow on a branch, posts each Agent Result, and opens a draft PR. Add `--allow-commands` when the Workflow must execute a suite. |
-| `agentforge unslop <file>` | Scans prose for machine-writing tells. Deterministic; no model involved. |
+| `agentbastion plan "<task>"` | Runs the Orchestrator at the `deep` tier and files an issue carrying the plan and roster. |
+| `agentbastion implement <n>` | Reads Issue `<n>`, runs its Workflow on a branch, posts each Agent Result, and opens a draft PR. Add `--allow-commands` when the Workflow must execute a suite. |
+| `agentbastion unslop <file>` | Scans prose for machine-writing tells. Deterministic; no model involved. |
 
 Both agent commands take `--provider` and `--tier`. A bare `--tier deep` moves every Role; `--tier implementer=deep` moves one.
 
@@ -152,7 +152,7 @@ selectable too.
 | --- | --- | --- |
 | `feature` | implementer, tester, security, reviewer | The default: build something that was not there before. |
 | `bugfix` | implementer, tester, reviewer | A fix, verified and reported on. A bug that touches auth is a Task for `feature`. |
-| `review` | security, reviewer | A diff AgentForge did not write. Point it at a branch somebody else wrote. |
+| `review` | security, reviewer | A diff AgentBastion did not write. Point it at a branch somebody else wrote. |
 
 `review` is the only one with no Implementer. It ends at a draft pull request
 like the others, because the branch already carries the commits it was pointed
@@ -172,9 +172,9 @@ rather than one it inherits.
 
 ## Project configuration
 
-AgentForge reads `.agentforge/config.yaml` from the target repository when it
+AgentBastion reads `.agentbastion/config.yaml` from the target repository when it
 exists. Reading is all it does: it never creates the directory or writes the
-file. Writing one is `agentforge init`, which is M5.
+file. Writing one is `agentbastion init`, which is M5.
 Without a file, the documented Provider capability defaults are Claude
 `native` and every other Provider `fragment`.
 
@@ -196,7 +196,7 @@ appended to the prompt. Capability Tiers are configuration, never the result of
 probing an installed CLI.
 
 Most skills are vendored third party (see `skills/MANIFEST.yaml`). Two are
-AgentForge's own. `grill-with-docs` is the interview and the writing-down as one
+AgentBastion's own. `grill-with-docs` is the interview and the writing-down as one
 job, built out of `grilling` and `domain-modeling`: a native Provider is named
 the composite and fans it out itself, and a fragment Provider gets the composite
 and both parts inlined, because it has no mechanism to fan out with.

@@ -1,0 +1,49 @@
+AgentBastion bundles third-party skills under src/agentbastion/skills/.
+Machine-readable provenance, including commit SHAs and what was excluded from
+each bundle, is in MANIFEST.yaml alongside this file.
+
+================================================================================
+mattpocock/skills  —  grilling, domain-modeling, to-spec, to-tickets
+https://github.com/mattpocock/skills @ 5b15a47f2d7150f545fbcacbfe381787fc0230dc
+================================================================================
+
+MIT License
+
+Copyright (c) 2026 Matt Pocock
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+================================================================================
+theclaymethod/unslop  —  SKILL.md, scripts/, one silhouette fixture
+https://github.com/theclaymethod/unslop @ d81f5196167ded24f46fced04958c0c12d681798
+================================================================================
+
+Licensed MIT by the theclaymethod/unslop authors.
+
+The upstream repository states its licence in README.md ("Python 3.8+ and any
+supported coding agent. Licensed MIT.") and carries no LICENSE file. The
+GitHub licence API reports null for this repository. The grant itself is clear,
+but no copyright holder is named upstream and no warranty disclaimer is
+published, so neither can be reproduced here.
+
+Open item: upstream has been asked to add a LICENSE file naming the copyright
+holder, at https://github.com/theclaymethod/unslop/issues/9 (opened 2026-08-25,
+unanswered as of 2026-08-27). Until it is answered this bundle carries a licence
+grant recorded in prose rather than a canonical licence text, and the
+attribution above is ours rather than a reproduction of theirs.

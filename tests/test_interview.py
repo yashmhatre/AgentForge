@@ -11,16 +11,16 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from agentforge.agents.orchestrator import (
+from agentbastion.agents.orchestrator import (
     MAX_ROUNDS,
     ORCHESTRATOR,
     Exchange,
     Orchestrator,
     render_transcript,
 )
-from agentforge.core.contracts import ModelTier, Task
-from agentforge.core.plan_format import render_result_block
-from agentforge.providers.claude import ClaudeProvider
+from agentbastion.core.contracts import ModelTier, Task
+from agentbastion.core.plan_format import render_result_block
+from agentbastion.providers.claude import ClaudeProvider
 
 from .fakes import FakeRunner
 from .test_agents import orchestrator_output
@@ -234,7 +234,7 @@ def test_the_interview_skill_reaches_the_agent_by_the_capability_tier_path():
     orchestrator.plan(Task("add a retry"), CWD, Human("The orders loader."))
 
     interview = prompts(runner)[0]
-    assert "/agentforge:grill-with-docs" in interview
+    assert "/agentbastion:grill-with-docs" in interview
 
 
 def test_the_interview_skill_is_not_delivered_to_a_pass_with_nobody_in_the_room():
@@ -244,8 +244,8 @@ def test_the_interview_skill_is_not_delivered_to_a_pass_with_nobody_in_the_room(
 
     orchestrator.plan(Task("add a retry"), CWD)
 
-    assert "/agentforge:grill-with-docs" not in prompts(runner)[0]
-    assert "/agentforge:domain-modeling" in prompts(runner)[0]
+    assert "/agentbastion:grill-with-docs" not in prompts(runner)[0]
+    assert "/agentbastion:domain-modeling" in prompts(runner)[0]
 
 
 def test_the_orchestrator_declares_its_planning_equipment():

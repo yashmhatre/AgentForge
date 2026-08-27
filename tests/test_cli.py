@@ -1,6 +1,6 @@
 """The commands as a data engineer types them.
 
-These cover the surface `agentforge --help` promises: exit codes, the tier
+These cover the surface `agentbastion --help` promises: exit codes, the tier
 override syntax, and what gets printed when a Run stops rather than finishes.
 `main` takes the Command Runner as an argument, so the whole CLI runs offline
 without a single patch.
@@ -12,9 +12,9 @@ import json
 
 import pytest
 
-from agentforge import __version__, cli
-from agentforge.core.contracts import ModelTier
-from agentforge.core.plan_format import render_result_block
+from agentbastion import __version__, cli
+from agentbastion.core.contracts import ModelTier
+from agentbastion.core.plan_format import render_result_block
 
 from .fakes import FakeRunner
 from .test_agents import orchestrator_output
@@ -39,7 +39,7 @@ def run(argv, runner) -> int:
 
 def test_no_command_prints_help_rather_than_failing_obscurely(capsys):
     assert cli.main([]) == 2
-    assert "usage: agentforge" in capsys.readouterr().out
+    assert "usage: agentbastion" in capsys.readouterr().out
 
 
 def test_plan_reports_the_issue_and_how_to_run_it(runner, capsys):
@@ -50,7 +50,7 @@ def test_plan_reports_the_issue_and_how_to_run_it(runner, capsys):
     out = capsys.readouterr().out
     assert "Filed issue #12" in out
     assert "Roster: implementer (standard)" in out
-    assert "agentforge implement 12" in out
+    assert "agentbastion implement 12" in out
 
 
 def test_plan_surfaces_dropped_roles_where_the_user_will_read_them(runner, capsys):
@@ -107,7 +107,7 @@ def test_a_halted_run_exits_one_and_points_at_the_label(runner, capsys):
 
     captured = capsys.readouterr()
     assert "[escalated] implementer" in captured.out
-    assert "agentforge:halted" in captured.err
+    assert "agentbastion:halted" in captured.err
 
 
 def test_a_suspended_run_exits_one_and_names_the_gate_it_is_waiting_on(
@@ -124,7 +124,7 @@ def test_a_suspended_run_exits_one_and_names_the_gate_it_is_waiting_on(
     captured = capsys.readouterr()
     assert "[ok] implementer" in captured.out
     assert "waiting on the `human` Gate" in captured.err
-    assert "agentforge:suspended" in captured.err
+    assert "agentbastion:suspended" in captured.err
 
 
 def test_a_tier_override_reaches_the_provider(runner):

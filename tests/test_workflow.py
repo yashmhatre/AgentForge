@@ -14,10 +14,10 @@ from __future__ import annotations
 
 import pytest
 
-from agentforge.agents import RUNNERS
-from agentforge.core.contracts import ModelTier
-from agentforge.core.gates import GATES
-from agentforge.core.workflow import (
+from agentbastion.agents import RUNNERS
+from agentbastion.core.contracts import ModelTier
+from agentbastion.core.gates import GATES
+from agentbastion.core.workflow import (
     WORKFLOWS_ROOT,
     WorkflowError,
     load_workflow,

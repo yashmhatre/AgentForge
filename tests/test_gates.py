@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from agentforge.core.contracts import (
+from agentbastion.core.contracts import (
     AgentResult,
     Finding,
     GateEntry,
@@ -22,8 +22,8 @@ from agentforge.core.contracts import (
     Roster,
     RunState,
 )
-from agentforge.core.gates import GATES, GateContext, evaluate_gate
-from agentforge.core.process import MissingBinary
+from agentbastion.core.gates import GATES, GateContext, evaluate_gate
+from agentbastion.core.process import MissingBinary
 
 from .fakes import FakeRunner
 
@@ -138,7 +138,7 @@ def test_a_human_gate_judges_nobodys_output_so_it_invalidates_no_step():
 
 
 def test_a_human_gate_clears_once_the_run_log_shows_it_has_already_blocked():
-    """The human's acknowledgement is re-running `agentforge implement`: they
+    """The human's acknowledgement is re-running `agentbastion implement`: they
     were told the Run stopped, they looked, and they came back. Read off the Run
     Log rather than a flag, so it survives the laptop the first Run was on."""
     blocked = GateEntry("human", GateVerdict.BLOCKED, step=1)
@@ -168,7 +168,7 @@ def test_another_kinds_block_at_this_step_does_not_clear_the_human_gate():
 
 
 def test_the_suite_runs_through_the_command_runner_in_the_repository_it_judges():
-    """Nothing in AgentForge imports `subprocess`, this Gate included — and a
+    """Nothing in AgentBastion imports `subprocess`, this Gate included — and a
     suite run somewhere other than the Run's tree judges somebody else's code."""
     runner = a_suite(stdout="24 passed")
 
@@ -346,7 +346,7 @@ def test_the_clean_pass_gate_runs_nothing():
 def test_the_suite_a_project_declares_is_the_one_that_runs(tmp_path):
     """A repository that does not run pytest says so in its Project Context. The
     Gate reads it rather than guessing from the shape of the tree."""
-    config_dir = tmp_path / ".agentforge"
+    config_dir = tmp_path / ".agentbastion"
     config_dir.mkdir()
     (config_dir / "config.yaml").write_text(
         "gates:\n  tests:\n    suite: npm test --silent\n", encoding="utf-8"

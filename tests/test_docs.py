@@ -15,7 +15,7 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
-import agentforge
+import agentbastion
 
 from .docs_check import check_documentation, parse_glossary
 
@@ -353,4 +353,4 @@ def test_the_package_and_the_distribution_agree_on_the_version():
     """
     metadata = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
-    assert metadata["project"]["version"] == agentforge.__version__
+    assert metadata["project"]["version"] == agentbastion.__version__

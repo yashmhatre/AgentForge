@@ -3,11 +3,11 @@
 import json
 from pathlib import Path
 
-from agentforge.agents.tester import TESTER, build_prompt
-from agentforge.agents.tester import Tester as _TesterRunner
-from agentforge.core.contracts import ContextPack, ModelTier, Outcome
-from agentforge.core.plan_format import render_result_block
-from agentforge.providers.claude import ClaudeProvider
+from agentbastion.agents.tester import TESTER, build_prompt
+from agentbastion.agents.tester import Tester as _TesterRunner
+from agentbastion.core.contracts import ContextPack, ModelTier, Outcome
+from agentbastion.core.plan_format import render_result_block
+from agentbastion.providers.claude import ClaudeProvider
 
 from .fakes import FakeRunner
 from .test_contracts import a_plan

@@ -5,7 +5,7 @@
   "duration_ms": 48213,
   "duration_api_ms": 46110,
   "num_turns": 3,
-  "result": "Step s1 names `src/loader.py`, which does not exist in this repository. The\nloader lives in `src/pipeline/ingest.py` and has no `fetch` call.\n\n<!-- agentforge:result -->\n```json\n{\n  \"outcome\": \"escalated\",\n  \"summary\": \"Step s1 targets src/loader.py, which is not in this repository; the loader is src/pipeline/ingest.py.\",\n  \"detail\": \"No files were changed.\",\n  \"files_changed\": []\n}\n```\n<!-- /agentforge:result -->",
+  "result": "Step s1 names `src/loader.py`, which does not exist in this repository. The\nloader lives in `src/pipeline/ingest.py` and has no `fetch` call.\n\n<!-- agentbastion:result -->\n```json\n{\n  \"outcome\": \"escalated\",\n  \"summary\": \"Step s1 targets src/loader.py, which is not in this repository; the loader is src/pipeline/ingest.py.\",\n  \"detail\": \"No files were changed.\",\n  \"files_changed\": []\n}\n```\n<!-- /agentbastion:result -->",
   "session_id": "3f6c1f4a-2b7e-4a51-9a0e-1c2d3e4f5a6b",
   "total_cost_usd": 0.0611,
   "usage": {

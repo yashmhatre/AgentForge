@@ -5,7 +5,7 @@
   "duration_ms": 48213,
   "duration_api_ms": 46110,
   "num_turns": 9,
-  "result": "I read the plan and made the change.\n\n<!-- agentforge:result -->\n```json\n{\n  \"outcome\": \"completed\",\n  \"summary\": \"Wrapped the fetch in a bounded retry and covered the exhausted path.\",\n  \"detail\": \"Retries are capped at three with exponential backoff.\",\n  \"files_changed\": [\"src/loader.py\", \"tests/test_loader.py\"]\n}\n```\n<!-- /agentforge:result -->",
+  "result": "I read the plan and made the change.\n\n<!-- agentbastion:result -->\n```json\n{\n  \"outcome\": \"completed\",\n  \"summary\": \"Wrapped the fetch in a bounded retry and covered the exhausted path.\",\n  \"detail\": \"Retries are capped at three with exponential backoff.\",\n  \"files_changed\": [\"src/loader.py\", \"tests/test_loader.py\"]\n}\n```\n<!-- /agentbastion:result -->",
   "session_id": "3f6c1f4a-2b7e-4a51-9a0e-1c2d3e4f5a6b",
   "total_cost_usd": 0.4312,
   "usage": {

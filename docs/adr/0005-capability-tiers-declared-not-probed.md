@@ -4,4 +4,4 @@ ADR-0001 makes Providers interchangeable but not equally capable: `claude` loads
 
 ## Consequences
 
-Every skill AgentForge ships needs a Fragment form, so a skill that only works as a native slash command cannot be adopted. A Fragment costs prompt tokens on every invocation that native delivery does not, and the degraded path is the one most likely to go untested, since the primary Provider never exercises it.
+Every skill AgentBastion ships needs a Fragment form, so a skill that only works as a native slash command cannot be adopted. A Fragment costs prompt tokens on every invocation that native delivery does not, and the degraded path is the one most likely to go untested, since the primary Provider never exercises it.

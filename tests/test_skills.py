@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from agentforge.core import skills
+from agentbastion.core import skills
 
 
 def test_all_five_third_party_skills_are_vendored():

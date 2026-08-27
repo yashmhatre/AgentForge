@@ -8,7 +8,7 @@ Reading the plan, then editing src/loader.py.
 [2026-08-25T09:14:41] codex
 Done. The retry is in place.
 
-<!-- agentforge:result -->
+<!-- agentbastion:result -->
 ```json
 {
   "outcome": "completed",
@@ -16,5 +16,5 @@ Done. The retry is in place.
   "files_changed": ["src/loader.py"]
 }
 ```
-<!-- /agentforge:result -->
+<!-- /agentbastion:result -->
 [2026-08-25T09:14:42] tokens used: 21044

@@ -1,6 +1,6 @@
 # ADR-0009: Usage is reported in the unit the Provider gives
 
-AgentForge is described as token-efficient, and until an Agent Result carried what its invocation consumed there was no way to know whether that was true. The obvious shape — one number, in dollars, on every Run Log entry — cannot be built. The `claude` envelope reports `total_cost_usd` and a token split; a `codex` transcript ends with `tokens used: 21044` and no price; a third CLI may report nothing at all. A dollar figure derived from a rate card would be a number nobody was charged, and it would go stale the first time a vendor changed a price.
+AgentBastion is described as token-efficient, and until an Agent Result carried what its invocation consumed there was no way to know whether that was true. The obvious shape — one number, in dollars, on every Run Log entry — cannot be built. The `claude` envelope reports `total_cost_usd` and a token split; a `codex` transcript ends with `tokens used: 21044` and no price; a third CLI may report nothing at all. A dollar figure derived from a rate card would be a number nobody was charged, and it would go stale the first time a vendor changed a price.
 
 So a `Usage` carries whatever its Provider gave — dollars, tokens, both, or neither — every field optional, and each Run Log line says which of those it is holding. Where a Provider reports tokens only, the line says tokens and says that is all the CLI gave. Where it reports nothing, the line says so, because a blank is indistinguishable from free.
 

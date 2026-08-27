@@ -8,11 +8,11 @@ from "did not audit", and a paragraph cannot be asked that question.
 import json
 from pathlib import Path
 
-from agentforge.agents.security import SECURITY, build_prompt
-from agentforge.agents.security import Security as _SecurityRunner
-from agentforge.core.contracts import ContextPack, ModelTier, Outcome
-from agentforge.core.plan_format import render_result_block
-from agentforge.providers.claude import ClaudeProvider
+from agentbastion.agents.security import SECURITY, build_prompt
+from agentbastion.agents.security import Security as _SecurityRunner
+from agentbastion.core.contracts import ContextPack, ModelTier, Outcome
+from agentbastion.core.plan_format import render_result_block
+from agentbastion.providers.claude import ClaudeProvider
 
 from .fakes import FakeRunner
 from .test_contracts import a_plan

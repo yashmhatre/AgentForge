@@ -1,16 +1,16 @@
-<title>AgentForge Build Plan</title>
+<title>AgentBastion Build Plan</title>
 
-# AgentForge — Build Plan
+# AgentBastion — Build Plan
 
 Vocabulary for everything below lives in [`CONTEXT.md`](../CONTEXT.md). Decisions live in [`docs/adr/`](adr/). This file covers order of work.
 
-**On the numbers.** The milestone numbers here are the ones the code comments use — the Tester arrived in M2, Context Packs are M3, `agentforge init` is M5. The Issue tracker numbered the same work differently: it opened Issue #1 as M1, then skipped a number, so what this file calls M2 was filed and closed as "M3: full Roster and Workflow runtime". Nothing is missing between M1 and M2. Prefer these numbers when writing a comment, and name the milestone rather than its number when writing an Issue title.
+**On the numbers.** The milestone numbers here are the ones the code comments use — the Tester arrived in M2, Context Packs are M3, `agentbastion init` is M5. The Issue tracker numbered the same work differently: it opened Issue #1 as M1, then skipped a number, so what this file calls M2 was filed and closed as "M3: full Roster and Workflow runtime". Nothing is missing between M1 and M2. Prefer these numbers when writing a comment, and name the milestone rather than its number when writing an Issue title.
 
 ## What is being built
 
-A human types `agentforge plan "add a late-arriving-facts handler to the orders pipeline"`. The Orchestrator resolves project context, picks a Roster, writes a plan, and files a GitHub issue.
+A human types `agentbastion plan "add a late-arriving-facts handler to the orders pipeline"`. The Orchestrator resolves project context, picks a Roster, writes a plan, and files a GitHub issue.
 
-Later, anyone types `agentforge implement 390`. AgentForge reads issue 390, runs the Roster in order — Implementer, Tester, Security, Reviewer — posting each result to the issue as it goes, and opens a draft pull request for a human to sign off.
+Later, anyone types `agentbastion implement 390`. AgentBastion reads issue 390, runs the Roster in order — Implementer, Tester, Security, Reviewer — posting each result to the issue as it goes, and opens a draft pull request for a human to sign off.
 
 No Workflow ever merges.
 
@@ -18,9 +18,9 @@ No Workflow ever merges.
 
 ## Four things to fix before any of this works
 
-**The repository is not a repository.** `g:\Projects\AgentForge` has no `.git` and no remote. Every handoff in ADR-0002 runs through `gh`, which needs both. This blocks the first end-to-end test, not the first line of code.
+**The repository is not a repository.** `g:\Projects\AgentBastion` has no `.git` and no remote. Every handoff in ADR-0002 runs through `gh`, which needs both. This blocks the first end-to-end test, not the first line of code.
 
-**The package does not install.** `pyproject.toml` declares the distribution as `agentforge`, then tells setuptools to find `core*`, `agents*`, `context*`, `plugins*`, and `providers*`. A `pip install agentforge` would drop five generic top-level names into site-packages, where `context` and `core` will collide with something. Move everything under `src/agentforge/`, and the `pip install + agentforge init` model in ADR-0002 starts working.
+**The package does not install.** `pyproject.toml` declares the distribution as `agentbastion`, then tells setuptools to find `core*`, `agents*`, `context*`, `plugins*`, and `providers*`. A `pip install agentbastion` would drop five generic top-level names into site-packages, where `context` and `core` will collide with something. Move everything under `src/agentbastion/`, and the `pip install + agentbastion init` model in ADR-0002 starts working.
 
 **Two Roles have no home.** The skeleton ships Architect, Implementer, Tester, and Reviewer. The pipeline you described also needs Security and Orchestrator. Neither exists in `agents/`.
 
@@ -32,7 +32,7 @@ No Workflow ever merges.
 
 One Role, running end to end, proving ADR-0001 through ADR-0004 at once. Nothing here is throwaway.
 
-Restructure to `src/agentforge/` and add a `[project.scripts]` entry pointing at the CLI. Delete the top-level `cli.py` once `agentforge.cli:main` replaces it.
+Restructure to `src/agentbastion/` and add a `[project.scripts]` entry pointing at the CLI. Delete the top-level `cli.py` once `agentbastion.cli:main` replaces it.
 
 Write `core/contracts.py`. It is the load-bearing file in the project and everything else imports from it: `Task`, `Plan`, `Roster`, `Role`, `ContextPack`, `AgentResult`, `RunState`, `ModelTier`. Dataclasses, no behavior. ADR-0003 makes `Plan` an interface parsed by every Role, so its serialized shape gets designed here and changed rarely.
 
@@ -40,7 +40,7 @@ Write `providers/base.py` as an abstract `Provider` with one method — take a R
 
 Write `core/issues.py` around `gh`: `read_issue`, `post_comment`, `set_label`, `open_draft_pr`. Every GitHub call in the codebase goes through this module, so the day Azure DevOps support becomes real, this is the only file that gets rewritten.
 
-Then the two commands. `agentforge plan "<task>"` runs the Orchestrator at tier `deep` and files an issue. `agentforge implement <n>` reads the issue, runs the Implementer against the frozen plan, posts a result comment, and opens a draft PR.
+Then the two commands. `agentbastion plan "<task>"` runs the Orchestrator at tier `deep` and files an issue. `agentbastion implement <n>` reads the issue, runs the Implementer against the frozen plan, posts a result comment, and opens a draft PR.
 
 M1 is done when a task typed on one machine can be implemented from another with nothing shared but an issue number.
 
@@ -74,11 +74,11 @@ Registration goes in `core/registry.py`.
 
 ## M5 — Plug and play
 
-`agentforge init` inspects a target repository, detects languages and platform markers, enables the matching plugins, and writes `.agentforge/config.yaml`. It fails loudly when the repository has no git remote, because ADR-0002 makes that a hard precondition.
+`agentbastion init` inspects a target repository, detects languages and platform markers, enables the matching plugins, and writes `.agentbastion/config.yaml`. It fails loudly when the repository has no git remote, because ADR-0002 makes that a hard precondition.
 
 The config file owns tier mapping, Provider selection, plugin activation, and Gate policy. A team retunes cost without editing a Role.
 
-Dogfood it: run `agentforge init` against AgentForge itself, then build M6 through the pipeline.
+Dogfood it: run `agentbastion init` against AgentBastion itself, then build M6 through the pipeline.
 
 ---
 

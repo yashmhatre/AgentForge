@@ -1,4 +1,4 @@
-# A project's AgentForge configuration, as `agentforge init` will write it.
+# A project's AgentBastion configuration, as `agentbastion init` will write it.
 providers:
   claude:
     capability_tier: native

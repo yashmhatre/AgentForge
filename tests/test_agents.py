@@ -10,21 +10,21 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from agentforge import agents
-from agentforge.agents.implementer import IMPLEMENTER, Implementer, build_prompt
-from agentforge.agents.orchestrator import (
+from agentbastion import agents
+from agentbastion.agents.implementer import IMPLEMENTER, Implementer, build_prompt
+from agentbastion.agents.orchestrator import (
     ORCHESTRATOR,
     Orchestrator,
     build_document,
     select_roster,
 )
-from agentforge.core.contracts import ContextPack, ModelTier, Outcome, Task
-from agentforge.core.plan_format import (
+from agentbastion.core.contracts import ContextPack, ModelTier, Outcome, Task
+from agentbastion.core.plan_format import (
     PLAN_CLOSE,
     PLAN_OPEN,
     render_result_block,
 )
-from agentforge.providers.claude import ClaudeProvider
+from agentbastion.providers.claude import ClaudeProvider
 
 from .fakes import FakeRunner
 from .test_contracts import a_plan
@@ -138,7 +138,7 @@ def test_the_planning_prompt_lists_the_workflows_and_their_steps():
 
 def test_the_planning_prompt_says_the_orchestrator_files_nothing():
     """`to-spec` and `to-tickets` both end by publishing to a tracker and
-    labelling what they filed. That is AgentForge's job, and a second Issue
+    labelling what they filed. That is AgentBastion's job, and a second Issue
     filed from inside a planning pass is one nobody is tracking."""
     prompt = Orchestrator(ClaudeProvider(FakeRunner())).build_prompt(
         Task("add a retry"), Path("/repo")
@@ -347,14 +347,14 @@ def test_the_implementer_is_told_to_stop_rather_than_improvise():
     assert "Do not re-scope" in prompt
 
 
-def test_the_implementer_leaves_committing_to_agentforge():
+def test_the_implementer_leaves_committing_to_agentbastion():
     """The branch and the commit are the runtime's job; an Agent that commits
     makes the diff impossible to attribute."""
     assert "Commit nothing" in build_prompt(a_plan(), ContextPack(), Path("/repo"))
 
 
 def test_a_plan_with_no_steps_tells_the_implementer_to_escalate():
-    from agentforge.core.contracts import Plan
+    from agentbastion.core.contracts import Plan
 
     prompt = build_prompt(Plan(summary="do something"), ContextPack(), Path("/repo"))
 

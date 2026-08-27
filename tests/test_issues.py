@@ -12,8 +12,10 @@ from pathlib import Path
 
 import pytest
 
-from agentforge.agents.implementer import IMPLEMENTER
-from agentforge.core.contracts import (
+from agentbastion.agents.implementer import IMPLEMENTER
+from agentbastion.core import issues
+from agentbastion.core.contracts import (
+    RUN_LABELS,
     AgentResult,
     ContextPack,
     Finding,
@@ -27,7 +29,7 @@ from agentforge.core.contracts import (
     RunStatus,
     Usage,
 )
-from agentforge.core.issues import (
+from agentbastion.core.issues import (
     Comment,
     GitHub,
     Issue,
@@ -42,7 +44,7 @@ from agentforge.core.issues import (
     render_terminal_comment,
     run_state,
 )
-from agentforge.core.plan_format import PlanFormatError
+from agentbastion.core.plan_format import PlanFormatError
 
 from .fakes import FakeRunner
 
@@ -60,7 +62,7 @@ def issue_json(**overrides) -> str:
         "title": "add a retry to the loader",
         "body": BODY,
         "url": "https://github.com/acme/pipelines/issues/12",
-        "labels": [{"name": "agentforge:planned"}],
+        "labels": [{"name": "agentbastion:planned"}],
         "comments": [],
     }
     payload.update(overrides)
@@ -80,7 +82,7 @@ def test_reading_an_issue_asks_gh_for_everything_a_run_needs():
     requested = set(runner.argument_after("--json", "gh", "issue", "view").split(","))
     assert {"body", "labels", "comments"} <= requested
     assert issue.number == 12
-    assert issue.labels == ("agentforge:planned",)
+    assert issue.labels == ("agentbastion:planned",)
 
 
 def test_filing_an_issue_sends_the_body_verbatim():
@@ -88,7 +90,7 @@ def test_filing_an_issue_sends_the_body_verbatim():
         "gh", "issue", "create", stdout="https://github.com/acme/pipelines/issues/41\n"
     )
 
-    issue = github(runner).create_issue("add a retry", BODY, labels=("agentforge:planned",))
+    issue = github(runner).create_issue("add a retry", BODY, labels=("agentbastion:planned",))
 
     assert runner.argument_after("--body", "gh", "issue", "create") == BODY
     assert issue.number == 41
@@ -96,19 +98,19 @@ def test_filing_an_issue_sends_the_body_verbatim():
 
 
 def test_a_label_is_created_before_it_is_applied():
-    """A repository that has never run AgentForge has none of our labels, and
+    """A repository that has never run AgentBastion has none of our labels, and
     `gh issue edit --add-label` fails on a label that does not exist."""
     runner = FakeRunner()
 
-    github(runner).set_label(12, "agentforge:running")
+    github(runner).set_label(12, "agentbastion:running")
 
     assert runner.ran("gh", "label", "create")
-    assert runner.argument_after("--add-label", "gh", "issue", "edit") == "agentforge:running"
+    assert runner.argument_after("--add-label", "gh", "issue", "edit") == "agentbastion:running"
 
 
 def test_one_status_label_at_a_time_so_a_run_is_never_ambiguous():
     runner = FakeRunner()
-    issue = Issue(number=12, title="t", body=BODY, labels=("agentforge:planned",))
+    issue = Issue(number=12, title="t", body=BODY, labels=("agentbastion:planned",))
 
     github(runner).set_status(issue, RunStatus.RUNNING)
 
@@ -116,8 +118,8 @@ def test_one_status_label_at_a_time_so_a_run_is_never_ambiguous():
     removed = [c[c.index("--remove-label") + 1] for c in edits if "--remove-label" in c]
     added = [c[c.index("--add-label") + 1] for c in edits if "--add-label" in c]
 
-    assert removed == ["agentforge:planned"]
-    assert added == ["agentforge:running"]
+    assert removed == ["agentbastion:planned"]
+    assert added == ["agentbastion:running"]
 
 
 def test_a_label_that_already_exists_does_not_stop_the_run():
@@ -130,21 +132,28 @@ def test_a_label_that_already_exists_does_not_stop_the_run():
     github(runner).set_status(Issue(12, "t", BODY), RunStatus.RUNNING)
 
     assert runner.ran("gh", "label", "create")
-    assert runner.argument_after("--add-label", "gh", "issue", "edit") == "agentforge:running"
+    assert runner.argument_after("--add-label", "gh", "issue", "edit") == "agentbastion:running"
 
 
-def test_the_label_this_project_already_applied_is_cleared_when_the_run_moves_on():
-    """Renaming `agentforge:escalated` to `agentforge:halted` leaves the old label
-    on issues that are still open. A Run that touches one takes it off."""
+def test_a_retired_label_is_cleared_when_the_run_moves_on(monkeypatch):
+    """Renaming a status label leaves the old one on Issues that are still open,
+    and an Issue wearing both wears two answers. A Run that touches one takes the
+    retired label off.
+
+    `LEGACY_LABELS` is empty since ADR-0012, so this drives the mechanism through
+    a stand-in rather than a real retired label. That is the point: the clearing
+    has to keep working for the rename that has not happened yet.
+    """
+    monkeypatch.setattr(issues, "RUN_LABELS", (*RUN_LABELS, "agentbastion:retired"))
     runner = FakeRunner()
-    issue = Issue(number=12, title="t", body=BODY, labels=("agentforge:escalated",))
+    issue = Issue(number=12, title="t", body=BODY, labels=("agentbastion:retired",))
 
     github(runner).set_status(issue, RunStatus.RUNNING)
 
     edits = runner.matching("gh", "issue", "edit")
     removed = [c[c.index("--remove-label") + 1] for c in edits if "--remove-label" in c]
 
-    assert removed == ["agentforge:escalated"]
+    assert removed == ["agentbastion:retired"]
 
 
 def test_a_pull_request_is_opened_as_a_draft_against_the_run_branch():
@@ -153,12 +162,12 @@ def test_a_pull_request_is_opened_as_a_draft_against_the_run_branch():
     )
 
     url = github(runner).open_draft_pr(
-        title="add a retry", body="Closes #12.", head="agentforge/issue-12", base="main"
+        title="add a retry", body="Closes #12.", head="agentbastion/issue-12", base="main"
     )
 
     call = runner.only("gh", "pr", "create")
     assert "--draft" in call
-    assert runner.argument_after("--head", "gh", "pr", "create") == "agentforge/issue-12"
+    assert runner.argument_after("--head", "gh", "pr", "create") == "agentbastion/issue-12"
     assert url.endswith("/pull/42")
 
 
@@ -259,7 +268,7 @@ def test_an_escalation_comment_tells_the_human_what_to_do_next():
     body = render_run_log_comment(result)
 
     assert "escalated" in body
-    assert "plan block" in body and "agentforge implement" in body
+    assert "plan block" in body and "agentbastion implement" in body
 
 
 def test_an_escalation_comment_names_the_step_the_role_stopped_at():
@@ -315,7 +324,7 @@ def test_human_comments_are_ignored_by_the_run_log():
 
 
 def test_a_run_state_is_rebuilt_from_an_issue_alone():
-    issue = Issue(12, "add a retry", BODY, labels=("agentforge:planned",))
+    issue = Issue(12, "add a retry", BODY, labels=("agentbastion:planned",))
 
     state = run_state(issue)
 
@@ -332,7 +341,7 @@ def test_a_half_finished_run_resumes_where_the_run_log_stopped():
         AgentResult("implementer", ModelTier.STANDARD, Outcome.COMPLETED, "Added the retry.")
     )
     issue = Issue(
-        12, "add a retry", BODY, labels=("agentforge:running",), comments=(Comment("bot", done),)
+        12, "add a retry", BODY, labels=("agentbastion:running",), comments=(Comment("bot", done),)
     )
 
     state = run_state(issue)
@@ -350,9 +359,15 @@ def test_status_falls_back_to_the_run_log_when_a_label_was_removed_by_hand():
     assert run_state(issue).status is RunStatus.HALTED
 
 
-def test_an_issue_labelled_by_an_older_agentforge_still_reads_as_a_run():
-    """`agentforge:escalated` was the label before Halted was the state's name."""
-    issue = Issue(12, "add a retry", BODY, labels=("agentforge:escalated",))
+def test_an_issue_wearing_a_retired_label_still_reads_as_a_run(monkeypatch):
+    """A Run that cannot read its own state back is the one thing ADR-0002 does
+    not survive, so a retired label resolves to whatever status it became.
+
+    Empty table since ADR-0012, hence the stand-in; see
+    `test_a_retired_label_is_cleared_when_the_run_moves_on`.
+    """
+    monkeypatch.setattr(issues, "LEGACY_LABELS", {"agentbastion:retired": RunStatus.HALTED})
+    issue = Issue(12, "add a retry", BODY, labels=("agentbastion:retired",))
 
     assert run_state(issue).status is RunStatus.HALTED
 
@@ -368,7 +383,7 @@ def test_the_step_a_run_reached_is_derived_from_the_issue_and_nothing_else():
         12,
         "add a retry",
         BODY,
-        labels=("agentforge:halted",),
+        labels=("agentbastion:halted",),
         comments=(Comment("bot", done), Comment("bot", stopped)),
     )
 
@@ -442,7 +457,7 @@ def test_a_run_state_carries_the_gate_verdicts_the_run_log_holds():
         12,
         "add a retry",
         BODY,
-        labels=("agentforge:suspended",),
+        labels=("agentbastion:suspended",),
         comments=(Comment("bot", done), Comment("bot", blocked)),
     )
 
@@ -466,7 +481,7 @@ def test_a_gate_that_blocked_on_a_roles_output_reads_back_as_a_step_to_re_run():
         12,
         "add a retry",
         BODY,
-        labels=("agentforge:suspended",),
+        labels=("agentbastion:suspended",),
         comments=(Comment("bot", done), Comment("bot", blocked)),
     )
 
@@ -521,7 +536,7 @@ def test_a_finished_run_ends_by_stating_where_it_got_to():
     body = render_terminal_comment(state)
 
     assert "### Run complete" in body
-    assert "`agentforge:awaiting-signoff`" in body
+    assert "`agentbastion:awaiting-signoff`" in body
     assert "**Escalated:** no" in body
     assert "implementer, tester" in body
     assert "/pull/13" in body
@@ -537,10 +552,10 @@ def test_a_halted_run_names_the_escalation_and_the_step_it_stopped_on():
     body = render_terminal_comment(a_state(RunStatus.HALTED, IMPLEMENTED, escalated))
 
     assert "### Run halted" in body
-    assert "`agentforge:halted`" in body
+    assert "`agentbastion:halted`" in body
     assert "**Escalated:** yes, at step 2 (tester)" in body
     assert "There is no suite here." in body
-    assert "agentforge implement 12" in body
+    assert "agentbastion implement 12" in body
 
 
 def test_a_failed_run_says_it_failed_rather_than_that_it_escalated():
@@ -549,7 +564,7 @@ def test_a_failed_run_says_it_failed_rather_than_that_it_escalated():
     body = render_terminal_comment(a_state(RunStatus.FAILED, IMPLEMENTED, failed))
 
     assert "### Run failed" in body
-    assert "`agentforge:failed`" in body
+    assert "`agentbastion:failed`" in body
     assert "**Escalated:** no" in body
     assert "claude: rate limited" in body
 
@@ -566,12 +581,12 @@ def test_a_suspended_run_reads_differently_from_a_halted_one():
     )
 
     assert "### Run suspended" in suspended
-    assert "`agentforge:suspended`" in suspended
+    assert "`agentbastion:suspended`" in suspended
     assert "**Escalated:** no" in suspended
     assert "Gate" in suspended
 
     assert "### Run halted" in halted
-    assert "`agentforge:halted`" in halted
+    assert "`agentbastion:halted`" in halted
     assert suspended != halted
 
 
@@ -616,7 +631,7 @@ def test_a_run_state_costs_one_gh_call_and_touches_no_local_state(tmp_path):
         "issue",
         "view",
         stdout=issue_json(
-            labels=[{"name": "agentforge:halted"}],
+            labels=[{"name": "agentbastion:halted"}],
             comments=[{"author": {"login": "bot"}, "body": stopped}],
         ),
     )
@@ -678,7 +693,7 @@ def test_the_cost_survives_the_round_trip_through_the_run_log():
     usage = Usage("claude", input_tokens=100, output_tokens=20, cost_usd=0.5)
     result = AgentResult("implementer", ModelTier.STANDARD, Outcome.COMPLETED, "Done.", usage=usage)
 
-    issue = Issue(12, "t", "b", comments=(Comment("forge", render_run_log_comment(result)),))
+    issue = Issue(12, "t", "b", comments=(Comment("bastion", render_run_log_comment(result)),))
 
     assert parse_run_log(issue)[0].usage == usage
 

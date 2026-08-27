@@ -12,10 +12,16 @@ from pathlib import Path
 
 import pytest
 
-from agentforge.agents import resolve_role
-from agentforge.agents.implementer import IMPLEMENTER
-from agentforge.core.contracts import ContextPack, ModelTier, PlanDocument, Roster, Task
-from agentforge.core.plan_format import (
+from agentbastion.agents import resolve_role
+from agentbastion.agents.implementer import IMPLEMENTER
+from agentbastion.core.contracts import (
+    ContextPack,
+    ModelTier,
+    PlanDocument,
+    Roster,
+    Task,
+)
+from agentbastion.core.plan_format import (
     PLAN_CLOSE,
     PLAN_OPEN,
     PlanFormatError,
@@ -75,7 +81,7 @@ def test_the_task_statement_is_prose_only_and_never_reaches_a_role():
 
 
 def test_a_body_with_no_plan_block_is_refused_by_name():
-    with pytest.raises(PlanFormatError, match="no AgentForge plan block"):
+    with pytest.raises(PlanFormatError, match="no AgentBastion plan block"):
         parse_issue_body("Someone filed this by hand.", resolve_role)
 
 
@@ -98,7 +104,7 @@ def test_a_newer_format_tells_the_user_to_upgrade_rather_than_misreading_it():
     payload = {"version": 99, "plan": a_plan().to_dict(), "roster": [{"role": "implementer"}]}
     body = f"{PLAN_OPEN}\n```json\n{json.dumps(payload)}\n```\n{PLAN_CLOSE}"
 
-    with pytest.raises(PlanFormatError, match="Upgrade AgentForge"):
+    with pytest.raises(PlanFormatError, match="Upgrade AgentBastion"):
         parse_issue_body(body, resolve_role)
 
 
@@ -173,7 +179,7 @@ def test_a_short_task_is_its_own_title():
 
 def test_a_previously_filed_issue_still_parses():
     """The format is an interface. This fixture is an Issue as an older
-    AgentForge filed it — before the body named its Workflow in prose — and if
+    AgentBastion filed it — before the body named its Workflow in prose — and if
     it stops parsing, so does every Issue already in someone's tracker."""
     body = (FIXTURES / "issue_body_v1.md").read_text(encoding="utf-8")
 

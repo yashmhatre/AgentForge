@@ -1,6 +1,6 @@
 """The one test double in the suite.
 
-Everything AgentForge does that a test can observe crosses the Command Runner:
+Everything AgentBastion does that a test can observe crosses the Command Runner:
 the argument vectors it sends to `git`, `gh`, and a coding-agent CLI, and the
 artifacts it builds out of what comes back. Faking that single port lets plan
 serialization, Roster ordering, tier resolution, Run Log sequencing, escalation
@@ -17,7 +17,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from agentforge.core.process import CommandResult
+from agentbastion.core.process import CommandResult
 
 
 @dataclass

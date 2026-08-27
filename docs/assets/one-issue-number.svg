@@ -9,7 +9,7 @@
     <g>
       <path d="M44,36 L64,25 L84,36 L84,58 L64,69 L44,58 Z" fill="none" stroke="#5EEAD4" stroke-width="2.4" stroke-linejoin="round"/>
       <path d="M44,36 L64,47 L84,36 M64,47 L64,69" fill="none" stroke="#5EEAD4" stroke-width="1.6" stroke-linejoin="round"/>
-      <text x="106" y="55" font-size="21" font-weight="600" letter-spacing="5.5" fill="#FFFFFF">AGENTFORGE</text>
+      <text x="106" y="55" font-size="21" font-weight="600" letter-spacing="5.5" fill="#FFFFFF">AGENTBASTION</text>
 
       <text x="44" y="168" font-family="Georgia, Times New Roman, serif" font-size="60" font-weight="700" fill="#FFFFFF">One issue number</text>
       <text x="44" y="232" font-family="Georgia, Times New Roman, serif" font-size="60" font-weight="700" fill="#FFFFFF">is the <tspan fill="#5EEAD4">entire contract.</tspan></text>
@@ -53,7 +53,7 @@
       <text x="70" y="780" font-family="Georgia, Times New Roman, serif" font-size="42" fill="#2F6B8F">&#8220;</text>
       <text x="104" y="772" font-family="Georgia, Times New Roman, serif" font-size="21" font-style="italic" fill="#FFFFFF">Trust comes from subtraction.</text>
 
-      <text x="44" y="842" font-size="14" fill="#6E8AA0">github.com/yashmhatre/AgentForge</text>
+      <text x="44" y="842" font-size="14" fill="#6E8AA0">github.com/yashmhatre/AgentBastion</text>
     </g>
 
     <!-- ===================== RIGHT: WORKFLOW HEADER ===================== -->
@@ -152,7 +152,7 @@
       <circle cx="1641" cy="181" r="4.4" fill="none" stroke="#0E7C63" stroke-width="1.7"/>
       <path d="M1615,185.4 v15.2 M1641,185.4 v7 a5,5 0 0 1 -5,5 h-16" fill="none" stroke="#0E7C63" stroke-width="1.7" stroke-linecap="round"/>
       <text x="1630" y="235" text-anchor="middle" font-size="14.5" font-weight="700" fill="#16293A">Draft PR</text>
-      <text x="1630" y="253" text-anchor="middle" font-size="9.5" fill="#5E7385">opened by AgentForge</text>
+      <text x="1630" y="253" text-anchor="middle" font-size="9.5" fill="#5E7385">opened by AgentBastion</text>
       <line x1="1578" y1="267" x2="1682" y2="267" stroke="#E1EAF0" stroke-width="1"/>
       <circle cx="1606" cy="291" r="7" fill="none" stroke="#16293A" stroke-width="1.6"/>
       <path d="M1595,308 a11,9 0 0 1 22,0" fill="none" stroke="#16293A" stroke-width="1.6" stroke-linecap="round"/>
@@ -198,12 +198,12 @@
         <text x="969" y="536" font-size="10.5" fill="#93A5B2">Agent Result</text>
         <text x="848" y="558" font-size="11.5" fill="#5E7385">pytest: 24 passed. Coverage unchanged.</text>
       </g>
-      <!-- agentforge itself, at Sign-off -->
+      <!-- agentbastion itself, at Sign-off -->
       <g>
         <circle cx="800" cy="618" r="15" fill="#E4F6EE" stroke="#9AD9C2" stroke-width="1.2"/>
         <path d="M794,610 l12,8 l-12,8 Z" fill="none" stroke="#0E7C63" stroke-width="1.5" stroke-linejoin="round"/>
         <rect x="830" y="592" width="470" height="60" rx="8" fill="#F4FBF8" stroke="#CBE9DD" stroke-width="1"/>
-        <text x="848" y="616" font-size="12.5" font-weight="700" fill="#16293A">agentforge</text>
+        <text x="848" y="616" font-size="12.5" font-weight="700" fill="#16293A">agentbastion</text>
         <rect x="925" y="605" width="54" height="15" rx="7.5" fill="#E4F6EE" stroke="#9AD9C2" stroke-width="1"/>
         <text x="952" y="616" text-anchor="middle" font-size="9" font-weight="600" fill="#127A5E">Sign-off</text>
         <text x="990" y="616" font-size="10.5" fill="#93A5B2">the framework, not a Role</text>

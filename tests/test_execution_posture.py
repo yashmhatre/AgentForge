@@ -16,10 +16,10 @@ from pathlib import Path
 
 import pytest
 
-from agentforge.core.contracts import ModelTier, Role
-from agentforge.core.plan_format import render_result_block
-from agentforge.core.runtime import Forge, RunFailed
-from agentforge.providers import get_provider
+from agentbastion.core.contracts import ModelTier, Role
+from agentbastion.core.plan_format import render_result_block
+from agentbastion.core.runtime import Bastion, RunFailed
+from agentbastion.providers import get_provider
 
 from .fakes import FakeRunner, github_repository
 from .test_runtime import BODY, ROOT, issue_json
@@ -153,7 +153,7 @@ def _runner() -> FakeRunner:
 def test_a_run_denies_commands_unless_asked():
     runner = _runner()
 
-    Forge(cwd=ROOT, provider="claude", runner=runner).implement(12)
+    Bastion(cwd=ROOT, provider="claude", runner=runner).implement(12)
 
     assert runner.argument_after("--permission-mode", "claude") == "acceptEdits"
 
@@ -161,7 +161,7 @@ def test_a_run_denies_commands_unless_asked():
 def test_a_run_opens_the_gate_when_the_human_asks():
     runner = _runner()
 
-    Forge(cwd=ROOT, provider="claude", runner=runner).implement(12, allow_commands=True)
+    Bastion(cwd=ROOT, provider="claude", runner=runner).implement(12, allow_commands=True)
 
     calls = runner.matching("claude")
     assert calls
@@ -178,7 +178,7 @@ def test_opening_the_gate_is_refused_on_a_dirty_tree():
     runner.script("git", "status", "--porcelain", stdout=" M src/loader.py\n")
 
     with pytest.raises(RunFailed, match="uncommitted"):
-        Forge(cwd=ROOT, provider="claude", runner=runner).implement(12, allow_commands=True)
+        Bastion(cwd=ROOT, provider="claude", runner=runner).implement(12, allow_commands=True)
 
     assert not runner.ran("claude")
 
@@ -187,7 +187,7 @@ def test_the_agent_runs_on_a_branch_before_the_gate_is_open():
     """The blast radius is bounded by the branch the runtime creates first."""
     runner = _runner()
 
-    Forge(cwd=ROOT, provider="claude", runner=runner).implement(12, allow_commands=True)
+    Bastion(cwd=ROOT, provider="claude", runner=runner).implement(12, allow_commands=True)
 
     branch_at = next(
         i for i, call in enumerate(runner.calls) if tuple(call[:3]) == ("git", "checkout", "-b")
@@ -203,7 +203,7 @@ def test_a_denied_role_is_told_to_report_rather_than_substitute_inspection():
     """The posture is not prompt text; what to do when denied is."""
     runner = _runner()
 
-    Forge(cwd=ROOT, provider="claude", runner=runner).implement(12)
+    Bastion(cwd=ROOT, provider="claude", runner=runner).implement(12)
 
     prompt = runner.only("claude")[2]
     assert "cannot run commands" in prompt.lower()
@@ -213,6 +213,6 @@ def test_a_denied_role_is_told_to_report_rather_than_substitute_inspection():
 def test_a_permitted_role_is_not_told_it_is_denied():
     runner = _runner()
 
-    Forge(cwd=ROOT, provider="claude", runner=runner).implement(12, allow_commands=True)
+    Bastion(cwd=ROOT, provider="claude", runner=runner).implement(12, allow_commands=True)
 
     assert all("cannot run commands" not in call[2].lower() for call in runner.matching("claude"))

@@ -36,7 +36,7 @@ Add a retry to the loader.
 
 ---
 
-<!-- agentforge:plan -->
+<!-- agentbastion:plan -->
 ```json
 {
   "context": {
@@ -88,6 +88,6 @@ Add a retry to the loader.
   "workflow": "feature"
 }
 ```
-<!-- /agentforge:plan -->
+<!-- /agentbastion:plan -->
 
-*Filed by AgentForge. The block above is the frozen execution contract (ADR-0003). Every Role parses it; edit it rather than the prose.*
+*Filed by AgentBastion. The block above is the frozen execution contract (ADR-0003). Every Role parses it; edit it rather than the prose.*

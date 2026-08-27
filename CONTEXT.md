@@ -1,6 +1,6 @@
-# AgentForge
+# AgentBastion
 
-AgentForge coordinates specialized software agents through reusable workflows: a human states a Task, the Orchestrator files an Issue carrying a frozen plan, and a Roster of Roles executes it. This file holds meanings only — decisions live in `docs/adr/`, mechanics live in the code, and a word earns a place here once it has been used to settle an argument.
+AgentBastion coordinates specialized software agents through reusable workflows: a human states a Task, the Orchestrator files an Issue carrying a frozen plan, and a Roster of Roles executes it. This file holds meanings only — decisions live in `docs/adr/`, mechanics live in the code, and a word earns a place here once it has been used to settle an argument.
 
 ## Language
 
@@ -25,7 +25,7 @@ The Role that turns a Task into an Issue, assembling the Context Pack, choosing 
 _Avoid_: Planner, coordinator, manager, dispatcher
 
 **Role**:
-A named specialization with a fixed job, a Model Tier, and a prompt. A Role is a definition, not a running thing; AgentForge ships six — Architect, Implementer, Tester, Security, Reviewer, and the Orchestrator.
+A named specialization with a fixed job, a Model Tier, and a prompt. A Role is a definition, not a running thing; AgentBastion ships six — Architect, Implementer, Tester, Security, Reviewer, and the Orchestrator.
 _Avoid_: Agent, persona, worker, specialist
 
 **Agent**:
@@ -43,7 +43,7 @@ _Avoid_: Issue, bug, vulnerability, problem
 ### Running it
 
 **Workflow**:
-A YAML-declared sequence of Roles with Gates between them. `feature`, `bugfix`, and `review` ship with AgentForge; projects may add their own.
+A YAML-declared sequence of Roles with Gates between them. `feature`, `bugfix`, and `review` ship with AgentBastion; projects may add their own.
 _Avoid_: Pipeline, process, sequence, playbook
 
 **Step**:
@@ -55,7 +55,7 @@ A point in a Workflow where execution stops until a condition is met — a passi
 _Avoid_: Checkpoint, guard, stage, barrier
 
 **Sign-off**:
-The terminal Gate: AgentForge opens a pull request and stops, and a human merges. No Workflow ends by merging.
+The terminal Gate: AgentBastion opens a pull request and stops, and a human merges. No Workflow ends by merging.
 _Avoid_: Approval, merge, release, acceptance
 
 **Run**:
@@ -93,7 +93,7 @@ The per-language reader that turns one file into what it defines and what it rea
 _Avoid_: Parser, analyzer, scanner, reader
 
 **Plugin**:
-A bundle of domain knowledge for one technology — Python, SQL, PySpark, Databricks — contributing extractors, Fragments, validators, and Commands. Plugins are what make AgentForge useful in a data engineering repository rather than merely usable in one.
+A bundle of domain knowledge for one technology — Python, SQL, PySpark, Databricks — contributing extractors, Fragments, validators, and Commands. Plugins are what make AgentBastion useful in a data engineering repository rather than merely usable in one.
 _Avoid_: Extension, module, pack
 
 **Command**:
@@ -105,7 +105,7 @@ What one Agent invocation consumed, in whatever unit its Provider reports — do
 _Avoid_: Cost, spend, price, tokens
 
 **Project Context**:
-What AgentForge learns about a target repository at `agentforge init` — its languages, its layout, its conventions, its active Plugins. Stored in `.agentforge/config.yaml` in the target repository, not in AgentForge.
+What AgentBastion learns about a target repository at `agentbastion init` — its languages, its layout, its conventions, its active Plugins. Stored in `.agentbastion/config.yaml` in the target repository, not in AgentBastion.
 _Avoid_: Config, settings, profile, environment
 
 ### How an Agent is invoked
@@ -131,5 +131,5 @@ A skill's instructions inlined into an Agent's prompt, used where the Provider's
 _Avoid_: Snippet, blurb, inline skill, partial
 
 **Vendored Skill**:
-A third-party skill shipped inside `src/agentforge/skills/` as package data, invoked as a subprocess and never imported. Provenance and deliberate exclusions live in `skills/MANIFEST.yaml`. See ADR-0006.
+A third-party skill shipped inside `src/agentbastion/skills/` as package data, invoked as a subprocess and never imported. Provenance and deliberate exclusions live in `skills/MANIFEST.yaml`. See ADR-0006.
 _Avoid_: Bundled skill, dependency, plugin, third-party package
