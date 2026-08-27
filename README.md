@@ -87,6 +87,32 @@ posted anyway with the report attached, because holding a finished Run on a
 cosmetic check trades a real cost for a stylistic one. The report reaches the
 Run Log either way.
 
+## Install
+
+AgentForge publishes to no package index at 0.1, so neither route below is
+`pip install agentforge`. Both put the same `agentforge` command on your path.
+
+**From a release wheel**, to run AgentForge against your own repositories.
+Download the wheel attached to the
+[latest release](https://github.com/yashmhatre/AgentForge/releases/latest) and
+install the file you downloaded:
+
+```console
+$ pip install agentforge-0.1.0-py3-none-any.whl
+$ agentforge --version
+agentforge 0.1.0
+```
+
+**From a clone**, to work on AgentForge itself. An editable install leaves the
+command pointing at the checkout, so an edit takes effect without reinstalling,
+and `[dev]` adds the pytest and ruff that CI runs:
+
+```console
+$ git clone https://github.com/yashmhatre/AgentForge.git
+$ cd AgentForge
+$ pip install -e ".[dev]"
+```
+
 ## Requirements
 
 - Python 3.11 or newer
