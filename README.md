@@ -119,6 +119,8 @@ $ cd AgentForge
 $ pip install -e ".[dev]"
 ```
 
+What each release contains is in [CHANGELOG.md](CHANGELOG.md).
+
 ## Requirements
 
 - Python 3.11 or newer
