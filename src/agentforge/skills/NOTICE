@@ -42,6 +42,8 @@ GitHub licence API reports null for this repository. The grant itself is clear,
 but no copyright holder is named upstream and no warranty disclaimer is
 published, so neither can be reproduced here.
 
-Open item: ask upstream to add a LICENSE file naming the copyright holder
-before AgentForge is distributed publicly. Until then this bundle carries a
-licence grant recorded in prose rather than a canonical licence text.
+Open item: upstream has been asked to add a LICENSE file naming the copyright
+holder, at https://github.com/theclaymethod/unslop/issues/9 (opened 2026-08-25,
+unanswered as of 2026-08-27). Until it is answered this bundle carries a licence
+grant recorded in prose rather than a canonical licence text, and the
+attribution above is ours rather than a reproduction of theirs.

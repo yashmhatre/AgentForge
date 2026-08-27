@@ -31,11 +31,20 @@ upstreams:
       README.md only ("Python 3.8+ and any supported coding agent. Licensed
       MIT."). The repository has no LICENSE file and the GitHub licence API
       reports null. The grant is unambiguous in prose but names no copyright
-      holder and includes no warranty disclaimer. Tracked as an open item —
-      ask upstream to add a LICENSE file before AgentForge is distributed
-      publicly.
+      holder and includes no warranty disclaimer.
     copyright: "Unstated upstream; attributed to the theclaymethod/unslop authors"
     vendored_at: 2026-08-24
+    license_open_item:
+      asked: https://github.com/theclaymethod/unslop/issues/9
+      asked_at: 2026-08-25
+      answered: null
+      gates: >-
+        PyPI, and not the tag. A release is code somebody chose to visit; an
+        index entry is the same code reaching people who did not, and that is
+        where a grant recorded only in prose stops being ours to accept on a
+        stranger's behalf. Nothing moves until upstream answers: `copyright`
+        above stays our attribution rather than a reproduction of their notice,
+        and the NOTICE file alongside this one says so in the same terms.
 
 skills:
   grilling:
