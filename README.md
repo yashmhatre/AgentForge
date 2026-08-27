@@ -87,6 +87,12 @@ posted anyway with the report attached, because holding a finished Run on a
 cosmetic check trades a real cost for a stylistic one. The report reaches the
 Run Log either way.
 
+At 0.1 the stable surface is the Issue body: what AgentForge writes into an
+issue keeps parsing, so a Run filed by one version resumes under a later one.
+Everything importable under `agentforge.*` is private and changes without
+notice. See
+[ADR-0011](docs/adr/0011-the-issue-body-is-the-stable-surface.md).
+
 ## Install
 
 AgentForge publishes to no package index at 0.1, so neither route below is
