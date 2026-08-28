@@ -3,14 +3,14 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "agentforge"
+name = "agentforge-framework"
 version = "0.1.0"
 description = "A modular framework for coordinating specialized software agents."
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Yash Mhatre" }]
 license = "Apache-2.0"
-license-files = ["LICENSE", "src/agentforge/skills/NOTICE"]
+license-files = ["LICENSE", "src/agentforge_framework/skills/NOTICE"]
 dependencies = [
     "pyyaml>=6.0",
 ]
@@ -23,14 +23,17 @@ dependencies = [
 Homepage = "https://github.com/yashmhatre/AgentForge"
 Issues = "https://github.com/yashmhatre/AgentForge/issues"
 
+# The distribution is decorated and the import package with it (ADR-0013), but
+# the command a person types is not: `agentforge` on PATH is unclaimed, because
+# the project that holds the name on PyPI ships a library and no console script.
 [project.scripts]
-agentforge = "agentforge.cli:main"
+agentforge = "agentforge_framework.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-agentforge = [
+agentforge_framework = [
     ".claude-plugin/plugin.json",
     "workflows/*.yaml",
     "skills/**/*",
@@ -40,7 +43,7 @@ agentforge = [
 # layout is upstream's business, not ours. The cost is that it also sweeps up
 # whatever a local test run left behind, so the bytecode is excluded explicitly.
 [tool.setuptools.exclude-package-data]
-agentforge = [
+agentforge_framework = [
     "**/__pycache__/*",
     "**/*.py[cod]",
 ]
@@ -59,4 +62,4 @@ dev = [
 # Python extractor has to keep an unused import in it, because that import is
 # the thing being extracted.
 [tool.ruff]
-extend-exclude = ["src/agentforge/skills", "tests/fixtures"]
+extend-exclude = ["src/agentforge_framework/skills", "tests/fixtures"]

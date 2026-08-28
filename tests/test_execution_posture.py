@@ -16,10 +16,10 @@ from pathlib import Path
 
 import pytest
 
-from agentforge.core.contracts import ModelTier, Role
-from agentforge.core.plan_format import render_result_block
-from agentforge.core.runtime import Forge, RunFailed
-from agentforge.providers import get_provider
+from agentforge_framework.core.contracts import ModelTier, Role
+from agentforge_framework.core.plan_format import render_result_block
+from agentforge_framework.core.runtime import Forge, RunFailed
+from agentforge_framework.providers import get_provider
 
 from .fakes import FakeRunner, github_repository
 from .test_runtime import BODY, ROOT, issue_json

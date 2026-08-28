@@ -12,8 +12,8 @@ from pathlib import Path
 
 import pytest
 
-from agentforge.agents.implementer import IMPLEMENTER
-from agentforge.core.contracts import (
+from agentforge_framework.agents.implementer import IMPLEMENTER
+from agentforge_framework.core.contracts import (
     AgentResult,
     ContextPack,
     Finding,
@@ -27,7 +27,7 @@ from agentforge.core.contracts import (
     RunStatus,
     Usage,
 )
-from agentforge.core.issues import (
+from agentforge_framework.core.issues import (
     Comment,
     GitHub,
     Issue,
@@ -42,7 +42,7 @@ from agentforge.core.issues import (
     render_terminal_comment,
     run_state,
 )
-from agentforge.core.plan_format import PlanFormatError
+from agentforge_framework.core.plan_format import PlanFormatError
 
 from .fakes import FakeRunner
 

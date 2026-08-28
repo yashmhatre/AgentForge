@@ -12,10 +12,10 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from agentforge import agents
-from agentforge.agents import UnknownRole, resolve_role
-from agentforge.agents.implementer import IMPLEMENTER
-from agentforge.core.contracts import (
+from agentforge_framework import agents
+from agentforge_framework.agents import UnknownRole, resolve_role
+from agentforge_framework.agents.implementer import IMPLEMENTER
+from agentforge_framework.core.contracts import (
     LEGACY_LABELS,
     RUN_LABELS,
     AgentResult,

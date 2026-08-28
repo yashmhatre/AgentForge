@@ -89,14 +89,21 @@ Run Log either way.
 
 At 0.1 the stable surface is the Issue body: what AgentForge writes into an
 issue keeps parsing, so a Run filed by one version resumes under a later one.
-Everything importable under `agentforge.*` is private and changes without
-notice. See
+Everything importable under `agentforge_framework.*` is private and changes
+without notice. See
 [ADR-0011](docs/adr/0011-the-issue-body-is-the-stable-surface.md).
 
 ## Install
 
 AgentForge publishes to no package index at 0.1, so neither route below is
-`pip install agentforge`. Both put the same `agentforge` command on your path.
+`pip install agentforge-framework`. Both put the same `agentforge` command on
+your path.
+
+The distribution is `agentforge-framework` and it imports as
+`agentforge_framework`, because an older and larger project holds `agentforge`
+on PyPI and imports under that name. The command you type is unaffected: that
+project ships a library and no console script, so `agentforge` is ours. See
+[ADR-0013](docs/adr/0013-the-name-stays-the-import-path-moves.md).
 
 **From a release wheel**, to run AgentForge against your own repositories.
 Download the wheel attached to the
@@ -104,7 +111,7 @@ Download the wheel attached to the
 install the file you downloaded:
 
 ```console
-$ pip install agentforge-0.1.0-py3-none-any.whl
+$ pip install agentforge_framework-0.1.0-py3-none-any.whl
 $ agentforge --version
 agentforge 0.1.0
 ```

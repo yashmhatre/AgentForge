@@ -1,4 +1,4 @@
-AgentForge bundles third-party skills under src/agentforge/skills/.
+AgentForge bundles third-party skills under src/agentforge_framework/skills/.
 Machine-readable provenance, including commit SHAs and what was excluded from
 each bundle, is in MANIFEST.yaml alongside this file.
 

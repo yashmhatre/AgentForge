@@ -16,22 +16,23 @@ from pathlib import Path
 
 import pytest
 
-from agentforge.agents import TESTER
-from agentforge.core.contracts import (
+from agentforge_framework.agents import TESTER
+from agentforge_framework.core import runtime as runtime_module
+from agentforge_framework.core.contracts import (
     GateEntry,
     GateVerdict,
     ModelTier,
     Outcome,
     RunStatus,
 )
-from agentforge.core.gates import GATES
-from agentforge.core.issues import render_gate_comment
-from agentforge.core.plan_format import (
+from agentforge_framework.core.gates import GATES
+from agentforge_framework.core.issues import render_gate_comment
+from agentforge_framework.core.plan_format import (
     RESULT_OPEN,
     parse_issue_body,
     render_result_block,
 )
-from agentforge.core.runtime import Forge, RunFailed
+from agentforge_framework.core.runtime import Forge, RunFailed
 
 from .fakes import FakeRunner, github_repository
 from .test_agents import orchestrator_output, plan_block
@@ -837,7 +838,7 @@ def test_a_workflow_with_no_steps_is_refused_before_any_agent_is_invoked(
     """Every shipped definition declares Steps now, so this is a definition a
     project wrote. Running it is a no-op rather than a Run."""
     (tmp_path / "feature.yaml").write_text("name: feature\nsteps: []\n", encoding="utf-8")
-    monkeypatch.setattr("agentforge.core.workflow.WORKFLOWS_ROOT", tmp_path)
+    monkeypatch.setattr("agentforge_framework.core.workflow.WORKFLOWS_ROOT", tmp_path)
     runner = a_runner()
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
 
@@ -866,7 +867,7 @@ def test_a_step_tier_override_moves_the_role_without_a_command_line_flag(tmp_pat
     (tmp_path / "feature.yaml").write_text(
         "name: feature\nsteps:\n  - role: implementer\n    tier: deep\n", encoding="utf-8"
     )
-    monkeypatch.setattr("agentforge.core.workflow.WORKFLOWS_ROOT", tmp_path)
+    monkeypatch.setattr("agentforge_framework.core.workflow.WORKFLOWS_ROOT", tmp_path)
 
     runner = a_runner()
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
@@ -882,7 +883,7 @@ def test_a_command_line_tier_still_beats_the_step_override(tmp_path, monkeypatch
     (tmp_path / "feature.yaml").write_text(
         "name: feature\nsteps:\n  - role: implementer\n    tier: deep\n", encoding="utf-8"
     )
-    monkeypatch.setattr("agentforge.core.workflow.WORKFLOWS_ROOT", tmp_path)
+    monkeypatch.setattr("agentforge_framework.core.workflow.WORKFLOWS_ROOT", tmp_path)
 
     runner = a_runner()
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
@@ -898,7 +899,7 @@ def test_a_tester_step_override_leaves_the_roles_default_unchanged(tmp_path, mon
         "name: feature\nsteps:\n  - role: implementer\n  - role: tester\n    tier: deep\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr("agentforge.core.workflow.WORKFLOWS_ROOT", tmp_path)
+    monkeypatch.setattr("agentforge_framework.core.workflow.WORKFLOWS_ROOT", tmp_path)
     runner = a_runner()
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
     runner.script("claude", stdout=agent_says("completed", "done"))
@@ -924,7 +925,7 @@ def test_a_definition_naming_an_unrunnable_role_costs_no_provider_call(tmp_path,
     (tmp_path / "feature.yaml").write_text(
         "name: feature\nsteps:\n  - role: dramaturge\n", encoding="utf-8"
     )
-    monkeypatch.setattr("agentforge.core.workflow.WORKFLOWS_ROOT", tmp_path)
+    monkeypatch.setattr("agentforge_framework.core.workflow.WORKFLOWS_ROOT", tmp_path)
 
     runner = a_runner()
     runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
@@ -947,7 +948,7 @@ HUMAN_GATED = (
 def _workflow(tmp_path, monkeypatch, text: str) -> None:
     """A definition of the Run's own making, since only `feature` ships steps."""
     (tmp_path / "feature.yaml").write_text(text, encoding="utf-8")
-    monkeypatch.setattr("agentforge.core.workflow.WORKFLOWS_ROOT", tmp_path)
+    monkeypatch.setattr("agentforge_framework.core.workflow.WORKFLOWS_ROOT", tmp_path)
 
 
 def entries_on(runner: FakeRunner) -> list[str]:
@@ -1620,10 +1621,11 @@ def test_the_runtime_names_no_role():
 
     Asserted against the source because that is where the property lives. A
     `RUNNERS` lookup keyed by the Workflow step is the only dispatch there is.
+
+    Located through the module rather than by spelling out the package directory,
+    so that renaming the import path cannot turn this into a file-not-found.
     """
-    source = (
-        Path(__file__).parent.parent / "src" / "agentforge" / "core" / "runtime.py"
-    ).read_text(encoding="utf-8")
+    source = Path(runtime_module.__file__).read_text(encoding="utf-8")
 
     for role in ("implementer", "tester", "reviewer", "security", "architect"):
         assert role not in source.lower(), f"runtime.py names the {role!r} Role"

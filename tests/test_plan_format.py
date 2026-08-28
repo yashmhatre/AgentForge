@@ -12,10 +12,16 @@ from pathlib import Path
 
 import pytest
 
-from agentforge.agents import resolve_role
-from agentforge.agents.implementer import IMPLEMENTER
-from agentforge.core.contracts import ContextPack, ModelTier, PlanDocument, Roster, Task
-from agentforge.core.plan_format import (
+from agentforge_framework.agents import resolve_role
+from agentforge_framework.agents.implementer import IMPLEMENTER
+from agentforge_framework.core.contracts import (
+    ContextPack,
+    ModelTier,
+    PlanDocument,
+    Roster,
+    Task,
+)
+from agentforge_framework.core.plan_format import (
     PLAN_CLOSE,
     PLAN_OPEN,
     PlanFormatError,

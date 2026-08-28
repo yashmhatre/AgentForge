@@ -83,8 +83,18 @@ real cost for a stylistic one.
 
 The stable surface is the issue body: what AgentForge writes into an issue keeps
 parsing, so a run filed by one version resumes under a later one. Everything
-importable under `agentforge.*` is private and changes without notice. See
-[ADR-0011](docs/adr/0011-the-issue-body-is-the-stable-surface.md).
+importable under `agentforge_framework.*` is private and changes without notice.
+See [ADR-0011](docs/adr/0011-the-issue-body-is-the-stable-surface.md).
+
+### About the name
+
+The project is AgentForge and the command is `agentforge`. The distribution is
+`agentforge-framework` and it imports as `agentforge_framework`, because an
+older and larger project holds `agentforge` on PyPI and imports under that name;
+decorating both clears the collision without changing anything a user types. The
+issue markers, the status labels, the run branch prefix, and
+`.agentforge/config.yaml` are all unaffected. See
+[ADR-0013](docs/adr/0013-the-name-stays-the-import-path-moves.md).
 
 ### Not in this release
 

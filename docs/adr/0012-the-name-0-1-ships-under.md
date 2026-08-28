@@ -1,5 +1,7 @@
 # ADR-0012: AgentForge is renamed to AgentBastion before 0.1 is tagged
 
+**Status: superseded by [ADR-0013](0013-the-name-stays-the-import-path-moves.md).** The rename never landed. The reasoning below rests on a premise ADR-0013 checked and found false — that a decorated distribution name leaves the collision intact — and on a survey of the competing name that turned out to be one project out of thirty. Kept as written, because the decision it records is the one that was made.
+
 A larger, older project already is AgentForge, and it is in this one's category rather than merely sharing a word with it. `DataBassGit/AgentForge` has been active since 2023, carries 843 stars, ships as `agentforge` on PyPI at 0.6.6 across 120-odd releases, and describes itself as a low-code framework for building and testing autonomous agents and multi-agent systems, configured in YAML. It also holds `agentforge.net`. Anybody searching for this project finds that one, and reasonably concludes they have found it.
 
 The collision is technical and not only reputational. Both projects import as `agentforge`, so a machine with both installed has one shadowing the other. Publishing under some decorated distribution name would have left that intact: the import path is what collides, and the index name is not.

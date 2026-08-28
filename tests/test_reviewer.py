@@ -9,7 +9,7 @@ import json
 import sys
 from pathlib import Path
 
-from agentforge.agents.reviewer import (
+from agentforge_framework.agents.reviewer import (
     MAX_REWRITES,
     REVIEWER,
     WRITING_SKILLS,
@@ -17,11 +17,16 @@ from agentforge.agents.reviewer import (
     build_rewrite_prompt,
     prose_of,
 )
-from agentforge.agents.reviewer import Reviewer as _ReviewerRunner
-from agentforge.core.contracts import AgentResult, ContextPack, ModelTier, Outcome
-from agentforge.core.plan_format import render_result_block
-from agentforge.core.skills import UNSLOP_SCANNERS, run_unslop
-from agentforge.providers.claude import ClaudeProvider
+from agentforge_framework.agents.reviewer import Reviewer as _ReviewerRunner
+from agentforge_framework.core.contracts import (
+    AgentResult,
+    ContextPack,
+    ModelTier,
+    Outcome,
+)
+from agentforge_framework.core.plan_format import render_result_block
+from agentforge_framework.core.skills import UNSLOP_SCANNERS, run_unslop
+from agentforge_framework.providers.claude import ClaudeProvider
 
 from .fakes import FakeRunner
 from .test_contracts import a_plan
@@ -79,7 +84,7 @@ def scanners_say(runner: FakeRunner, *verdicts: bool) -> FakeRunner:
                 self.calls.append(argv)
                 self.cwds.append(None)
                 stdout, code = next(answers)
-                from agentforge.core.process import CommandResult
+                from agentforge_framework.core.process import CommandResult
 
                 return CommandResult(argv=argv, returncode=code, stdout=stdout)
             return super().run(argv, cwd=cwd, stdin=stdin, timeout=timeout)

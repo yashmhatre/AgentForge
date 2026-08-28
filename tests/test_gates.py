@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from agentforge.core.contracts import (
+from agentforge_framework.core.contracts import (
     AgentResult,
     Finding,
     GateEntry,
@@ -22,8 +22,8 @@ from agentforge.core.contracts import (
     Roster,
     RunState,
 )
-from agentforge.core.gates import GATES, GateContext, evaluate_gate
-from agentforge.core.process import MissingBinary
+from agentforge_framework.core.gates import GATES, GateContext, evaluate_gate
+from agentforge_framework.core.process import MissingBinary
 
 from .fakes import FakeRunner
 

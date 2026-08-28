@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 
 import pyyaml_stand_in
-from agentforge.core.contracts import Plan
+from agentforge_framework.core.contracts import Plan
 
 
 def load(path: Path) -> dict:
