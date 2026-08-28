@@ -130,3 +130,13 @@ jobs:
 
           print(f"{len(scanners)} scanners ran: {report['violations']} finding(s)")
           PY
+
+      # Last, and deliberately so: a release attaches the wheel every check
+      # above already ran against, rather than one built on a laptop (#53). A
+      # wheel that failed those checks fails the job and is never uploaded.
+      - name: Keep the wheel for a release to attach
+        uses: actions/upload-artifact@v7
+        with:
+          name: wheel
+          path: dist/*.whl
+          if-no-files-found: error
