@@ -23,11 +23,20 @@ dependencies = [
 Homepage = "https://github.com/yashmhatre/AgentForge"
 Issues = "https://github.com/yashmhatre/AgentForge/issues"
 
-# The distribution is decorated and the import package with it (ADR-0013), but
-# the command a person types is not: `agentforge` on PATH is unclaimed, because
-# the project that holds the name on PyPI ships a library and no console script.
+# Two names for one entry point, because `agentforge` on PATH is contested and
+# the loser of that contest is whoever pip wrote last (ADR-0013). The project
+# that holds the name on PyPI declared this same console script in 0.5.0 through
+# 0.6.5 and dropped it in 0.6.6, so a machine carrying one of those eight
+# releases has an `agentforge` that is theirs, or ours, depending on install
+# order, and pip warns about none of it.
+#
+# `agentforge` stays first because it is what the docs, the prompts, and the
+# Run Log all say. `agentforge-framework` is the one that cannot be taken: it
+# matches the distribution, and it is what to reach for when the short name
+# turns out to belong to somebody else.
 [project.scripts]
 agentforge = "agentforge_framework.cli:main"
+agentforge-framework = "agentforge_framework.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

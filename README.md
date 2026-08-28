@@ -101,8 +101,14 @@ your path.
 
 The distribution is `agentforge-framework` and it imports as
 `agentforge_framework`, because an older and larger project holds `agentforge`
-on PyPI and imports under that name. The command you type is unaffected: that
-project ships a library and no console script, so `agentforge` is ours. See
+on PyPI and imports under that name. Decorating both means the two can sit in
+one environment without either shadowing the other.
+
+Installing puts two commands on your path, `agentforge` and
+`agentforge-framework`, and they are the same program. Use `agentforge`; the
+whole of this README does. Reach for the long one only if you also have that
+other project installed, because its 0.5.0 through 0.6.5 declare an `agentforge`
+command too and whichever was installed last wins. See
 [ADR-0013](docs/adr/0013-the-name-stays-the-import-path-moves.md).
 
 **From a release wheel**, to run AgentForge against your own repositories.

@@ -90,10 +90,14 @@ See [ADR-0011](docs/adr/0011-the-issue-body-is-the-stable-surface.md).
 
 The project is AgentForge and the command is `agentforge`. The distribution is
 `agentforge-framework` and it imports as `agentforge_framework`, because an
-older and larger project holds `agentforge` on PyPI and imports under that name;
-decorating both clears the collision without changing anything a user types. The
-issue markers, the status labels, the run branch prefix, and
-`.agentforge/config.yaml` are all unaffected. See
+older and larger project holds `agentforge` on PyPI and imports under that name.
+The issue markers, the status labels, the run branch prefix, and
+`.agentforge/config.yaml` are all unaffected.
+
+`agentforge-framework` is installed as a second name for the same command. That
+other project declared an `agentforge` console script in its 0.5.0 through
+0.6.5, so on a machine carrying one of those the short name belongs to whichever
+was installed last. The long name is always this one. See
 [ADR-0013](docs/adr/0013-the-name-stays-the-import-path-moves.md).
 
 ### Not in this release
