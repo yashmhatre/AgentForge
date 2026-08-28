@@ -504,11 +504,13 @@ def align_to_workflow(roster: Roster, workflow: Workflow) -> tuple[Roster, tuple
 
     Tiers survive the alignment: choosing the Workflow is the Orchestrator's
     judgement about the shape of the Task, and moving a Role up a tier is its
-    judgement about the difficulty of this one.
+    judgement about the difficulty of this one. The Roster written here is the
+    one the runtime resolves each Step's tier from, so that judgement is what
+    runs and the table is what a human can rely on. See ADR-0014.
     """
     from . import resolve_role
 
-    tiers = {role.name: role.tier for role in roster}
+    tiers = roster.tiers()
     roles = []
     for step in workflow.steps:
         role = resolve_role(step.role)

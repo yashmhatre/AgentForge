@@ -52,7 +52,9 @@ PROMPT = """\
 {cwd}
 
 You are on a branch created for this work. Commit nothing; AgentForge commits \
-what you leave in the working tree.
+for you. It commits every file it already tracks that you changed, and a file it \
+does not yet track only if the plan above names it or your `files_changed` does. \
+List every new file you create there, or it will not reach the pull request.
 {execution}
 ## Required output
 

@@ -277,9 +277,10 @@ class Reviewer:
     def _scan(self, result: AgentResult) -> UnslopReport | None:
         """Scan what the Reviewer wrote, or nothing if it did not review.
 
-        The prose is written outside the working tree on purpose: AgentForge
-        commits whatever a Role leaves behind, and a scratch file left in the
-        repository would be committed and reviewed by nobody.
+        The prose is written outside the working tree on purpose. ADR-0015 keeps
+        an undeclared file out of the commit, but it does not make it disappear:
+        a scratch file left in the repository is reported to the human at
+        Sign-off as something an Agent wrote and nobody asked for.
         """
         if result.outcome is not Outcome.COMPLETED:
             return None

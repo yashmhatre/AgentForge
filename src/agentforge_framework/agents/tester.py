@@ -35,7 +35,11 @@ PROMPT = """\
 {cwd}
 
 You are on the same branch the Implementer used. Commit nothing; AgentForge \
-commits what the Roster leaves in the working tree.
+commits for you, and it commits a file it does not yet track only if the plan \
+above names it or your `files_changed` does. List every test file you create \
+there, or it will not reach the pull request. What your commands write and you \
+do not list -- bytecode, coverage data, a cache directory -- stays out of the \
+commit, which is deliberate: do not clean up after them.
 
 ## Required output
 

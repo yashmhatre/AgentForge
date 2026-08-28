@@ -255,6 +255,17 @@ class Roster:
     def names(self) -> tuple[str, ...]:
         return tuple(role.name for role in self.roles)
 
+    def tiers(self) -> dict[str, ModelTier]:
+        """The tier each named Role runs at, as the Roster table promises it.
+
+        Keyed by name rather than by position, matching how `align_to_workflow`
+        collapses a requested Roster onto a Workflow. A Workflow naming one Role
+        twice therefore runs both Steps at the one tier the table shows, which
+        is what the table says and the only thing a reader could conclude from
+        it. See ADR-0014.
+        """
+        return {role.name: role.tier for role in self.roles}
+
     def to_dict(self) -> list[dict]:
         return [{"role": role.name, "tier": str(role.tier)} for role in self.roles]
 
