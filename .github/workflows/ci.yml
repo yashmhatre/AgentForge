@@ -11,7 +11,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12"]
+        # `requires-python = ">=3.11"` promises every release from 3.11 upward,
+        # so the matrix runs every one of them that exists. Narrowing the claim
+        # was the alternative; nothing in the codebase is version-shy, so the
+        # honest fix was to test what was already being promised (#52).
+        # tests/test_docs.py fails if this list and that claim ever drift apart.
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v7
 
@@ -28,3 +33,101 @@ jobs:
 
       - name: Test
         run: pytest -q
+
+  # The suite above runs against an editable install, which leaves the source
+  # tree on disk in its original shape and so proves nothing about packaging.
+  # This job builds the wheel a release attaches, installs it where the source
+  # tree cannot be imported, and drives the console script from there.
+  wheel:
+    name: installed wheel
+    runs-on: ubuntu-latest
+    env:
+      # The virtual environment the wheel lands in, outside the checkout.
+      VENV: ${{ runner.temp }}/wheel-check
+    steps:
+      - uses: actions/checkout@v7
+
+      # The floor of `requires-python`. The wheel is `py3-none-any`, so this job
+      # is about package data rather than language level, and the oldest
+      # interpreter the metadata admits is the one most likely to object.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Build the wheel
+        run: |
+          pip install build
+          python -m build --wheel
+
+      - name: Install it into a clean environment
+        run: |
+          python -m venv "$VENV"
+          "$VENV/bin/pip" install --quiet dist/*.whl
+
+      # Every step from here runs outside the checkout, so an import that
+      # succeeds succeeded from site-packages.
+      - name: The install is what answers, not the checkout
+        working-directory: ${{ runner.temp }}
+        run: |
+          "$VENV/bin/python" - <<'PY'
+          from importlib.metadata import version
+
+          import agentforge_framework as package
+
+          if "site-packages" not in package.__file__:
+              raise SystemExit(f"imported from {package.__file__}, not from the wheel")
+          print(f"agentforge-framework {version('agentforge-framework')} at {package.__file__}")
+          PY
+
+      - name: "`agentforge --version` resolves and answers"
+        working-directory: ${{ runner.temp }}
+        run: |
+          expected="agentforge $("$VENV/bin/python" -c \
+            'from importlib.metadata import version; print(version("agentforge-framework"))')"
+          actual="$("$VENV/bin/agentforge" --version)"
+          if [ "$actual" != "$expected" ]; then
+            echo "expected '$expected', got '$actual'" >&2
+            exit 1
+          fi
+          echo "$actual"
+
+      # `unslop` is the command that exercises the bundle hardest: it runs three
+      # vendored scanners as subprocesses, and each has to find its sibling
+      # `_lang` module and, for the silhouette scan, a reference fixture two
+      # directories up. Package data that failed to ship, or that shipped
+      # flattened, shows up here and nowhere else.
+      - name: "`agentforge unslop` finds the vendored bundle"
+        working-directory: ${{ runner.temp }}
+        run: |
+          cp "$GITHUB_WORKSPACE/README.md" prose.md
+
+          # Exit 1 is findings in the prose, which is not what this job asks
+          # about. Exit 2 is a scanner that could not run at all, which is.
+          status=0
+          "$VENV/bin/agentforge" unslop --json prose.md > report.json || status=$?
+          if [ "$status" -gt 1 ]; then
+            cat report.json
+            echo "a scanner could not run from the installed wheel" >&2
+            exit 1
+          fi
+
+          "$VENV/bin/python" - <<'PY'
+          import json
+
+          from agentforge_framework.core.skills import UNSLOP_SCANNERS
+
+          report = json.loads(open("report.json", encoding="utf-8").read())
+          scanners = report["scanners"]
+
+          missing = [name for name in UNSLOP_SCANNERS if name not in scanners]
+          broken = {name: r["error"] for name, r in scanners.items() if "error" in r}
+          if missing or broken:
+              for name in missing:
+                  print(f"{name}: never ran")
+              for name, error in broken.items():
+                  print(f"{name}: {error}")
+              raise SystemExit("the wheel's skill bundle is incomplete")
+
+          print(f"{len(scanners)} scanners ran: {report['violations']} finding(s)")
+          PY
