@@ -4,7 +4,23 @@ What changed in each release of AgentForge. Dates are the day the tag was cut.
 
 ## Unreleased
 
-Nothing yet.
+### Fixed
+
+- **The Roster's Model Tier is now the tier the Step runs at** (#71). The tier
+  table in an issue body was decoration: the runtime resolved every step from
+  the command line, the Workflow YAML, and the Role's default, and never read
+  the Roster at all. No shipped Workflow pins a step tier, so every run fell
+  through to the Role default and the Orchestrator's per-Role judgement had
+  never once taken effect. `--tier` and `--tier role=tier` still win.
+  See ADR-0014.
+- **A run no longer commits what its own commands left behind** (#72). With
+  `--allow-commands`, running the repository's suite writes `__pycache__`, and
+  the commit step staged the whole working tree — so a target repository with no
+  `.gitignore` got byte-compiled files, coverage data, and cache directories in
+  the diff a human reads at sign-off. A run now stages every change to a file
+  git already tracks, and an untracked file only when the frozen plan or an
+  agent result named it. Anything else is left in the working tree and listed in
+  the pull request under *Left uncommitted*. See ADR-0015.
 
 ## 0.1.0 — 2026-08-27
 

@@ -1716,3 +1716,262 @@ def test_the_run_that_ends_says_what_the_whole_thing_cost():
     forge(runner).implement(12, allow_commands=True)
 
     assert "- **Cost:** $" in comments_on(runner)[-1]
+
+
+# --- the Roster names the tier that runs (#71, ADR-0014) --------------------
+
+#: The tier every Role in the shipped `feature` Workflow would run at if nobody
+#: said otherwise: ADR-0004's defaults, as `claude` spells them.
+BY_DEFAULT = ["sonnet", "haiku", "opus", "opus"]
+
+
+def body_with_roster(roster) -> str:
+    """An Issue whose Roster is the thing under test.
+
+    Only the plan block is parsed, so the prose above it is one line rather than
+    a second copy of the renderer's output kept in step by hand.
+    """
+    return "## Task\n\n> add a retry to the loader\n\n" + plan_block(roster, workflow="feature")
+
+
+def models_used(runner: FakeRunner) -> list[str]:
+    return [call[call.index("--model") + 1] for call in runner.matching("claude")]
+
+
+def a_run_of(roster) -> FakeRunner:
+    runner = a_runner()
+    runner.script("gh", "issue", "view", stdout=issue_json(body_with_roster(roster)))
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=agent_says("completed", "done"))
+    return runner
+
+
+MOVED = [
+    {"role": "implementer", "tier": "standard"},
+    {"role": "tester", "tier": "cheap"},
+    # The one the Orchestrator moved, and the one the smoke Run for #67 caught:
+    # the table said `standard` and the Run Log said `deep`.
+    {"role": "security", "tier": "standard"},
+    {"role": "reviewer", "tier": "deep"},
+]
+
+
+def test_a_roster_tier_below_the_roles_default_is_the_tier_the_step_runs_at():
+    """The Orchestrator's per-Role judgement had never once taken effect: no
+    shipped Workflow pins a Step, so every Run fell through to the default."""
+    runner = a_run_of(MOVED)
+
+    forge(runner).implement(12, allow_commands=True)
+
+    assert models_used(runner) == ["sonnet", "haiku", "sonnet", "opus"]
+    assert models_used(runner) != BY_DEFAULT, "the Roster changed nothing"
+
+
+def test_the_run_log_names_the_tier_the_roster_promised():
+    """The accuracy of the one artifact 0.1 promises to keep: the table and the
+    Run Log are read side by side, and they now say the same thing."""
+    runner = a_run_of(MOVED)
+
+    forge(runner).implement(12, allow_commands=True)
+
+    audit = next(c for c in comments_on(runner) if "### security" in c)
+    assert "**Model Tier:** `standard`" in audit
+
+
+def test_a_named_tier_override_still_beats_the_roster():
+    runner = a_run_of(MOVED)
+
+    forge(runner).implement(12, allow_commands=True, tier_overrides={"security": ModelTier.DEEP})
+
+    assert models_used(runner) == ["sonnet", "haiku", "opus", "opus"]
+
+
+def test_a_run_wide_tier_still_beats_the_roster():
+    """The person at the keyboard is answering with more than the Orchestrator had."""
+    runner = a_run_of(MOVED)
+
+    forge(runner).implement(12, allow_commands=True, tier=ModelTier.CHEAP)
+
+    assert models_used(runner) == ["haiku"] * 4
+
+
+def test_a_step_tier_in_the_workflow_still_beats_the_roster(tmp_path, monkeypatch):
+    """`align_to_workflow` writes the Roster in this order, so reading it back in
+    another one would make the two disagree the moment anybody pinned a Step."""
+    (tmp_path / "feature.yaml").write_text(
+        "name: feature\nsteps:\n  - role: security\n    tier: cheap\n", encoding="utf-8"
+    )
+    monkeypatch.setattr("agentforge_framework.core.workflow.WORKFLOWS_ROOT", tmp_path)
+    runner = a_run_of([{"role": "security", "tier": "standard"}])
+
+    forge(runner).implement(12, allow_commands=True)
+
+    assert models_used(runner) == ["haiku"]
+
+
+def test_a_role_the_roster_does_not_name_falls_through_to_its_default():
+    """`issue_body_v1.md` is an Issue an older AgentForge filed: one Role in the
+    Roster, four Steps in the Workflow. Those Runs used the defaults and still do."""
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=agent_says("completed", "done"))
+
+    forge(runner).implement(12, allow_commands=True)
+
+    assert models_used(runner) == BY_DEFAULT
+
+
+def test_a_resumed_run_resolves_the_tier_the_first_invocation_would_have():
+    """Both invocations read the same frozen block, which is the whole claim."""
+    done = [
+        render_result_block(
+            {"role": role, "tier": tier, "outcome": "completed", "summary": "done"}
+        )
+        for role, tier in (("implementer", "standard"), ("tester", "cheap"))
+    ]
+    runner = a_runner()
+    runner.script(
+        "gh", "issue", "view", stdout=issue_json(body_with_roster(MOVED), comments=tuple(done))
+    )
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=agent_says("completed", "done"))
+
+    forge(runner).implement(12, allow_commands=True)
+
+    assert models_used(runner) == ["sonnet", "opus"], "the security Step resumed at the wrong tier"
+
+
+# --- a Run commits what it declared (#72, ADR-0015) -------------------------
+
+#: What the smoke Run for #67 actually left behind: the edit, and what running
+#: the suite under `--allow-commands` wrote next to it in a repository whose
+#: `.gitignore` does not cover `__pycache__` — because it has none.
+AFTER_PYTEST = (
+    " M src/loader.py\n"
+    "?? src/__pycache__/loader.cpython-311.pyc\n"
+    "?? tests/__pycache__/test_loader.cpython-311-pytest-9.1.1.pyc\n"
+)
+
+
+def staged(runner: FakeRunner) -> list[str]:
+    """The paths the Run put in the index, in the order it named them."""
+    call = runner.only("git", "add")
+    return list(call[call.index("--") + 1 :])
+
+
+def test_a_file_a_roles_command_wrote_is_not_committed():
+    """`--allow-commands` is what makes a Run produce files it did not write.
+    Before it, staging the tree and staging the change were the same thing."""
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=["", AFTER_PYTEST])
+    runner.script("claude", stdout=agent_says("completed", "pytest: 24 passed"))
+
+    forge(runner).implement(12, allow_commands=True)
+
+    assert staged(runner) == ["src/loader.py"]
+    assert not any("__pycache__" in path for path in staged(runner))
+    assert runner.ran("git", "commit")
+
+
+def test_the_pull_request_lists_only_what_was_committed():
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=["", AFTER_PYTEST])
+    runner.script("claude", stdout=agent_says("completed", "pytest: 24 passed"))
+
+    forge(runner).implement(12, allow_commands=True)
+
+    body = runner.argument_after("--body", "gh", "pr", "create")
+    assert "- `src/loader.py`" in body
+    assert "loader.cpython-311.pyc" not in body.split("## Left uncommitted")[0]
+
+
+def test_what_was_left_behind_is_named_rather_than_dropped():
+    """A build artifact is the usual reason and an Agent writing outside its
+    Step is the one worth reading, and only a human can tell them apart."""
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=["", AFTER_PYTEST])
+    runner.script("claude", stdout=agent_says("completed", "pytest: 24 passed"))
+
+    forge(runner).implement(12, allow_commands=True)
+
+    body = runner.argument_after("--body", "gh", "pr", "create")
+    left = body.split("## Left uncommitted")[1]
+    assert "- `src/__pycache__/loader.cpython-311.pyc`" in left
+    assert "- `tests/__pycache__/test_loader.cpython-311-pytest-9.1.1.pyc`" in left
+
+
+def test_an_untracked_file_the_plan_named_is_committed():
+    """The Plan's second Step is `tests/test_loader.py`, which does not exist yet."""
+    runner = a_runner()
+    runner.script(
+        "git",
+        "status",
+        "--porcelain",
+        stdout=["", " M src/loader.py\n?? tests/test_loader.py\n?? .coverage\n"],
+    )
+    runner.script("claude", stdout=agent_says("completed", "covered the retry path"))
+
+    forge(runner).implement(12, allow_commands=True)
+
+    assert staged(runner) == ["src/loader.py", "tests/test_loader.py"]
+
+
+def test_an_untracked_file_an_agent_reported_is_committed():
+    """`files_changed` stopped being decoration: it is half of the declared surface."""
+    runner = a_runner()
+    runner.script(
+        "git", "status", "--porcelain", stdout=["", " M src/loader.py\n?? src/backoff.py\n"]
+    )
+    runner.script(
+        "claude",
+        stdout=agent_says(
+            "completed", "split the backoff out", files=("src/loader.py", "src/backoff.py")
+        ),
+    )
+
+    forge(runner).implement(12, allow_commands=True)
+
+    assert staged(runner) == ["src/loader.py", "src/backoff.py"]
+
+
+def test_an_out_of_plan_edit_to_a_tracked_file_still_reaches_the_commit():
+    """ADR-0015's asymmetry, deliberately. Git already knows about the file, so
+    the edit is a change to the project however it got there — and declining it
+    because the Plan forgot the file would drop an Agent's work silently."""
+    runner = a_runner()
+    runner.script(
+        "git", "status", "--porcelain", stdout=["", " M src/loader.py\n M docs/loading.md\n"]
+    )
+    runner.script("claude", stdout=agent_says("completed", "done"))
+
+    forge(runner).implement(12, allow_commands=True)
+
+    assert staged(runner) == ["src/loader.py", "docs/loading.md"]
+
+
+def test_a_run_that_left_only_undeclared_files_fails_and_says_which():
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=["", "?? .pytest_cache/CACHEDIR.TAG\n"])
+    runner.script("git", "rev-list", "--count", stdout="0\n")
+    runner.script("claude", stdout=agent_says("completed", "ran the suite", files=()))
+
+    state = forge(runner).implement(12, allow_commands=True)
+
+    assert state.status is RunStatus.FAILED
+    assert not runner.ran("git", "commit")
+    assert not runner.ran("gh", "pr", "create")
+    assert ".pytest_cache/CACHEDIR.TAG" in state.results[-1].summary
+
+
+def test_a_suspended_run_commits_the_same_surface(tmp_path, monkeypatch):
+    """One rule about what belongs in a commit. A Gate stopping the Run is not
+    a reason to relax it."""
+    _workflow(tmp_path, monkeypatch, HUMAN_GATED)
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=["", AFTER_PYTEST])
+    runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
+
+    forge(runner).implement(12, allow_commands=True)
+
+    assert staged(runner) == ["src/loader.py"]
+    assert runner.only("git", "push")[-1] == "agentforge/issue-12"

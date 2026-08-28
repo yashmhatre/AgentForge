@@ -55,6 +55,15 @@ so the same question is not asked next week. That leaves changes in your working
 tree; `agentforge plan` says which files, and they are yours to review and
 commit.
 
+Opening that gate is also what makes a Run produce files nobody asked for:
+running a suite writes `__pycache__`, and possibly coverage data and a cache
+directory. AgentForge commits every change to a file git already tracks, and an
+untracked file only when the frozen plan or an agent's own result named it.
+Everything else stays in your working tree and is listed in the pull request
+under *Left uncommitted*, so a repository with no `.gitignore` still gets a diff
+that is only the work. AgentForge does not write a `.gitignore` for you. See
+ADR-0015.
+
 Without `--allow-commands`, the Implementer remains default-deny and the Tester
 reports that it could not run the suite; it never substitutes reading tests and
 claims completion. Security, the Reviewer, and the Architect need no such flag —
@@ -152,6 +161,12 @@ AgentForge never touches a model API and handles no credentials of its own. What
 | `agentforge unslop <file>` | Scans prose for machine-writing tells. Deterministic; no model involved. |
 
 Both agent commands take `--provider` and `--tier`. A bare `--tier deep` moves every Role; `--tier implementer=deep` moves one.
+
+Either flag beats the issue. Without one, the tier beside a Role in the Roster
+table is the tier that Step runs at — the Orchestrator's judgement about how
+hard this particular Task is, frozen with the rest of the plan, so a resumed Run
+costs what the first invocation would have. A Role the Roster does not name runs
+at its declared default. See ADR-0014.
 
 ## Workflows
 

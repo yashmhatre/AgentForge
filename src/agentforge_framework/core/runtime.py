@@ -14,6 +14,7 @@ Role and no Gate kind: Roles are looked up in `RUNNERS` and Gate kinds in
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -240,6 +241,9 @@ class Forge:
         results = list(state.results)
         gates = list(state.gates)
         overrides = tier_overrides or {}
+        # ADR-0014: read off the frozen plan block, so a resumed Run resolves
+        # tiers the way the invocation that filed the Issue would have.
+        chosen = state.roster.tiers()
         invoked = False
 
         for position, (step, behind) in enumerate(zip(workflow.steps, retired), start=1):
@@ -250,7 +254,10 @@ class Forge:
                 if not invoked:
                     github.post_comment(number, render_context_comment(state.context))
                 role = resolve_role(step.role)
-                at = overrides.get(role.name, tier or step.tier or role.tier)
+                at = overrides.get(
+                    role.name,
+                    tier or step.tier or chosen.get(role.name) or role.tier,
+                )
                 # Derived from the Run Log rather than enumerated, because a
                 # resumed Run starts partway through and would otherwise tell a
                 # human that a Role escalated at step 1 of a Run whose step 1 is
@@ -309,7 +316,14 @@ class Forge:
             )
 
         changed = repo.changed_files()
-        committed = repo.commit_all(f"{issue.title}\n\nImplements #{number} via AgentForge.")
+        committed = repo.commit_declared(
+            f"{issue.title}\n\nImplements #{number} via AgentForge.",
+            _declared_surface(state, results),
+        )
+        # Left in the working tree on purpose (ADR-0015), and named rather
+        # than dropped: the human at Sign-off is the only one who can say
+        # whether an undeclared file was an Agent's work or its suite's.
+        left = tuple(path for path in changed if path not in committed)
         base = github.default_branch()
         # An empty working tree is only a failure when the branch has nothing on
         # it either. Plenty of Runs legitimately write nothing here: an audit
@@ -319,7 +333,7 @@ class Forge:
         # over a branch identical to the base, which is the empty pull request
         # this check exists to refuse.
         if not committed and invoked and not repo.carries_work_against(base):
-            failure = _nothing_to_open(results, workflow)
+            failure = _nothing_to_open(results, workflow, left)
             github.post_comment(number, render_run_log_comment(failure))
             results.append(failure)
             return _end(
@@ -340,7 +354,7 @@ class Forge:
         repo.push(branch)
         url = github.open_draft_pr(
             title=issue.title,
-            body=_pr_body(number, state, results, changed),
+            body=_pr_body(number, state, results, committed, left),
             head=branch,
             base=base,
         )
@@ -386,22 +400,63 @@ def _run_step(role: Role, provider, state: RunState, cwd: Path) -> AgentResult:
     )
 
 
-def _nothing_to_open(results: list[AgentResult], workflow: Workflow) -> AgentResult:
-    """The Run reported success and left the working tree alone.
+def _declared_surface(state: RunState, results: Sequence[AgentResult]) -> tuple[str, ...]:
+    """Every path this Run said it would touch, from both places it says so.
+
+    The frozen Plan names files per Step before anything runs, and each Agent
+    Result names what its Agent reports changing. Neither is trusted for whether
+    work happened — `carries_work_against` asks git that — but together they are
+    the only account of *which* files were the Run's, and ADR-0015 needs one:
+    `--allow-commands` means a suite writes into the working tree alongside the
+    Agents, and no property of a file on disk separates the two.
+
+    Duplicates are kept out and order is preserved, so a failure message listing
+    this reads in Plan order rather than in whatever order a set happened to hold.
+    """
+    declared: list[str] = []
+    seen: set[str] = set()
+    for path in (
+        *(path for step in state.plan.steps for path in step.files),
+        *(path for result in results for path in result.files_changed),
+    ):
+        if path and path not in seen:
+            seen.add(path)
+            declared.append(path)
+    return tuple(declared)
+
+
+def _nothing_to_open(
+    results: list[AgentResult], workflow: Workflow, left: Sequence[str] = ()
+) -> AgentResult:
+    """The Run reported success and committed nothing.
 
     Recorded against the last Role to speak, because that is the one whose claim
-    the empty tree contradicts. Otherwise the Run opens an empty pull request and
-    says it worked.
+    the empty commit contradicts. Otherwise the Run opens an empty pull request
+    and says it worked.
+
+    `left` separates the two ways to get here, because the fix differs. An empty
+    working tree means the Agents wrote nothing. A working tree holding only
+    undeclared files means they wrote somewhere the Plan and their own results
+    never named, and ADR-0015 left it uncommitted — which a human can only act on
+    if the Run says which files.
     """
     last = results[-1] if results else None
+    if left:
+        summary = (
+            "the Roster reported success but every file it left is one neither the Plan "
+            "nor any Agent Result named, so nothing was committed (ADR-0015): "
+            + ", ".join(left)
+        )
+    else:
+        summary = (
+            "the Roster reported success but left no changes in the working tree, "
+            "so there is nothing to open a pull request for"
+        )
     return AgentResult(
         role=last.role if last else workflow.steps[-1].role,
         tier=last.tier if last else resolve_role(workflow.steps[-1].role).tier,
         outcome=Outcome.FAILED,
-        summary=(
-            "the Roster reported success but left no changes in the working tree, "
-            "so there is nothing to open a pull request for"
-        ),
+        summary=summary,
     )
 
 
@@ -444,7 +499,7 @@ def _stop_at(
         f"{issue.title}\n\nPartial work for #{state.issue}; the Run is suspended at a "
         f"{gate.kind} Gate."
     )
-    if repo.commit_all(message):
+    if repo.commit_declared(message, _declared_surface(state, state.results)):
         repo.push(state.branch)
     return _end(github, issue, _with(state, status=RunStatus.SUSPENDED))
 
@@ -461,7 +516,7 @@ def _end(github: GitHub, issue: Issue, state: RunState) -> RunState:
     return state
 
 
-def _pr_body(number: int, state: RunState, results, changed) -> str:
+def _pr_body(number: int, state: RunState, results, committed, left=()) -> str:
     lines = [
         f"Closes #{number}.",
         "",
@@ -474,9 +529,23 @@ def _pr_body(number: int, state: RunState, results, changed) -> str:
     ]
     for result in results:
         lines.append(f"- **{result.role}** (`{result.tier}`) — {result.summary}")
-    if changed:
+    if committed:
         lines += ["", "## Files changed", ""]
-        lines += [f"- `{path}`" for path in changed]
+        lines += [f"- `{path}`" for path in committed]
+    if left:
+        lines += [
+            "",
+            "## Left uncommitted",
+            "",
+            (
+                "In the working tree of the machine that ran this, and not in this diff. "
+                "Neither the Plan nor any Agent Result named these, so AgentForge did not "
+                "commit them (ADR-0015). A build artifact is the usual reason; an Agent "
+                "writing outside its Step is the one worth reading."
+            ),
+            "",
+        ]
+        lines += [f"- `{path}`" for path in left]
     lines += [
         "",
         "---",

@@ -15,6 +15,7 @@ import pytest
 from agentforge_framework import agents
 from agentforge_framework.agents import UnknownRole, resolve_role
 from agentforge_framework.agents.implementer import IMPLEMENTER
+from agentforge_framework.agents.tester import TESTER
 from agentforge_framework.core.contracts import (
     LEGACY_LABELS,
     RUN_LABELS,
@@ -66,6 +67,14 @@ def test_roster_round_trips_by_name_and_tier():
 
     assert restored.names() == ("implementer",)
     assert restored.roles[0].tier is ModelTier.DEEP
+
+
+def test_roster_tiers_are_keyed_by_role_name():
+    """ADR-0014: this is what the runtime resolves a Step's tier from, and the
+    table a human reads shows a Role once however many Steps run it."""
+    roster = Roster((IMPLEMENTER.at_tier(ModelTier.DEEP), TESTER))
+
+    assert roster.tiers() == {"implementer": ModelTier.DEEP, "tester": ModelTier.CHEAP}
 
 
 def test_roster_carries_names_and_tiers_but_not_prompts():
