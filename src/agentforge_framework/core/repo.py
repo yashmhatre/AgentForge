@@ -60,8 +60,13 @@ class Repository:
         distinction `commit_declared` turns on: git already knows about
         everything else, and a file git has never seen is the only kind a Role's
         commands can invent.
+
+        `--untracked-files=all` because the default collapses a wholly new
+        directory to `src/newpkg/` and names none of its files. `commit_declared`
+        matches paths exactly, so a collapsed entry would drop a new package the
+        Plan asked for along with the `__pycache__` beside it.
         """
-        lines = self._git("status", "--porcelain").stdout.splitlines()
+        lines = self._git("status", "--porcelain", "--untracked-files=all").stdout.splitlines()
         return tuple(
             (line[:2], line[3:].strip().strip('"')) for line in lines if line.strip()
         )

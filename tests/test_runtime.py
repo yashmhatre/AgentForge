@@ -1975,3 +1975,36 @@ def test_a_suspended_run_commits_the_same_surface(tmp_path, monkeypatch):
 
     assert staged(runner) == ["src/loader.py"]
     assert runner.only("git", "push")[-1] == "agentforge/issue-12"
+
+
+def test_a_new_package_the_plan_named_is_committed_file_by_file():
+    """`git status` collapses a wholly new directory to `src/newpkg/` unless
+    asked not to, and a collapsed entry matches no declared path — so the fix
+    for a stray `__pycache__` would have dropped a package the Plan asked for."""
+    runner = a_runner()
+    runner.script(
+        "git",
+        "status",
+        "--porcelain",
+        stdout=[
+            "",
+            (
+                "?? src/backoff/__init__.py\n"
+                "?? src/backoff/policy.py\n"
+                "?? src/backoff/__pycache__/policy.cpython-311.pyc\n"
+            ),
+        ],
+    )
+    runner.script(
+        "claude",
+        stdout=agent_says(
+            "completed",
+            "split the backoff out",
+            files=("src/backoff/__init__.py", "src/backoff/policy.py"),
+        ),
+    )
+
+    forge(runner).implement(12, allow_commands=True)
+
+    assert staged(runner) == ["src/backoff/__init__.py", "src/backoff/policy.py"]
+    assert "--untracked-files=all" in runner.matching("git", "status")[-1]
