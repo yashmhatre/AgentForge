@@ -41,9 +41,6 @@ jobs:
   wheel:
     name: installed wheel
     runs-on: ubuntu-latest
-    env:
-      # The virtual environment the wheel lands in, outside the checkout.
-      VENV: ${{ runner.temp }}/wheel-check
     steps:
       - uses: actions/checkout@v7
 
@@ -60,17 +57,19 @@ jobs:
           pip install build
           python -m build --wheel
 
+      # `$RUNNER_TEMP/wheel-check` from here on: a virtual environment outside
+      # the checkout, holding nothing but the wheel and its dependencies.
       - name: Install it into a clean environment
         run: |
-          python -m venv "$VENV"
-          "$VENV/bin/pip" install --quiet dist/*.whl
+          python -m venv "$RUNNER_TEMP/wheel-check"
+          "$RUNNER_TEMP/wheel-check/bin/pip" install --quiet dist/*.whl
 
       # Every step from here runs outside the checkout, so an import that
       # succeeds succeeded from site-packages.
       - name: The install is what answers, not the checkout
         working-directory: ${{ runner.temp }}
         run: |
-          "$VENV/bin/python" - <<'PY'
+          "$RUNNER_TEMP/wheel-check/bin/python" - <<'PY'
           from importlib.metadata import version
 
           import agentforge_framework as package
@@ -83,9 +82,9 @@ jobs:
       - name: "`agentforge --version` resolves and answers"
         working-directory: ${{ runner.temp }}
         run: |
-          expected="agentforge $("$VENV/bin/python" -c \
-            'from importlib.metadata import version; print(version("agentforge-framework"))')"
-          actual="$("$VENV/bin/agentforge" --version)"
+          reported=$("$RUNNER_TEMP/wheel-check/bin/python" -c 'from importlib.metadata import version; print(version("agentforge-framework"))')
+          expected="agentforge $reported"
+          actual=$("$RUNNER_TEMP/wheel-check/bin/agentforge" --version)
           if [ "$actual" != "$expected" ]; then
             echo "expected '$expected', got '$actual'" >&2
             exit 1
@@ -105,14 +104,14 @@ jobs:
           # Exit 1 is findings in the prose, which is not what this job asks
           # about. Exit 2 is a scanner that could not run at all, which is.
           status=0
-          "$VENV/bin/agentforge" unslop --json prose.md > report.json || status=$?
+          "$RUNNER_TEMP/wheel-check/bin/agentforge" unslop --json prose.md > report.json || status=$?
           if [ "$status" -gt 1 ]; then
             cat report.json
             echo "a scanner could not run from the installed wheel" >&2
             exit 1
           fi
 
-          "$VENV/bin/python" - <<'PY'
+          "$RUNNER_TEMP/wheel-check/bin/python" - <<'PY'
           import json
 
           from agentforge_framework.core.skills import UNSLOP_SCANNERS
