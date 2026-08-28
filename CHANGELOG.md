@@ -2,27 +2,7 @@
 
 What changed in each release of AgentForge. Dates are the day the tag was cut.
 
-## Unreleased
-
-### Fixed
-
-- **The Roster's Model Tier is now the tier the Step runs at** (#71). The tier
-  table in an issue body was decoration: the runtime resolved every step from
-  the command line, the Workflow YAML, and the Role's default, and never read
-  the Roster at all. No shipped Workflow pins a step tier, so every run fell
-  through to the Role default and the Orchestrator's per-Role judgement had
-  never once taken effect. `--tier` and `--tier role=tier` still win.
-  See ADR-0014.
-- **A run no longer commits what its own commands left behind** (#72). With
-  `--allow-commands`, running the repository's suite writes `__pycache__`, and
-  the commit step staged the whole working tree — so a target repository with no
-  `.gitignore` got byte-compiled files, coverage data, and cache directories in
-  the diff a human reads at sign-off. A run now stages every change to a file
-  git already tracks, and an untracked file only when the frozen plan or an
-  agent result named it. Anything else is left in the working tree and listed in
-  the pull request under *Left uncommitted*. See ADR-0015.
-
-## 0.1.0 — 2026-08-27
+## 0.1.0 — 2026-08-28
 
 The first release. You state a task in your own words; AgentForge files a
 GitHub issue carrying a frozen plan, and running that issue produces a draft
@@ -47,6 +27,11 @@ non-zero; it is not built.
 - **Six Roles.** The Orchestrator plans and everything after it executes. The
   Architect, the Implementer, the Tester, the Security Role, and the Reviewer do
   the work, each declaring the class of model it needs rather than a model name.
+  The Orchestrator may move one for a task it judges harder or easier than
+  usual, and the tier beside a Role in the issue's Roster table is the tier that
+  step runs at — so the table a human reads before approving anything is what
+  the run actually costs. `--tier` at the command line still wins. See
+  [ADR-0014](docs/adr/0014-the-roster-names-the-tier-that-runs.md).
 - **Three Workflows.** `feature`, `bugfix`, and `review`, declared in YAML. A
   project can add its own.
 - **Three Gate kinds.** `human`, `tests`, and `security` — a Workflow can stop
@@ -86,6 +71,15 @@ rather than improvising a correction.
 
 Agents edit files but cannot run commands unless you open that gate for a single
 run with `--allow-commands`. The grant is never persisted to configuration.
+
+Opening it is also what makes a run produce files nobody asked for: running a
+suite writes bytecode, and possibly coverage data and a cache directory.
+AgentForge commits every change to a file git already tracks, and an untracked
+file only when the frozen plan or an agent's own result named it. Everything
+else stays in your working tree and is listed in the pull request under *Left
+uncommitted*, so a repository with no `.gitignore` still gets a diff that is
+only the work. AgentForge does not write a `.gitignore` for you. See
+[ADR-0015](docs/adr/0015-a-run-commits-what-it-declared.md).
 
 ### Prose
 
