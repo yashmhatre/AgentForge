@@ -2,7 +2,11 @@
 
 import pytest
 
-from agentforge.core.config import DEFAULT_TEST_SUITE, CapabilityTier, load_config
+from agentforge_framework.core.config import (
+    DEFAULT_TEST_SUITE,
+    CapabilityTier,
+    load_config,
+)
 
 
 def test_missing_config_uses_the_documented_provider_capability_defaults(tmp_path):

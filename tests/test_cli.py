@@ -12,9 +12,9 @@ import json
 
 import pytest
 
-from agentforge import __version__, cli
-from agentforge.core.contracts import ModelTier
-from agentforge.core.plan_format import render_result_block
+from agentforge_framework import __version__, cli
+from agentforge_framework.core.contracts import ModelTier
+from agentforge_framework.core.plan_format import render_result_block
 
 from .fakes import FakeRunner
 from .test_agents import orchestrator_output

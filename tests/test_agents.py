@@ -10,21 +10,25 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from agentforge import agents
-from agentforge.agents.implementer import IMPLEMENTER, Implementer, build_prompt
-from agentforge.agents.orchestrator import (
+from agentforge_framework import agents
+from agentforge_framework.agents.implementer import (
+    IMPLEMENTER,
+    Implementer,
+    build_prompt,
+)
+from agentforge_framework.agents.orchestrator import (
     ORCHESTRATOR,
     Orchestrator,
     build_document,
     select_roster,
 )
-from agentforge.core.contracts import ContextPack, ModelTier, Outcome, Task
-from agentforge.core.plan_format import (
+from agentforge_framework.core.contracts import ContextPack, ModelTier, Outcome, Task
+from agentforge_framework.core.plan_format import (
     PLAN_CLOSE,
     PLAN_OPEN,
     render_result_block,
 )
-from agentforge.providers.claude import ClaudeProvider
+from agentforge_framework.providers.claude import ClaudeProvider
 
 from .fakes import FakeRunner
 from .test_contracts import a_plan
@@ -354,7 +358,7 @@ def test_the_implementer_leaves_committing_to_agentforge():
 
 
 def test_a_plan_with_no_steps_tells_the_implementer_to_escalate():
-    from agentforge.core.contracts import Plan
+    from agentforge_framework.core.contracts import Plan
 
     prompt = build_prompt(Plan(summary="do something"), ContextPack(), Path("/repo"))
 

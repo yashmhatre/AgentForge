@@ -17,7 +17,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from agentforge.core.process import CommandResult
+from agentforge_framework.core.process import CommandResult
 
 
 @dataclass

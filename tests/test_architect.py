@@ -8,12 +8,18 @@ same port as the other five, and a definition naming it runs.
 import json
 from pathlib import Path
 
-from agentforge.agents import RUNNERS
-from agentforge.agents.architect import ARCHITECT, build_prompt
-from agentforge.agents.architect import Architect as _ArchitectRunner
-from agentforge.core.contracts import ContextPack, ModelTier, Outcome, Plan, PlanStep
-from agentforge.core.plan_format import render_result_block
-from agentforge.providers.claude import ClaudeProvider
+from agentforge_framework.agents import RUNNERS
+from agentforge_framework.agents.architect import ARCHITECT, build_prompt
+from agentforge_framework.agents.architect import Architect as _ArchitectRunner
+from agentforge_framework.core.contracts import (
+    ContextPack,
+    ModelTier,
+    Outcome,
+    Plan,
+    PlanStep,
+)
+from agentforge_framework.core.plan_format import render_result_block
+from agentforge_framework.providers.claude import ClaudeProvider
 
 from .fakes import FakeRunner
 from .test_contracts import a_plan

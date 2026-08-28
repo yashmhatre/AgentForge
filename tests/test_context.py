@@ -18,14 +18,24 @@ from pathlib import Path
 
 import pytest
 
-from agentforge.agents import architect, implementer, reviewer, security, tester
-from agentforge.context.extractors import Extraction, extract, extractor_for
-from agentforge.context.extractors import python as python_extractor
-from agentforge.context.extractors import sql as sql_extractor
-from agentforge.context.extractors import yaml as yaml_extractor
-from agentforge.context.prompt import render_context_block
-from agentforge.context.resolver import MAX_FILES, MAX_SYMBOLS_PER_FILE, resolve_pack
-from agentforge.core.contracts import ContextPack, Plan, PlanStep
+from agentforge_framework.agents import (
+    architect,
+    implementer,
+    reviewer,
+    security,
+    tester,
+)
+from agentforge_framework.context.extractors import Extraction, extract, extractor_for
+from agentforge_framework.context.extractors import python as python_extractor
+from agentforge_framework.context.extractors import sql as sql_extractor
+from agentforge_framework.context.extractors import yaml as yaml_extractor
+from agentforge_framework.context.prompt import render_context_block
+from agentforge_framework.context.resolver import (
+    MAX_FILES,
+    MAX_SYMBOLS_PER_FILE,
+    resolve_pack,
+)
+from agentforge_framework.core.contracts import ContextPack, Plan, PlanStep
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -76,7 +86,7 @@ def test_a_python_module_reaches_for_its_dependencies_and_not_the_standard_libra
     extraction = python_extractor.extract(recorded("extract_module.py"))
 
     assert "pyyaml_stand_in" in extraction.references
-    assert "agentforge.core.contracts" in extraction.references
+    assert "agentforge_framework.core.contracts" in extraction.references
     assert "json" not in extraction.references
     assert "pathlib" not in extraction.references
 
@@ -242,9 +252,12 @@ def test_the_same_plan_against_the_same_repository_resolves_to_the_same_pack(tmp
 def test_a_pack_survives_a_round_trip_through_an_issue_body(tmp_path):
     """A Run resumed from an issue number is handed the pack the Run that filed
     it wrote down: ADR-0002's claim, applied to ADR-0010's artifact."""
-    from agentforge.agents import resolve_role
-    from agentforge.core.contracts import PlanDocument, Roster, Task
-    from agentforge.core.plan_format import parse_issue_body, render_issue_body
+    from agentforge_framework.agents import resolve_role
+    from agentforge_framework.core.contracts import PlanDocument, Roster, Task
+    from agentforge_framework.core.plan_format import (
+        parse_issue_body,
+        render_issue_body,
+    )
 
     root = a_repository(tmp_path, **{"src__loader.py": recorded("extract_module.py")})
     plan = a_plan("src/loader.py")

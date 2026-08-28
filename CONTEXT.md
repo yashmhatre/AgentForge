@@ -131,5 +131,5 @@ A skill's instructions inlined into an Agent's prompt, used where the Provider's
 _Avoid_: Snippet, blurb, inline skill, partial
 
 **Vendored Skill**:
-A third-party skill shipped inside `src/agentforge/skills/` as package data, invoked as a subprocess and never imported. Provenance and deliberate exclusions live in `skills/MANIFEST.yaml`. See ADR-0006.
+A third-party skill shipped inside `src/agentforge_framework/skills/` as package data, invoked as a subprocess and never imported. Provenance and deliberate exclusions live in `skills/MANIFEST.yaml`. See ADR-0006.
 _Avoid_: Bundled skill, dependency, plugin, third-party package

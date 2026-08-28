@@ -11,16 +11,16 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from agentforge.agents.orchestrator import (
+from agentforge_framework.agents.orchestrator import (
     MAX_ROUNDS,
     ORCHESTRATOR,
     Exchange,
     Orchestrator,
     render_transcript,
 )
-from agentforge.core.contracts import ModelTier, Task
-from agentforge.core.plan_format import render_result_block
-from agentforge.providers.claude import ClaudeProvider
+from agentforge_framework.core.contracts import ModelTier, Task
+from agentforge_framework.core.plan_format import render_result_block
+from agentforge_framework.providers.claude import ClaudeProvider
 
 from .fakes import FakeRunner
 from .test_agents import orchestrator_output

@@ -20,7 +20,7 @@ No Workflow ever merges.
 
 **The repository is not a repository.** `g:\Projects\AgentForge` has no `.git` and no remote. Every handoff in ADR-0002 runs through `gh`, which needs both. This blocks the first end-to-end test, not the first line of code.
 
-**The package does not install.** `pyproject.toml` declares the distribution as `agentforge`, then tells setuptools to find `core*`, `agents*`, `context*`, `plugins*`, and `providers*`. A `pip install agentforge` would drop five generic top-level names into site-packages, where `context` and `core` will collide with something. Move everything under `src/agentforge/`, and the `pip install + agentforge init` model in ADR-0002 starts working.
+**The package does not install.** `pyproject.toml` declares the distribution as `agentforge`, then tells setuptools to find `core*`, `agents*`, `context*`, `plugins*`, and `providers*`. A `pip install` would drop five generic top-level names into site-packages, where `context` and `core` will collide with something. Move everything under one package directory, and the `pip install + agentforge init` model in ADR-0002 starts working.
 
 **Two Roles have no home.** The skeleton ships Architect, Implementer, Tester, and Reviewer. The pipeline you described also needs Security and Orchestrator. Neither exists in `agents/`.
 
@@ -32,7 +32,7 @@ No Workflow ever merges.
 
 One Role, running end to end, proving ADR-0001 through ADR-0004 at once. Nothing here is throwaway.
 
-Restructure to `src/agentforge/` and add a `[project.scripts]` entry pointing at the CLI. Delete the top-level `cli.py` once `agentforge.cli:main` replaces it.
+Restructure to `src/agentforge_framework/` and add a `[project.scripts]` entry pointing at the CLI. Delete the top-level `cli.py` once `agentforge_framework.cli:main` replaces it.
 
 Write `core/contracts.py`. It is the load-bearing file in the project and everything else imports from it: `Task`, `Plan`, `Roster`, `Role`, `ContextPack`, `AgentResult`, `RunState`, `ModelTier`. Dataclasses, no behavior. ADR-0003 makes `Plan` an interface parsed by every Role, so its serialized shape gets designed here and changed rarely.
 

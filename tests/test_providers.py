@@ -13,15 +13,15 @@ from typing import ClassVar
 
 import pytest
 
-from agentforge.agents.implementer import IMPLEMENTER
-from agentforge.core.config import CapabilityTier, Config, load_config
-from agentforge.core.contracts import ContextPack, ModelTier, Outcome, Role
-from agentforge.core.process import CommandResult
-from agentforge.core.skills import read_skill
-from agentforge.providers import PROVIDERS, get_provider
-from agentforge.providers.base import Provider, ProviderError
-from agentforge.providers.claude import ClaudeProvider
-from agentforge.providers.codex import CodexProvider
+from agentforge_framework.agents.implementer import IMPLEMENTER
+from agentforge_framework.core.config import CapabilityTier, Config, load_config
+from agentforge_framework.core.contracts import ContextPack, ModelTier, Outcome, Role
+from agentforge_framework.core.process import CommandResult
+from agentforge_framework.core.skills import read_skill
+from agentforge_framework.providers import PROVIDERS, get_provider
+from agentforge_framework.providers.base import Provider, ProviderError
+from agentforge_framework.providers.claude import ClaudeProvider
+from agentforge_framework.providers.codex import CodexProvider
 
 from .fakes import FakeRunner
 

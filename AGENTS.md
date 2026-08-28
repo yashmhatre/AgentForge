@@ -24,6 +24,6 @@ Single-context: one `CONTEXT.md` and one `docs/adr/` at the repo root. See [`doc
 
 **Everything external is a subprocess, behind one seam.** `gh`, the coding-agent CLIs, and the vendored unslop scanners all route through a single Command Runner port. Add a new external dependency by going through that port, never by calling `subprocess` directly.
 
-**`src/agentforge/skills/` is vendored third-party code.** Never edit it in place. A local change upstream doesn't know about turns every future refresh into a manual merge. Provenance, commit SHAs, and what was deliberately excluded from each bundle are in `skills/MANIFEST.yaml`.
+**`src/agentforge_framework/skills/` is vendored third-party code.** Never edit it in place. A local change upstream doesn't know about turns every future refresh into a manual merge. Provenance, commit SHAs, and what was deliberately excluded from each bundle are in `skills/MANIFEST.yaml`.
 
 **Tests run offline.** No network, no GitHub account, no coding-agent CLI installed. If a change makes that untrue, the seam is in the wrong place.
