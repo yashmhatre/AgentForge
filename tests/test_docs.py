@@ -6,14 +6,17 @@ for each property: a checker that never passes is as useless as one that never
 fails, and the known-good case is deliberately a near miss rather than the
 clean tree, because that is where an over-eager rule shows itself.
 
-The last two sections drop the fixture tree and assert against the real files:
-this repository's own glossary, and the two places it records its own version.
+The last sections drop the fixture tree and assert against the real files:
+this repository's own glossary, the two places it records its own version,
+and the two places it says which Pythons it supports.
 """
 
 from __future__ import annotations
 
 import tomllib
 from pathlib import Path
+
+import yaml
 
 import agentforge_framework
 
@@ -354,3 +357,30 @@ def test_the_package_and_the_distribution_agree_on_the_version():
     metadata = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
     assert metadata["project"]["version"] == agentforge_framework.__version__
+
+
+# --- the Python the metadata claims is the Python CI runs --------------------
+
+
+def test_the_matrix_runs_every_python_the_metadata_claims():
+    """#52 found `requires-python` promising 3.13 while the matrix stopped at
+    3.12, and settled it by widening the matrix rather than narrowing the claim.
+    Whichever way a later change moves them, it has to move both.
+
+    An open-ended `>=` claims releases that do not exist yet, and no offline
+    test can know when one arrives. What this catches is drift that has already
+    happened: a floor that goes untested, or a gap in the middle.
+    """
+    metadata = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    claim = metadata["project"]["requires-python"]
+    assert claim.startswith(">="), f"unhandled requires-python form: {claim!r}"
+
+    workflow = yaml.safe_load(
+        (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    )
+    matrix = workflow["jobs"]["test"]["strategy"]["matrix"]["python-version"]
+
+    floor = int(claim.removeprefix(">=").split(".")[1])
+    tested = [int(version.split(".")[1]) for version in matrix]
+
+    assert tested == list(range(floor, max(tested) + 1))
