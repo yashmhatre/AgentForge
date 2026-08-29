@@ -50,6 +50,7 @@ from .issues import (
 )
 from .plan_format import PlanFormatError, render_issue_body, render_issue_title
 from .process import CommandRunner, SubprocessRunner
+from .registry import NO_PLUGINS, Activation, activate, contributions, fragments_for
 from .repo import PreconditionFailed, Repository, branch_for_issue, open_repository
 from .workflow import Workflow, WorkflowError, load_workflow
 
@@ -175,6 +176,7 @@ class Forge:
         tier: ModelTier | None = None,
         allow_commands: bool = False,
         resolve_context: bool = True,
+        use_plugins: bool = True,
     ) -> RunState:
         """Run the Issue's Workflow. `tier` moves every Role; `tier_overrides` moves one.
 
@@ -185,6 +187,12 @@ class Forge:
         `resolve_context` off is the control Run. A Context Pack is supposed to
         make a Run cheaper, and the only honest way to know is to run the same
         Issue without one and compare the totals the two Run Logs carry.
+
+        `use_plugins` off keeps the pack and drops the Plugins' Fragments. The
+        two switches are separate because they measure different things and
+        ADR-0016 needs both: Fragments ride in the pack, so `resolve_context`
+        off already suppresses them, and a Run with neither cannot say which of
+        the two moved the total. See ADR-0016 for the three conditions.
         """
         repo, github, provider = self._prepare(allow_commands=allow_commands)
 
@@ -202,6 +210,12 @@ class Forge:
             raise RunFailed(f"issue #{number} cannot be implemented: {exc}") from exc
         except LookupError as exc:
             raise RunFailed(f"issue #{number} names a Role that cannot run: {exc}") from exc
+
+        # Before the Workflow is loaded, not after. A later ticket lets a Plugin
+        # register a Gate kind, and `parse_workflow` refuses an unknown kind at
+        # load time — so a Workflow naming a Plugin's Gate would be rejected
+        # before its Plugin existed if these two ran the other way round.
+        activation = activate(state.plan, repo.root) if use_plugins else NO_PLUGINS
 
         try:
             workflow = load_workflow(state.workflow)
@@ -252,7 +266,12 @@ class Forge:
                 # pack is what the Agents below were shown, and a Run that only
                 # walked a Gate showed nobody anything.
                 if not invoked:
-                    github.post_comment(number, render_context_comment(state.context))
+                    github.post_comment(
+                        number,
+                        render_context_comment(
+                            state.context, contributions(activation), activation.skipped
+                        ),
+                    )
                 role = resolve_role(step.role)
                 at = overrides.get(
                     role.name,
@@ -263,7 +282,9 @@ class Forge:
                 # human that a Role escalated at step 1 of a Run whose step 1 is
                 # behind it.
                 where = _with(state, results=results, gates=gates).current_step
-                result = _run_step(role.at_tier(at), provider, state, repo.root)
+                result = _run_step(
+                    role.at_tier(at), provider, state, repo.root, activation
+                )
                 github.post_comment(
                     number,
                     render_run_log_comment(result, step=where, of=len(workflow.steps)),
@@ -376,7 +397,13 @@ class Forge:
 # --- role dispatch ---------------------------------------------------------
 
 
-def _run_step(role: Role, provider, state: RunState, cwd: Path) -> AgentResult:
+def _run_step(
+    role: Role,
+    provider,
+    state: RunState,
+    cwd: Path,
+    activation: Activation = NO_PLUGINS,
+) -> AgentResult:
     """Invoke whatever runner is registered for this Role.
 
     The lookup is the whole point: the runtime names no Role, so a Workflow
@@ -393,11 +420,31 @@ def _run_step(role: Role, provider, state: RunState, cwd: Path) -> AgentResult:
 
     return runner(provider).run(
         plan=state.plan,
-        context=state.context or ContextPack(),
+        context=_pack_for(role, state.context, activation),
         cwd=cwd,
         role=role,
         tier=role.tier,
     )
+
+
+def _pack_for(role: Role, pack: ContextPack | None, activation: Activation) -> ContextPack:
+    """The Run's pack, plus whatever the active Plugins say to this one Role.
+
+    Folded here rather than inside each Role runner: Fragments are per Role and
+    the pack is per Run, and this is the one place that knows both. No runner
+    signature changes, and the pack recorded in the Run Log stays the Run-level
+    one, so a human comparing two Runs is comparing the same object.
+
+    A Run that resolved no pack gets no Fragments either. ADR-0016 settles that
+    `--no-context-pack` is a combined control and `--no-plugins` is the one that
+    isolates them.
+    """
+    pack = pack or ContextPack()
+    if not pack:
+        return pack
+
+    fragments = fragments_for(activation, role.name)
+    return replace(pack, fragments=fragments) if fragments else pack
 
 
 def _declared_surface(state: RunState, results: Sequence[AgentResult]) -> tuple[str, ...]:

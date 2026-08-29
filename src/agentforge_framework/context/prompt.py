@@ -56,6 +56,16 @@ def render_context_block(context: ContextPack) -> str:
     if context.conventions:
         parts.append("**Follow these conventions:** " + ", ".join(context.conventions))
 
+    # Last in the block, and under its own heading. The Orchestrator's
+    # conventions above are about this Task; these are about the technology, and
+    # a Role reading one run-on list of both cannot tell which of them the Plan
+    # actually asked for.
+    if context.fragments:
+        parts.append(
+            "**This repository's technology is held to these conventions:**\n\n"
+            + "\n\n".join(context.fragments)
+        )
+
     return "\n## Context Pack\n\n" + "\n\n".join(parts) + "\n"
 
 

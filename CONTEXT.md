@@ -93,7 +93,7 @@ The per-language reader that turns one file into what it defines and what it rea
 _Avoid_: Parser, analyzer, scanner, reader
 
 **Plugin**:
-A bundle of domain knowledge for one technology — Python, SQL, PySpark, Databricks — contributing extractors, Fragments, validators, and Commands. Plugins are what make AgentForge useful in a data engineering repository rather than merely usable in one.
+A bundle of domain knowledge for one technology — Python, SQL, PySpark, Databricks — contributing Extractors, Fragments, validators, and Commands. Every contribution is optional. A Plugin is data with no behaviour: it declares the file suffixes and root markers it answers for, and `core/registry.py` decides which Plugins are active for a Run. Plugins are what make AgentForge useful in a data engineering repository rather than merely usable in one. See ADR-0016.
 _Avoid_: Extension, module, pack
 
 **Command**:
@@ -127,7 +127,7 @@ What a Provider's CLI can be relied on to support, declared in configuration rat
 _Avoid_: Feature flag, support level, capability level
 
 **Fragment**:
-A skill's instructions inlined into an Agent's prompt, used where the Provider's Capability Tier offers no native equivalent. A Fragment is the degraded delivery of a skill, never a second copy of one.
+Standing instruction inlined into an Agent's prompt. It has two sources. A skill becomes a Fragment where the Provider's Capability Tier offers no native equivalent, and there it is the degraded delivery of that skill, never a second copy of one. A Plugin contributes Fragments outright — the conventions its technology is held to — and those have no native form at any Capability Tier, so they are inlined for every Provider. See ADR-0005 and ADR-0016.
 _Avoid_: Snippet, blurb, inline skill, partial
 
 **Vendored Skill**:

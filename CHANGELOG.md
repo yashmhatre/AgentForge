@@ -2,6 +2,25 @@
 
 What changed in each release of AgentForge. Dates are the day the tag was cut.
 
+## Unreleased
+
+### Plugins reach a prompt
+
+- **A Plugin contributes domain knowledge through one registry.** A Plugin is a
+  frozen data object naming the file suffixes and root markers it answers for
+  and what it contributes; every contribution is optional. `core/registry.py`
+  answers which Plugins are active for a Run, detected from the frozen Plan's
+  blast radius, deterministic for a given Plan and repository.
+- **`python` ships one Fragment**, reaching the Implementer, Tester, and
+  Reviewer. A repository no Plugin claims produces exactly the prompts it
+  produced at 0.1.
+- **`--no-plugins`** runs an Issue with the Context Pack resolved and no
+  Fragments, which is the control for what the Fragments cost.
+  `--no-context-pack` removes both, as it always did. See
+  [ADR-0016](docs/adr/0016-a-plugin-contributes-through-the-context-pack.md).
+- The Context Pack comment names the active Plugins and what each contributed,
+  and names any that raised and were skipped.
+
 ## 0.1.0 — 2026-08-28
 
 The first release. You state a task in your own words; AgentForge files a

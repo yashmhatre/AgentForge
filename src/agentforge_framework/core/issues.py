@@ -310,7 +310,11 @@ def render_run_cost(results: Sequence[AgentResult]) -> str:
     return f"${total.cost_usd:.4f}{_token_split(total)} {steps}."
 
 
-def render_context_comment(context: ContextPack) -> str:
+def render_context_comment(
+    context: ContextPack,
+    plugins: Sequence[tuple[str, str]] = (),
+    skipped: Sequence[str] = (),
+) -> str:
     """The pack this Run's Agents were handed, recorded before the first one ran.
 
     A Run that went wrong is diagnosed against what its Agents could see, and
@@ -318,13 +322,19 @@ def render_context_comment(context: ContextPack) -> str:
     machine block on purpose: the pack is resolved from the frozen Plan on every
     invocation (ADR-0010), so this is a record of a Run rather than a contract
     the next one reads back.
+
+    `plugins` and `skipped` are the Plugins that answered for this Run and the
+    ones that raised while being asked. Both are named for the same reason the
+    pack is: a prompt that grew, or one that did not grow when a reader expected
+    it to, should carry its own explanation. See ADR-0016.
     """
     if not context:
         return (
             "### Context Pack — none\n\n"
             "No pack was resolved for this Run, so every Role reads the repository for "
             "itself. That is what `--no-context-pack` is for: the Run's total below is "
-            "the figure a packed Run is measured against.\n"
+            "the figure a packed Run is measured against. Plugin Fragments ride in the "
+            "pack, so this Run carried none of those either.\n"
         )
 
     lines = [
@@ -355,6 +365,29 @@ def render_context_comment(context: ContextPack) -> str:
     if context.conventions:
         lines += ["", "**Conventions:**", ""]
         lines += [f"- {convention}" for convention in context.conventions]
+
+    if plugins:
+        lines += [
+            "",
+            f"**Plugins active ({len(plugins)}):**",
+            "",
+            (
+                "Contributed to the prompts of the Roles each names, on top of the pack "
+                "above. `--no-plugins` runs the same Issue without them."
+            ),
+            "",
+        ]
+        lines += [f"- `{name}` — {what}" for name, what in plugins]
+
+    if skipped:
+        lines += [
+            "",
+            "**Plugins skipped:**",
+            "",
+            "These raised while being asked what they contribute. The Run carried on without them.",
+            "",
+        ]
+        lines += [f"- {entry}" for entry in skipped]
 
     return "\n".join(lines) + "\n"
 

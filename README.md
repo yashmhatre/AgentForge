@@ -68,8 +68,9 @@ Without `--allow-commands`, the Implementer remains default-deny and the Tester
 reports that it could not run the suite; it never substitutes reading tests and
 claims completion. Security, the Reviewer, and the Architect need no such flag —
 auditing, reviewing, and designing are reading. All six Roles `CONTEXT.md` names
-now run. Still to come: plugins and `agentforge init`. See
-[`docs/PLAN.md`](docs/PLAN.md).
+now run. Plugins have landed as a seam — a repository's technology contributes
+the conventions its Roles are held to — with the data-engineering ones still to
+come, alongside `agentforge init`. See [`docs/PLAN.md`](docs/PLAN.md).
 
 Before the first Role is invoked, AgentForge resolves a Context Pack from the
 frozen plan — the files it names, the symbols and imports inside them, the
@@ -254,7 +255,9 @@ code rather than the verdict about the old code.
 - `core/` — the contracts, the command runner, the GitHub boundary, the plan format, and the run loop.
 - `agents/` — the Role definitions and their prompts.
 - `providers/` — one adapter per coding-agent CLI.
-- `workflows/` — the three shipped Workflow definitions; `context/` and `plugins/` are later milestones.
+- `workflows/` — the three shipped Workflow definitions.
+- `context/` — the Context Pack resolver and its per-language Extractors.
+- `plugins/` — one package per technology, contributing the conventions a repository is held to; `core/registry.py` decides which are active for a Run.
 - `skills/` — vendored third-party skills. Never edited in place; see `skills/MANIFEST.yaml`.
 
 Read [`CONTEXT.md`](CONTEXT.md) before writing anything, and [`docs/adr/`](docs/adr/) for the decisions that constrain it.

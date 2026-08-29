@@ -56,7 +56,17 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "hand every Role an empty Context Pack, so each reads the repository for "
             "itself. This is the control Run: compare its cost against a packed Run of "
-            "the same issue to find out what the pack is worth"
+            "the same issue to find out what the pack is worth. Plugin Fragments ride "
+            "in the pack, so this drops those too -- use --no-plugins to drop only those"
+        ),
+    )
+    implement.add_argument(
+        "--no-plugins",
+        action="store_true",
+        help=(
+            "resolve the Context Pack as usual but activate no Plugins, so no Fragment "
+            "reaches a prompt. This is the control for what the Fragments cost, and it "
+            "is a separate switch because --no-context-pack removes both at once"
         ),
     )
 
@@ -217,6 +227,7 @@ def _run_implement(args: argparse.Namespace, runner=None) -> int:
             tier=default_tier,
             allow_commands=args.allow_commands,
             resolve_context=not args.no_context_pack,
+            use_plugins=not args.no_plugins,
         )
     except (RunFailed, IssueError) as exc:
         print(f"agentforge: {exc}", file=sys.stderr)
