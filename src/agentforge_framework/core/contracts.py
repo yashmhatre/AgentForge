@@ -281,6 +281,40 @@ class Roster:
 
 
 @dataclass(frozen=True)
+class Fragment:
+    """Conventions a Plugin contributes to the prompts of the Roles it names.
+
+    `roles` empty means every Role. A Fragment is text and nothing else: it is
+    inlined into the Context Pack handed to a Step, so it reaches an Agent the
+    same way whatever Provider is driving. See ADR-0016.
+    """
+
+    text: str
+    roles: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class Plugin:
+    """A bundle of domain knowledge for one technology, as data.
+
+    No behaviour: a Plugin declares what it answers for and what it contributes,
+    and `core.registry` does the deciding. Every contribution field is optional,
+    so a Plugin carrying only Fragments is legal and is what the `python` Plugin
+    is at 0.2.
+
+    `suffixes` and `root_markers` are the two ways a Plugin is detected. A
+    suffix answers for the blast radius the frozen Plan names; a root marker
+    answers for the repository itself — a `pyproject.toml` says Python whatever
+    one Plan happens to touch.
+    """
+
+    name: str
+    suffixes: tuple[str, ...] = ()
+    root_markers: tuple[str, ...] = ()
+    fragments: tuple[Fragment, ...] = ()
+
+
+@dataclass(frozen=True)
 class ContextPack:
     """The bounded set of files, symbols, and conventions handed to an Agent.
 
@@ -302,6 +336,15 @@ class ContextPack:
     #: the Orchestrator: it is read out of the files, and a Role reads it to
     #: find out what its change can break.
     references: tuple[str, ...] = ()
+    #: What the active Plugins contribute to this Step's Role, folded in by the
+    #: runtime just before the Agent is invoked. Kept apart from `conventions`
+    #: because the two have different authors and a reader should be able to
+    #: tell them apart: `conventions` is the Orchestrator's judgement about this
+    #: Task, and this is what the repository's technology is held to regardless
+    #: of Task. Per Role, so it is absent from the Run-level pack the Run Log
+    #: records, and absent from `to_dict` because it never travels in an Issue
+    #: body. See ADR-0016.
+    fragments: tuple[str, ...] = ()
 
     def __bool__(self) -> bool:
         """Whether the pack carries anything at all.
@@ -311,9 +354,22 @@ class ContextPack:
         same question asked four ways — one of which gets forgotten the next
         time a field is added.
         """
-        return bool(self.files or self.symbols or self.conventions or self.references)
+        return bool(
+            self.files
+            or self.symbols
+            or self.conventions
+            or self.references
+            or self.fragments
+        )
 
     def to_dict(self) -> dict:
+        """The pack as it travels in an Issue body.
+
+        `fragments` is deliberately absent. It is resolved per Step from the
+        Plugins active for the repository the Run is in, so writing it into the
+        Issue would freeze one machine's answer into the stable surface
+        (ADR-0011) and hand the next Run conventions it may not be held to.
+        """
         return {
             "files": list(self.files),
             "symbols": list(self.symbols),

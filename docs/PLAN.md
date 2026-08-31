@@ -66,6 +66,8 @@ Add a cost line to every Run Log comment. Without measurement, "token efficient"
 
 `plugins/python`, `plugins/sql`, `plugins/pyspark`, `plugins/databricks`, each contributing extractors, prompt fragments, validators, and Commands.
 
+The seam landed first (#56, ADR-0016): a Plugin is a frozen data object, `core/registry.py` answers which ones are active for a Run, and a Fragment rides in the Context Pack handed to a Step. `plugins/python` ships one Fragment; the remaining contribution kinds plug into the same registry (#57 Extractors, #58 validators as Gate kinds, #59 Commands, #60 PySpark and Databricks). `--no-plugins` is the control that isolates what the Fragments cost, because `--no-context-pack` removes the pack and the Fragments together.
+
 Prompt fragments are the cheapest quality win in the project: Unity Catalog three-part naming, Delta MERGE idioms, DataFrame API over RDD. A few hundred tokens of convention per Role invocation, and the Implementer stops writing code that a reviewer would reject on sight.
 
 Commands are the expensive-to-build, high-payoff half. Scaffolding a dbt model or a pytest fixture runs as a template with zero inference. Start with the three chores you repeat most; a Command that saves a task nobody runs saves nothing.
