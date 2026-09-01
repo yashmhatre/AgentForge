@@ -18,7 +18,11 @@ import pytest
 
 from agentforge_framework.context.extractors import EXTRACTORS, Extraction
 from agentforge_framework.context.prompt import render_context_block
-from agentforge_framework.context.resolver import MAX_SYMBOLS_PER_FILE, resolve_pack
+from agentforge_framework.context.resolver import (
+    MAX_BYTES,
+    MAX_SYMBOLS_PER_FILE,
+    resolve_pack,
+)
 from agentforge_framework.core.contracts import (
     ContextPack,
     Extractor,
@@ -39,11 +43,20 @@ from agentforge_framework.core.registry import (
 )
 from agentforge_framework.core.runtime import Forge, RunStatus
 from agentforge_framework.plugins import BUILT_IN
+from agentforge_framework.plugins.databricks import DATABRICKS
+from agentforge_framework.plugins.pyspark import PYSPARK
 from agentforge_framework.plugins.python import PYTHON
 from agentforge_framework.plugins.sql import SQL
 
-from .fakes import FakeRunner
-from .test_runtime import ROOT, a_runner, agent_says, comments_on, forge
+from .fakes import FakeRunner, github_repository
+from .test_runtime import (
+    ROOT,
+    a_runner,
+    agent_says,
+    comments_on,
+    forge,
+    issue_json,
+)
 
 # --- the contract ----------------------------------------------------------
 
@@ -495,3 +508,247 @@ def test_contributions_names_the_suffixes_a_plugin_reads():
     assert contributions(Activation(plugins=(SQL,))) == (
         ("sql", "Extractor(s) for .sql, .yml, .yaml"),
     )
+
+
+# --- the PySpark and Databricks Plugins (#60) ------------------------------
+
+
+def repository(tmp_path, files: dict[str, str]):
+    """A repository holding the named files, and nothing else."""
+    for name, body in files.items():
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body, encoding="utf-8")
+    return tmp_path
+
+
+def active_in(tmp_path, *files) -> list[str]:
+    """The shipped Plugins that answer for a Plan touching these files."""
+    return [p.name for p in activate(plan_touching(*files), tmp_path).plugins]
+
+
+def test_pyspark_answers_for_a_file_in_the_blast_radius_that_imports_it(tmp_path):
+    repository(tmp_path, {"jobs/daily.py": "from pyspark.sql import functions as F\n"})
+
+    assert active_in(tmp_path, "jobs/daily.py") == ["python", "pyspark"]
+
+
+def test_a_suffix_alone_does_not_make_a_module_a_spark_job(tmp_path):
+    """The reason `pyspark` declares an import and no suffix. `.py` is the
+    suffix of a Spark job and of a Django view, and a repository told about the
+    DataFrame API while it edited its views would switch Plugins off."""
+    repository(
+        tmp_path,
+        {"app/views.py": "import django\n\n\ndef index(request):\n    return None\n"},
+    )
+
+    assert active_in(tmp_path, "app/views.py") == ["python"]
+
+
+def test_a_plain_python_repository_sees_neither_new_plugin(tmp_path):
+    """The whole promise of detection: a repository with no Spark and no
+    workspace pays nothing for either Plugin existing."""
+    repository(
+        tmp_path,
+        {
+            "pyproject.toml": "[project]\nname = 'app'\n",
+            "src/loader.py": "import httpx\n",
+        },
+    )
+
+    assert active_in(tmp_path, "src/loader.py") == ["python"]
+
+
+def test_an_import_is_read_wherever_it_is_written(tmp_path):
+    """Deferred inside a function is how a job avoids importing Spark at module
+    scope, and it is the same import."""
+    repository(
+        tmp_path,
+        {"jobs/daily.py": "def run():\n    import pyspark\n\n    return pyspark\n"},
+    )
+
+    assert "pyspark" in active_in(tmp_path, "jobs/daily.py")
+
+
+def test_a_module_named_in_a_docstring_is_not_an_import(tmp_path):
+    """Why detection reads the syntax tree rather than matching a pattern: the
+    word appears in the prose of repositories that stopped using it."""
+    repository(
+        tmp_path,
+        {"docs/notes.py": '"""Ported off import pyspark last year."""\n'},
+    )
+
+    assert "pyspark" not in active_in(tmp_path, "docs/notes.py")
+
+
+def test_a_file_that_will_not_parse_switches_nothing_on_and_ends_no_run(tmp_path):
+    """The survivability promise, one layer earlier than a Plugin raising: a
+    syntax error costs detection its answer and never the Run."""
+    repository(tmp_path, {"jobs/broken.py": "import pyspark\ndef (\n"})
+
+    assert active_in(tmp_path, "jobs/broken.py") == ["python"]
+
+
+def test_detection_reads_nothing_outside_the_repository(tmp_path):
+    """The resolver refuses a Plan naming `../../.ssh/id_rsa`, and detection
+    reads through that same rule rather than a second copy of it."""
+    repository(tmp_path, {"job.py": "import pyspark\n"})
+    root = tmp_path / "repo"
+    root.mkdir()
+
+    # `python` still answers, because a `.py` in the blast radius is a suffix
+    # and a suffix claims nothing about a file being readable. What is asserted
+    # here is that nothing was read: the import above is outside the repository.
+    assert "pyspark" not in active_in(root, "../job.py")
+
+
+def test_detection_obeys_the_size_bound_the_pack_reads_by(tmp_path):
+    """A file too large for the pack to read is too large to detect from. The
+    alternative is an activation whose evidence nobody can see."""
+    repository(tmp_path, {"jobs/generated.py": "import pyspark\n# " + "x" * MAX_BYTES})
+
+    assert "pyspark" not in active_in(tmp_path, "jobs/generated.py")
+
+
+def test_databricks_answers_for_the_workspace_markers_it_declares(tmp_path):
+    """A bundle says the code in this tree is deployed to a workspace, whatever
+    one Plan happens to touch — and there is no import to read instead, because
+    the runtime binds `spark` and `dbutils` for a notebook that imports nothing.
+    """
+    for index, marker in enumerate(DATABRICKS.root_markers):
+        root = repository(tmp_path / f"workspace{index}", {marker: "bundle: {}"})
+
+        assert active_in(root, "notebooks/load.py") == ["python", "databricks"]
+
+
+def test_databricks_stays_silent_in_a_repository_with_no_workspace(tmp_path):
+    repository(tmp_path, {"models/orders.sql": "select 1"})
+
+    assert "databricks" not in active_in(tmp_path, "models/orders.sql")
+
+
+def test_the_pyspark_fragment_reaches_the_roles_that_write_and_review_code():
+    active = Activation(plugins=(PYSPARK,))
+
+    (implementer,) = fragments_for(active, "implementer")
+    assert "DataFrame and Column expressions" in implementer
+    assert fragments_for(active, "tester") and fragments_for(active, "reviewer")
+    # `.rdd` is not a vulnerability, and a style convention in the Security
+    # prompt competes with the audit rather than supporting it.
+    assert fragments_for(active, "security") == ()
+    assert fragments_for(active, "architect") == ()
+
+
+def test_a_fragment_differs_by_role_where_the_roles_need_different_things():
+    """What the Security Role needs to know about a workspace is not what the
+    Implementer needs, and one Plugin says both without saying either twice."""
+    active = Activation(plugins=(DATABRICKS,))
+
+    (implementer,) = fragments_for(active, "implementer")
+    (security,) = fragments_for(active, "security")
+
+    assert "MERGE INTO" in implementer and "MERGE INTO" not in security
+    assert "secret scope" in security and "secret scope" not in implementer
+    assert "catalog.schema.table" in implementer
+
+
+def test_the_run_log_names_a_plugin_that_speaks_to_more_than_one_role():
+    assert contributions(Activation(plugins=(DATABRICKS,))) == (
+        ("databricks", "2 Fragment(s) for implementer, tester, reviewer, security"),
+    )
+
+
+def test_each_shipped_fragment_is_delivered_whole():
+    """Within the bound separately. A Fragment past the cap is truncated rather
+    than dropped, which is the right rule and a bad way to ship one: a
+    convention list that stops mid-sentence is one nobody can act on the end of.
+    """
+    for plugin in BUILT_IN:
+        for fragment in plugin.fragments:
+            assert len(fragment.text) <= MAX_FRAGMENT_CHARS, plugin.name
+
+    for role in ("implementer", "tester", "reviewer", "security"):
+        for delivered in fragments_for(Activation(plugins=BUILT_IN), role):
+            assert delivered.rstrip().endswith(".")
+
+
+def test_the_shipped_plugins_stay_within_the_bound_together(tmp_path):
+    """Within the bound together. A Databricks repository running Spark jobs in
+    Python activates three of the four at once, which is the worst case anyone
+    ships, and it is still inside the cap the Context Pack exists to defend."""
+    repository(
+        tmp_path,
+        {"databricks.yml": "bundle: {}", "jobs/daily.py": "import pyspark\n"},
+    )
+
+    active = activate(plan_touching("jobs/daily.py"), tmp_path)
+    assert [p.name for p in active.plugins] == ["python", "pyspark", "databricks"]
+
+    for role in ("implementer", "tester", "reviewer", "security"):
+        delivered = fragments_for(active, role)
+        assert len(delivered) <= MAX_FRAGMENTS_PER_ROLE
+        assert sum(len(text) for text in delivered) <= (
+            MAX_FRAGMENTS_PER_ROLE * MAX_FRAGMENT_CHARS
+        )
+
+
+def test_the_registry_ships_four_plugins_in_the_order_they_contribute():
+    """The general before the specific: a PySpark job is Python and is held to
+    both, and the Fragment about annotating a function reaches the prompt before
+    the one about the DataFrame API."""
+    assert BUILT_IN == (PYTHON, SQL, PYSPARK, DATABRICKS)
+
+
+def a_databricks_spark_repository(tmp_path) -> FakeRunner:
+    """A Run's worth of fakes against a repository that activates both."""
+    repository(
+        tmp_path,
+        {
+            "databricks.yml": "bundle:\n  name: pipelines\n",
+            "src/loader.py": "from pyspark.sql import functions as F\n",
+        },
+    )
+    runner = github_repository(FakeRunner(), tmp_path)
+    runner.script("gh", "issue", "view", stdout=issue_json())
+    runner.script(
+        "gh", "pr", "create", stdout="https://github.com/acme/pipelines/pull/13\n"
+    )
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
+    return runner
+
+
+def test_a_data_engineering_repository_gets_both_conventions_in_the_right_prompts(
+    tmp_path,
+):
+    """The end of the milestone, read off the argument vector: the Implementer
+    is told how this shop writes a MERGE and a Spark job, and the Security Role
+    is told where the secrets come from and nothing about the DataFrame API."""
+    runner = a_databricks_spark_repository(tmp_path)
+
+    Forge(cwd=tmp_path, provider="claude", runner=runner).implement(
+        12, allow_commands=True
+    )
+
+    implementer, tester, security, reviewer = prompts_from(runner)
+    assert "DataFrame and Column expressions" in implementer
+    assert "catalog.schema.table" in implementer
+    assert "DataFrame and Column expressions" in tester
+    assert "catalog.schema.table" in reviewer
+    assert "secret scope" in security
+    assert "DataFrame and Column expressions" not in security
+    assert "MERGE INTO" not in security
+
+
+def test_the_run_log_says_which_plugins_a_data_engineering_repository_activated(
+    tmp_path,
+):
+    runner = a_databricks_spark_repository(tmp_path)
+
+    Forge(cwd=tmp_path, provider="claude", runner=runner).implement(
+        12, allow_commands=True
+    )
+
+    (pack_comment,) = [c for c in comments_on(runner) if "### Context Pack" in c]
+    assert "**Plugins active (3):**" in pack_comment
+    assert "`pyspark`" in pack_comment and "`databricks`" in pack_comment

@@ -103,13 +103,13 @@ def _paths(plan: Plan, declared: ContextPack, root: Path) -> list[str]:
 
     resolved: dict[str, None] = {}
     for raw in named:
-        path = _inside(raw, root)
+        path = inside(raw, root)
         if path is not None:
             resolved.setdefault(path, None)
     return list(resolved)[:MAX_FILES]
 
 
-def _inside(raw: str, root: Path) -> str | None:
+def inside(raw: str, root: Path) -> str | None:
     """The path as a repository-relative posix string, or `None` if it escapes.
 
     Absolute paths and `..` are refused rather than clamped. A Plan that names
@@ -143,14 +143,24 @@ def _read(
     worth reading all land here, and all of them mean the same thing: the pack
     carries the path and claims nothing about the contents.
     """
+    text = file_text(path)
+    return extract(path, text, extractors) if text else Extraction()
+
+
+def file_text(path: Path) -> str:
+    """One file's text, or empty where reading it is not worth it or not possible.
+
+    Public because `core.registry` reads the same files when it detects a Plugin
+    by what the blast radius imports, and the two must agree about which files
+    are readable. A detection that read a two-hundred-megabyte file the pack
+    skips would be paying for an answer the pack never uses.
+    """
     try:
         if not path.is_file() or path.stat().st_size > MAX_BYTES:
-            return Extraction()
-        text = path.read_text(encoding="utf-8", errors="replace")
+            return ""
+        return path.read_text(encoding="utf-8", errors="replace")
     except OSError:
-        return Extraction()
-
-    return extract(path, text, extractors)
+        return ""
 
 
 def _capped(values, limit: int) -> tuple[str, ...]:
@@ -169,5 +179,7 @@ __all__ = [
     "MAX_REFERENCES",
     "MAX_SYMBOLS",
     "MAX_SYMBOLS_PER_FILE",
+    "file_text",
+    "inside",
     "resolve_pack",
 ]
