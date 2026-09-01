@@ -1144,13 +1144,13 @@ def test_a_command_writes_the_files_it_declares(tmp_path):
     )
 
 
-def test_a_command_that_only_writes_files_starts_no_process():
+def test_a_command_that_only_writes_files_starts_no_process(tmp_path):
     """The point of a Command: no model, and here not even a subprocess. The
     output is a diff, and there is nothing to review for hallucination."""
     runner = FakeRunner()
     plugin = scaffolding(("$name.sql", "select 1"))
 
-    run_command(plugin.commands[0], ["orders"], root=Path("."), runner=runner)
+    run_command(plugin.commands[0], ["orders"], root=tmp_path, runner=runner)
 
     assert not runner.calls
 
