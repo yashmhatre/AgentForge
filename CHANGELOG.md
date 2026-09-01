@@ -62,6 +62,23 @@ What changed in each release of AgentForge. Dates are the day the tag was cut.
   workspace markers it declares, because a notebook imports nothing.
 - A plain Python repository activates neither, and its prompts are unchanged.
 
+### A Plugin holds a Run on its own check
+
+- **A Plugin contributes Gate kinds.** `core/registry.py` assembles the Gate
+  table for a Run — the shipped three as the floor, widened by the active
+  Plugins — and hands it to the Workflow parser and to the evaluator, so a
+  definition loads and is evaluated against one table. A Workflow names a
+  Plugin's Gate in the YAML it already writes, and nothing in the runtime knows
+  a kind.
+- **`sql` ships the `dbt` Gate**, which runs `dbt parse`: a project that no
+  longer resolves blocks the Run rather than reaching Sign-off, a dbt that never
+  ran to a verdict halts it, and neither needs a warehouse, a profile, or data.
+- A Plugin cannot redefine `human`, `tests`, or `security`, and a validator that
+  raises becomes an errored verdict naming the Plugin rather than a traceback.
+  See [ADR-0018](docs/adr/0018-a-plugin-widens-the-gate-table-a-run-is-validated-against.md).
+- A Workflow naming a Gate kind no active Plugin contributes is refused before a
+  Provider is invoked, and the refusal names the kinds this Run does have.
+
 ## 0.1.0 — 2026-08-28
 
 The first release. You state a task in your own words; AgentForge files a

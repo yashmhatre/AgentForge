@@ -16,10 +16,12 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, TypeVar
 
 if TYPE_CHECKING:
-    # Only for the annotation on `Extractor.read`. Imported under the guard so
-    # that the rule this module's own docstring states stays true at runtime:
-    # everything imports from here and nothing here imports from them.
+    # Only for the annotations on `Extractor.read` and `Validator.check`.
+    # Imported under the guard so that the rule this module's own docstring
+    # states stays true at runtime: everything imports from here and nothing
+    # here imports from them.
     from ..context.extractors.base import Extraction
+    from .gates import GateContext
 
 T = TypeVar("T")
 
@@ -320,13 +322,40 @@ class Extractor:
 
 
 @dataclass(frozen=True)
+class Validator:
+    """A Gate kind a Plugin contributes, and the predicate that evaluates it.
+
+    `check` has the signature every shipped Gate has — a `GateContext` in, a
+    `GateEntry` out — because a Plugin's Gate is not a second kind of thing. It
+    is handed the Command Runner and the working tree like any other, so a
+    validator that shells out to a parser has what it needs, and it returns
+    cleared, blocked, or errored with the same meanings: blocked suspends a Run
+    that can still clear, errored halts one that cannot.
+
+    A validator that cannot evaluate returns an errored `GateEntry` rather than
+    raising. A Plugin degrades a Run and never ends it, which is the bargain
+    `core.registry` makes at activation and `context.extractors` makes when a
+    reader raises.
+
+    `kind` is the name a Workflow's YAML writes. It cannot be one of the shipped
+    kinds: `human`, `tests`, and `security` mean what the shipped Workflows say
+    they mean, and a Plugin that could redefine `human` could make a human Gate
+    stop stopping. See ADR-0018.
+    """
+
+    kind: str
+    check: Callable[[GateContext], GateEntry]
+
+
+@dataclass(frozen=True)
 class Plugin:
     """A bundle of domain knowledge for one technology, as data.
 
     No behaviour: a Plugin declares what it answers for and what it contributes,
     and `core.registry` does the deciding. Every contribution field is optional,
     so a Plugin carrying only Fragments is legal and is what the `python` Plugin
-    is, while one carrying only Extractors is equally legal and is what `sql` is.
+    is, while one carrying no Fragment at all is equally legal and is what `sql`
+    is — it reads files and contributes a Gate kind, and says nothing to a Role.
 
     `suffixes`, `root_markers`, and `imports` are the three ways a Plugin is
     detected. A suffix answers for the blast radius the frozen Plan names; a
@@ -354,6 +383,7 @@ class Plugin:
     imports: tuple[str, ...] = ()
     fragments: tuple[Fragment, ...] = ()
     extractors: tuple[Extractor, ...] = ()
+    validators: tuple[Validator, ...] = ()
 
 
 @dataclass(frozen=True)

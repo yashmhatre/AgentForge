@@ -10,6 +10,12 @@ parser validates against its keys, and the runtime looks a kind up rather than
 knowing any. Adding a kind is an entry here and nothing in `runtime.py`, exactly
 as a seventh Role is an entry in `RUNNERS`.
 
+`GATES` is the floor rather than the whole table. An active Plugin contributes
+Gate kinds of its own — a dbt parse, a dialect check — and `core.registry`
+assembles the table one Run is validated and evaluated against, which is handed
+to `parse_workflow` and to `evaluate_gate` rather than swapped in globally. The
+shipped three cannot be redefined by a Plugin: see ADR-0018.
+
 Every Gate is handed the same context, the Command Runner and the working tree
 included, so that one whose verdict comes from executing something has what it
 needs without the runtime knowing which one that is. Most predicates ignore both.
@@ -22,7 +28,7 @@ every Step behind it stays behind it.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -160,7 +166,7 @@ def tests(context: GateContext) -> GateEntry:
             verdict=GateVerdict.BLOCKED,
             summary=(
                 f"`{rendered}` failed. The Run stops here rather than carrying a red "
-                f"suite to Sign-off.\n\n{_tail(result)}"
+                f"suite to Sign-off.\n\n{command_tail(result)}"
             ),
         )
 
@@ -170,7 +176,7 @@ def tests(context: GateContext) -> GateEntry:
         summary=(
             f"`{rendered}` exited {result.returncode}, which is not a report on the "
             "code: the suite did not run to a verdict, so there is nothing here for a "
-            f"later Run to clear.\n\n{_tail(result)}"
+            f"later Run to clear.\n\n{command_tail(result)}"
         ),
     )
 
@@ -191,8 +197,13 @@ def _cannot_run(rendered: str, reason: str) -> GateEntry:
     )
 
 
-def _tail(result: CommandResult) -> str:
-    """The end of what the suite printed, fenced for the Issue.
+def command_tail(result: CommandResult) -> str:
+    """The end of what a command printed, fenced for the Issue.
+
+    Public because a Plugin's Gate reports what it ran the same way the shipped
+    ones do. A validator that shells out to a parser wants the last forty lines
+    of it in the Run Log, and writing that a second time would be two answers to
+    one question about how much of a failure a human reads.
 
     Four backticks rather than three: a failing test in a repository like this
     one prints fenced blocks of its own, and a fence closed early takes the rest
@@ -277,22 +288,31 @@ GATES: dict[str, GateCheck] = {
 }
 
 
-def evaluate_gate(kind: str, context: GateContext) -> GateEntry:
+def evaluate_gate(
+    kind: str, context: GateContext, gates: Mapping[str, GateCheck] | None = None
+) -> GateEntry:
     """Ask one Gate, and stamp its answer with which Gate was asked.
+
+    `gates` is the table to look in, and `None` means the shipped three. A Run
+    with active Plugins passes the wider one `core.registry` assembles, the same
+    way it passes a wider extractor table to the resolver: this module knows
+    that a table can be widened and nothing about what widens it.
 
     Total on purpose: an unregistered kind errors rather than raising, so the
     runtime has one way of ending at a Gate rather than two. A Workflow cannot
-    reach here with an unknown kind — the parser refuses those — but a Workflow
-    built in code can.
+    reach here with an unknown kind — the parser refuses those, validated
+    against the same table — but a Workflow built in code can, and so can a Run
+    whose Plugin was skipped after the Workflow that names its Gate was written.
     """
-    check = GATES.get(kind)
+    table = GATES if gates is None else gates
+    check = table.get(kind)
     if check is None:
         entry = GateEntry(
             kind=kind,
             verdict=GateVerdict.ERRORED,
             summary=(
-                f"no Gate of kind {kind!r} is registered in this version; "
-                f"kinds are: {', '.join(sorted(GATES))}"
+                f"no Gate of kind {kind!r} is registered in this Run; "
+                f"kinds are: {', '.join(sorted(table))}"
             ),
         )
     else:
@@ -301,4 +321,13 @@ def evaluate_gate(kind: str, context: GateContext) -> GateEntry:
     return replace(entry, kind=kind, step=context.step)
 
 
-__all__ = ["GATES", "GateCheck", "GateContext", "evaluate_gate", "human", "security", "tests"]
+__all__ = [
+    "GATES",
+    "GateCheck",
+    "GateContext",
+    "command_tail",
+    "evaluate_gate",
+    "human",
+    "security",
+    "tests",
+]

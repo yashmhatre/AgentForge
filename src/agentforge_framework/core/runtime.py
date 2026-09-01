@@ -57,6 +57,7 @@ from .registry import (
     contributions,
     extractors_for,
     fragments_for,
+    gates_for,
 )
 from .repo import PreconditionFailed, Repository, branch_for_issue, open_repository
 from .workflow import Workflow, WorkflowError, load_workflow
@@ -223,9 +224,14 @@ class Forge:
         # load time — so a Workflow naming a Plugin's Gate would be rejected
         # before its Plugin existed if these two ran the other way round.
         activation = activate(state.plan, repo.root) if use_plugins else NO_PLUGINS
+        # The Gate kinds this Run may name: the shipped three, widened by the
+        # Plugins just activated. Assembled once and handed to both the parser
+        # and the evaluator, so a definition cannot load against one table and
+        # be evaluated against another (ADR-0018).
+        gate_kinds = gates_for(activation)
 
         try:
-            workflow = load_workflow(state.workflow)
+            workflow = load_workflow(state.workflow, gates=gate_kinds)
         except WorkflowError as exc:
             raise RunFailed(f"issue #{number} cannot be implemented: {exc}") from exc
 
@@ -333,6 +339,7 @@ class Forge:
                     runner=self.runner,
                     root=repo.root,
                 ),
+                gates=gate_kinds,
             )
             if entry.verdict is GateVerdict.CLEARED:
                 continue

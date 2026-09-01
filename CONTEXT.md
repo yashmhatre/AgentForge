@@ -51,7 +51,7 @@ One ordered unit of a Workflow, pairing a Role invocation with the Gate that fol
 _Avoid_: Stage, phase, task
 
 **Gate**:
-A point in a Workflow where execution stops until a condition is met — a passing test suite, a clean security pass, or a human.
+A point in a Workflow where execution stops until a condition is met — a passing test suite, a clean security pass, a human, or a check an active Plugin contributes. AgentForge ships three kinds and a Plugin widens that table for one Run; the shipped three cannot be redefined by a Plugin. See ADR-0008 and ADR-0018.
 _Avoid_: Checkpoint, guard, stage, barrier
 
 **Sign-off**:

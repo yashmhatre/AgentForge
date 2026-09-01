@@ -35,7 +35,8 @@ from ..context.extractors import EXTRACTORS, extract
 from ..context.extractors.base import Extraction
 from ..context.resolver import MAX_FILES, file_text, inside
 from ..plugins import BUILT_IN
-from .contracts import Plan, Plugin
+from .contracts import GateEntry, GateVerdict, Plan, Plugin, Validator
+from .gates import GATES, GateCheck
 
 #: What one Plugin may contribute to one Role. A Fragment is a few hundred
 #: tokens of convention — Unity Catalog three-part naming, DataFrame API over
@@ -181,6 +182,75 @@ def extractors_for(
     return table
 
 
+def gates_for(
+    activation: Activation, base: Mapping[str, GateCheck] = GATES
+) -> dict[str, GateCheck]:
+    """The Gate table for a Run: the shipped three, widened by Plugins.
+
+    Assembled the way the extractor table is, and handed to the two places that
+    need it — `parse_workflow` validates a definition against it and
+    `evaluate_gate` looks a kind up in it — rather than swapped into `GATES`
+    globally. A Run's active Plugins are a property of that Run, and a process
+    running two of them must not have the first one's Gate kinds available to
+    the second.
+
+    **A Plugin cannot redefine a shipped kind.** `human`, `tests`, and `security`
+    mean what the shipped Workflows say they mean, and a Plugin that could
+    replace `human` could make a human Gate stop stopping. This is the one place
+    a Plugin's claim loses to a built-in, which is the opposite of the rule for
+    Extractors and is deliberate: a suffix is a question about a file, and a
+    Plugin that claims one knows more about that file than the generic reader
+    does, while a Gate kind is a promise a Workflow names. See ADR-0018.
+
+    Between two Plugins claiming one kind, the first in registration order wins,
+    which is the rule `extractors_for` applies and for the same reason.
+    """
+    table = dict(base)
+    claimed: dict[str, str] = {}
+
+    for plugin in activation.plugins:
+        for validator in plugin.validators:
+            kind = validator.kind.strip().lower()
+            if not kind or kind in base or kind in claimed:
+                continue
+            claimed[kind] = plugin.name
+            table[kind] = _guarded(plugin, validator)
+
+    return table
+
+
+def _guarded(plugin: Plugin, validator: Validator) -> GateCheck:
+    """One Plugin's check, holding it to the bargain the rest of the seam makes.
+
+    A validator that cannot evaluate is supposed to return an errored verdict,
+    and `plugins/sql`'s dbt Gate is the worked example of doing it. This is what
+    happens when one does not: the Run ends at the Gate with a message on its
+    Issue rather than at a traceback in the terminal of whoever started it, and
+    the message names the Plugin so the reader knows whose Gate broke.
+
+    Errored rather than blocked, for the reason every other Gate errors: a check
+    that raised decided nothing, so waiting would clear nothing. Only a Plugin's
+    validators are wrapped — a shipped Gate raising is a defect in AgentForge,
+    and dressing it as a verdict would hide it. See ADR-0018.
+    """
+
+    def check(context) -> GateEntry:
+        try:
+            return validator.check(context)
+        except Exception as exc:  # noqa: BLE001 — a Plugin must not end a Run
+            return GateEntry(
+                kind="",
+                verdict=GateVerdict.ERRORED,
+                summary=(
+                    f"the {validator.kind!r} Gate, contributed by the {plugin.name!r} "
+                    f"Plugin, raised {type(exc).__name__}: {exc}. A Gate that could not "
+                    "evaluate has nothing here for a later Run to clear."
+                ),
+            )
+
+    return check
+
+
 def contributions(activation: Activation) -> tuple[tuple[str, str], ...]:
     """Each active Plugin and what it contributed, for the Run Log.
 
@@ -201,6 +271,11 @@ def contributions(activation: Activation) -> tuple[tuple[str, str], ...]:
             # to the person reading the Run Log if they can tell which of their
             # files it changed the reading of.
             parts.append(f"Extractor(s) for {_named_suffixes(plugin)}")
+        if plugin.validators:
+            # The kinds rather than the count, because the kind is what a
+            # Workflow writes: a reader who sees `dbt` here can go and find the
+            # Step whose Gate it is, or add one.
+            parts.append(f"Gate kind(s) {_named_kinds(plugin)}")
         listed.append((plugin.name, ", ".join(parts) if parts else "nothing"))
     return tuple(listed)
 
@@ -212,6 +287,15 @@ def _named_suffixes(plugin: Plugin) -> str:
         for suffix in extractor.suffixes:
             if suffix not in names:
                 names.append(suffix)
+    return ", ".join(names)
+
+
+def _named_kinds(plugin: Plugin) -> str:
+    """The Gate kinds this Plugin contributes, in declared order."""
+    names: list[str] = []
+    for validator in plugin.validators:
+        if validator.kind not in names:
+            names.append(validator.kind)
     return ", ".join(names)
 
 
@@ -330,4 +414,5 @@ __all__ = [
     "contributions",
     "extractors_for",
     "fragments_for",
+    "gates_for",
 ]

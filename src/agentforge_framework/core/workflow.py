@@ -14,10 +14,18 @@ A Step declares four things. The Role is resolved and run, the Model Tier
 override is applied for that invocation, and the Gate is looked up in
 `core.gates` and evaluated once the Step is behind the Run. The skip condition is
 parsed and carried, waiting for the conditional-step work.
+
+Every entry point here takes the Gate table to validate against, defaulting to
+the shipped one. A Run with active Plugins passes the wider table
+`core.registry` assembles, so a definition naming a Plugin's Gate kind loads
+where that Plugin is active and is refused where it is not — which is the
+honest answer, since nothing would evaluate it there. Nothing in this module
+knows what a Plugin is.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,7 +33,7 @@ import yaml
 
 from ..agents import UnknownRole, resolve_role
 from .contracts import ModelTier, outstanding
-from .gates import GATES
+from .gates import GATES, GateCheck
 
 #: Shipped definitions live beside the package, like the vendored skills.
 WORKFLOWS_ROOT = Path(__file__).resolve().parent.parent / "workflows"
@@ -62,7 +70,9 @@ class Workflow:
         return outstanding(self.steps, done, lambda step: step.role)
 
 
-def available_workflows(root: Path | None = None) -> tuple[Workflow, ...]:
+def available_workflows(
+    root: Path | None = None, gates: Mapping[str, GateCheck] | None = None
+) -> tuple[Workflow, ...]:
     """Every definition that loads, by name.
 
     The Orchestrator picks one and names it in the Issue, so it has to be told
@@ -75,13 +85,17 @@ def available_workflows(root: Path | None = None) -> tuple[Workflow, ...]:
     workflows = []
     for path in sorted(directory.glob("*.yaml")):
         try:
-            workflows.append(parse_workflow(path.read_text(encoding="utf-8"), name=path.stem))
+            workflows.append(
+                parse_workflow(path.read_text(encoding="utf-8"), name=path.stem, gates=gates)
+            )
         except WorkflowError:
             continue
     return tuple(workflows)
 
 
-def load_workflow(name: str, root: Path | None = None) -> Workflow:
+def load_workflow(
+    name: str, root: Path | None = None, gates: Mapping[str, GateCheck] | None = None
+) -> Workflow:
     """Read and validate one definition by name."""
     directory = Path(root) if root is not None else WORKFLOWS_ROOT
     path = directory / f"{name}.yaml"
@@ -90,10 +104,12 @@ def load_workflow(name: str, root: Path | None = None) -> Workflow:
         raise WorkflowError(
             f"no Workflow named {name!r} in {directory}; available: {available or 'none'}"
         )
-    return parse_workflow(path.read_text(encoding="utf-8"), name=name)
+    return parse_workflow(path.read_text(encoding="utf-8"), name=name, gates=gates)
 
 
-def parse_workflow(text: str, *, name: str) -> Workflow:
+def parse_workflow(
+    text: str, *, name: str, gates: Mapping[str, GateCheck] | None = None
+) -> Workflow:
     """Validate a definition's text. Every rejection names `name` and the fault."""
     try:
         data = yaml.safe_load(text)
@@ -111,13 +127,15 @@ def parse_workflow(text: str, *, name: str) -> Workflow:
         raise WorkflowError(f"Workflow {name!r}: `steps` must be a list, not {_kind(raw_steps)}")
 
     steps = tuple(
-        _parse_step(raw, index=index, workflow=name)
+        _parse_step(raw, index=index, workflow=name, gates=gates)
         for index, raw in enumerate(raw_steps, start=1)
     )
     return Workflow(name=str(data.get("name") or name), steps=steps)
 
 
-def _parse_step(raw: object, *, index: int, workflow: str) -> Step:
+def _parse_step(
+    raw: object, *, index: int, workflow: str, gates: Mapping[str, GateCheck] | None
+) -> Step:
     where = f"Workflow {workflow!r} step {index}"
 
     if not isinstance(raw, dict):
@@ -135,7 +153,7 @@ def _parse_step(raw: object, *, index: int, workflow: str) -> Step:
     return Step(
         role=role.strip().lower(),
         tier=_parse_tier(raw.get("tier"), where=where),
-        gate=_parse_gate(raw.get("gate"), where=where),
+        gate=_parse_gate(raw.get("gate"), where=where, gates=gates),
         when=_optional_str(raw.get("when")),
     )
 
@@ -150,18 +168,27 @@ def _parse_tier(value: object, *, where: str) -> ModelTier | None:
         raise WorkflowError(f"{where} names tier {value!r}; tiers are: {tiers}") from exc
 
 
-def _parse_gate(value: object, *, where: str) -> str | None:
-    """A Gate kind is valid when something is registered to evaluate it.
+def _parse_gate(
+    value: object, *, where: str, gates: Mapping[str, GateCheck] | None
+) -> str | None:
+    """A Gate kind is valid when something in this Run is registered to evaluate it.
 
-    Validated against `core.gates.GATES` rather than a list kept here: two lists
-    would let a definition name a Gate nothing answers for, which is a check that
-    silently never runs.
+    Validated against the table rather than a list kept here: two lists would
+    let a definition name a Gate nothing answers for, which is a check that
+    silently never runs. `None` means the shipped table, and a Run hands in the
+    one its active Plugins widened.
+
+    The rejection names the kinds that are available rather than the kinds that
+    exist somewhere, because the reader's next question is what to write
+    instead: a definition naming a Plugin's Gate in a repository that Plugin does
+    not answer for is refused, and the list says so by leaving it out.
     """
     if value is None:
         return None
+    table = GATES if gates is None else gates
     kind = str(value).strip().lower()
-    if kind not in GATES:
-        kinds = ", ".join(sorted(GATES))
+    if kind not in table:
+        kinds = ", ".join(sorted(table))
         raise WorkflowError(f"{where} names Gate kind {value!r}; kinds are: {kinds}")
     return kind
 
