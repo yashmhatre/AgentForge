@@ -13,7 +13,13 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
-from typing import TypeVar
+from typing import TYPE_CHECKING, TypeVar
+
+if TYPE_CHECKING:
+    # Only for the annotation on `Extractor.read`. Imported under the guard so
+    # that the rule this module's own docstring states stays true at runtime:
+    # everything imports from here and nothing here imports from them.
+    from ..context.extractors.base import Extraction
 
 T = TypeVar("T")
 
@@ -294,24 +300,51 @@ class Fragment:
 
 
 @dataclass(frozen=True)
+class Extractor:
+    """A per-language reader a Plugin contributes, and the suffixes it claims.
+
+    `read` has the signature every built-in extractor has — text in, `Extraction`
+    out — because a Plugin's reader is not a second kind of thing. It is a pure
+    function of one file's contents: it never opens a second file and never sees
+    a path, which is what keeps it testable against a recorded fixture and what
+    stops it from making the pack depend on the machine resolving it.
+
+    Claiming a suffix a built-in already reads is the point rather than a
+    conflict. A `.sql` file in a dbt project has dependencies a generic SQL read
+    cannot see, and the Plugin that knows about dbt is the one that should
+    answer for it. See ADR-0010 and ADR-0016.
+    """
+
+    suffixes: tuple[str, ...]
+    read: Callable[[str], Extraction]
+
+
+@dataclass(frozen=True)
 class Plugin:
     """A bundle of domain knowledge for one technology, as data.
 
     No behaviour: a Plugin declares what it answers for and what it contributes,
     and `core.registry` does the deciding. Every contribution field is optional,
     so a Plugin carrying only Fragments is legal and is what the `python` Plugin
-    is at 0.2.
+    is, while one carrying only Extractors is equally legal and is what `sql` is.
 
     `suffixes` and `root_markers` are the two ways a Plugin is detected. A
     suffix answers for the blast radius the frozen Plan names; a root marker
     answers for the repository itself — a `pyproject.toml` says Python whatever
     one Plan happens to touch.
+
+    Detection and contribution are separate on purpose. `suffixes` says when
+    this Plugin is active; an `Extractor`'s own suffixes say what it reads once
+    it is. The `sql` Plugin activates on `.sql` and a `dbt_project.yml`, and
+    then reads the schema YAML beside the models — which it would be wrong to
+    activate for on its own.
     """
 
     name: str
     suffixes: tuple[str, ...] = ()
     root_markers: tuple[str, ...] = ()
     fragments: tuple[Fragment, ...] = ()
+    extractors: tuple[Extractor, ...] = ()
 
 
 @dataclass(frozen=True)

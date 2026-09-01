@@ -36,6 +36,7 @@ from agentforge_framework.context.resolver import (
     resolve_pack,
 )
 from agentforge_framework.core.contracts import ContextPack, Plan, PlanStep
+from agentforge_framework.plugins import sql as sql_plugin
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -328,3 +329,84 @@ def test_a_file_no_extractor_claims_is_a_line_with_no_symbols_after_it():
 
     assert "- `pipeline.scala`" in block
     assert "—" not in block
+
+
+# --- the dbt extractors the `sql` Plugin contributes (#57) -----------------
+
+
+def test_a_dbt_model_names_what_it_refs_and_sources_rather_than_the_tables():
+    """The compiled table names are not in this repository and the `ref()`
+    targets are, so the dependency a Role can go and read comes first.
+    """
+    extraction = sql_plugin.extract_model(recorded("extract_dbt_model.sql"))
+
+    assert "ref:stg_orders" in extraction.references
+    assert "ref:stg_payments" in extraction.references  # the two-argument form
+    assert "source:crm.regions" in extraction.references
+
+
+def test_a_dbt_model_still_yields_the_columns_a_role_would_be_changing():
+    """Composed with the built-in reader rather than replacing it: a model is
+    still SQL, and the columns are still where a change lands.
+    """
+    extraction = sql_plugin.extract_model(recorded("extract_dbt_model.sql"))
+
+    assert "order_id" in extraction.symbols
+    assert "payment_method" in extraction.symbols
+
+
+def test_a_sql_file_with_no_dbt_in_it_extracts_what_it_always_did():
+    """What the `sql` Plugin costs a repository that has one `.sql` file and no
+    dbt: nothing at all.
+    """
+    query = recorded("extract_query.sql")
+
+    assert sql_plugin.extract_model(query) == sql_extractor.extract(query)
+
+
+def test_a_dbt_schema_file_is_read_as_dbt_and_not_as_generic_yaml():
+    """Read generically these are three keys at three depths. Read as dbt a
+    model, a column, and a test are three different kinds of thing.
+    """
+    extraction = sql_plugin.extract_schema(recorded("extract_dbt_schema.yml"))
+
+    assert "fct_orders" in extraction.symbols
+    assert "fct_orders.order_id" in extraction.symbols
+    # A test is what breaks when the column changes, which is `references`.
+    assert "test:unique on fct_orders.order_id" in extraction.references
+    assert not any(symbol.startswith("test:") for symbol in extraction.symbols)
+
+
+def test_a_column_is_qualified_by_the_model_it_belongs_to():
+    """Two models with an `id` are two symbols rather than one."""
+    extraction = sql_plugin.extract_schema(recorded("extract_dbt_schema.yml"))
+
+    assert "fct_orders.customer_id" in extraction.symbols
+    assert "dim_customers.customer_id" in extraction.symbols
+
+
+def test_a_source_table_is_a_symbol_and_the_reference_a_model_would_write():
+    extraction = sql_plugin.extract_schema(recorded("extract_dbt_schema.yml"))
+
+    assert "crm.regions" in extraction.symbols
+    assert "source:crm.regions" in extraction.references
+
+
+def test_yaml_that_is_not_dbt_falls_through_to_the_generic_reader():
+    """What makes claiming `.yml` safe. A repository with a `dbt_project.yml`
+    still has ordinary YAML in it that nobody wants read as dbt.
+    """
+    config = recorded("extract_config.yaml")
+
+    assert sql_plugin.extract_schema(config) == yaml_extractor.extract(config)
+
+
+def test_a_dbt_extractor_is_a_pure_function_of_the_text():
+    """No path, no repository, no second file — which is what lets both of
+    these be tested against a recorded fixture at all.
+    """
+    recorded_model = recorded("extract_dbt_model.sql")
+
+    assert sql_plugin.extract_model(recorded_model) == sql_plugin.extract_model(
+        recorded_model
+    )

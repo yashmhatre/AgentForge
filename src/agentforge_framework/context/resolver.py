@@ -25,10 +25,12 @@ frozen Plan exists so that it does not.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from ..core.contracts import ContextPack, Plan
 from .extractors import extract
+from .extractors.base import Extraction
 
 #: How large a pack may get. These bound the pack rather than the repository:
 #: the point of a Context Pack is that it is smaller than looking, and a cap of
@@ -45,7 +47,10 @@ MAX_BYTES = 200_000
 
 
 def resolve_pack(
-    plan: Plan, root: Path | str, declared: ContextPack | None = None
+    plan: Plan,
+    root: Path | str,
+    declared: ContextPack | None = None,
+    extractors: Mapping[str, Callable[[str], Extraction]] | None = None,
 ) -> ContextPack:
     """The pack for this Plan: what it names, and what those files contain.
 
@@ -57,6 +62,12 @@ def resolve_pack(
     A file the Plan names and the repository does not have is still carried. It
     is a file the Run is about to create, and dropping it would leave a Role
     reading a pack that disagrees with the plan it was handed.
+
+    `extractors` is the table to read with, and `None` means the built-in three.
+    A Run with active Plugins passes the wider table `core.registry` assembles,
+    which is the whole of how a Plugin's reader reaches a pack: nothing else in
+    this module knows a Plugin exists, and the caps below fall on a Plugin's
+    output exactly as they fall on a built-in extractor's.
     """
     root = Path(root)
     declared = declared or ContextPack()
@@ -66,7 +77,7 @@ def resolve_pack(
     references: list[str] = list(declared.references)
 
     for path in paths:
-        extraction = _read(root / path)
+        extraction = _read(root / path, extractors)
         symbols.extend(
             f"{path}::{name}" for name in extraction.symbols[:MAX_SYMBOLS_PER_FILE]
         )
@@ -123,15 +134,15 @@ def _inside(raw: str, root: Path) -> str | None:
     return candidate.as_posix().removeprefix("./")
 
 
-def _read(path: Path):
+def _read(
+    path: Path, extractors: Mapping[str, Callable[[str], Extraction]] | None = None
+) -> Extraction:
     """What one file contains, or an empty extraction if it cannot be read.
 
     A missing file, a directory, an unreadable one, and a file too large to be
     worth reading all land here, and all of them mean the same thing: the pack
     carries the path and claims nothing about the contents.
     """
-    from .extractors.base import Extraction
-
     try:
         if not path.is_file() or path.stat().st_size > MAX_BYTES:
             return Extraction()
@@ -139,7 +150,7 @@ def _read(path: Path):
     except OSError:
         return Extraction()
 
-    return extract(path, text)
+    return extract(path, text, extractors)
 
 
 def _capped(values, limit: int) -> tuple[str, ...]:

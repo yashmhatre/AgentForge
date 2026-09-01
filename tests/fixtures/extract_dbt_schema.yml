@@ -1,0 +1,35 @@
+version: 2
+
+models:
+  - name: fct_orders
+    description: One row per order, with payment and region joined on.
+    columns:
+      - name: order_id
+        description: The natural key from the source system.
+        tests:
+          - unique
+          - not_null
+      - name: customer_id
+        tests:
+          - relationships:
+              to: ref('dim_customers')
+              field: customer_id
+      - name: order_total
+        description: Sum of payment amounts, in the order's own currency.
+
+  - name: dim_customers
+    columns:
+      - name: customer_id
+        tests:
+          - unique
+
+sources:
+  - name: crm
+    schema: raw_crm
+    tables:
+      - name: regions
+        columns:
+          - name: region_id
+            tests:
+              - not_null
+          - name: region_name
