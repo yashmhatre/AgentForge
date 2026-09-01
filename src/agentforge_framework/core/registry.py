@@ -41,7 +41,15 @@ from .gates import GATES, GateCheck
 #: What one Plugin may contribute to one Role. A Fragment is a few hundred
 #: tokens of convention — Unity Catalog three-part naming, DataFrame API over
 #: RDD — and anything past this is a document that belongs in the repository the
-#: Role is reading anyway. Set from a guess; #61 re-sets it from a measurement.
+#: Role is reading anyway.
+#:
+#: Set from a guess about tokens and confirmed by #61 as a bound on something
+#: else. Two Runs of one frozen plan, with and without Plugins, measured a
+#: per-Step difference of ±100k tokens in both directions — an agentic Step's
+#: own tool calls dwarf its prompt, so the ~800 tokens of Fragment a Role
+#: carried never surfaced above the noise. What the cap protects is the Role's
+#: attention rather than the bill: four Plugins each spending it is already
+#: more standing instruction than the Role's own prompt.
 MAX_FRAGMENT_CHARS = 1200
 
 #: How many Fragments one Role's prompt may carry. Four active Plugins each
