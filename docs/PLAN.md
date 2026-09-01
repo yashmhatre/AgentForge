@@ -82,9 +82,9 @@ Registration goes in `core/registry.py`.
 
 ## M5 — Plug and play
 
-`agentforge init` inspects a target repository, detects languages and platform markers, enables the matching plugins, and writes `.agentforge/config.yaml`. It fails loudly when the repository has no git remote, because ADR-0002 makes that a hard precondition.
+`agentforge init` inspects a target repository, detects languages and platform markers, and writes `.agentforge/config.yaml`. It fails loudly when the repository has no git remote, because ADR-0002 makes that a hard precondition.
 
-The config file owns tier mapping, Provider selection, plugin activation, and Gate policy. A team retunes cost without editing a Role.
+#76 landed it, and narrowed this paragraph in the process. The file owns Provider selection and Gate policy — the two things `load_config` reads. It does not own plugin activation, which is decided per Run from the frozen plan's blast radius and is better there, nor tier mapping, which ADR-0014 froze into the Roster. What init detects and cannot yet persist it prints, so the gap stays visible rather than becoming a key nothing consults (ADR-0020). Keys arrive with their readers.
 
 Dogfood it: run `agentforge init` against AgentForge itself, then build M6 through the pipeline.
 

@@ -1,0 +1,18 @@
+# AgentForge project configuration, written by `agentforge init`.
+#
+# This file holds what AgentForge reads and nothing else. Which Plugins answer
+# for this repository is decided per Run from the frozen Plan's blast radius
+# (ADR-0016), so there is no `plugins:` key here to edit.
+
+providers:
+  # What this Provider's CLI can be relied on to support, declared rather than
+  # probed (ADR-0005). `native` delivers a Role's skills as the CLI's own
+  # commands; `fragment` inlines them into the prompt instead.
+  claude:
+    capability_tier: native
+
+gates:
+  tests:
+    # The argument vector the `tests` Gate runs, in this repository.
+    # detected: a `tests/` directory
+    suite: ["pytest"]
