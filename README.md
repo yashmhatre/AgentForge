@@ -155,6 +155,7 @@ $ cd AgentForge
 $ pip install -e ".[dev]"
 ```
 
+Step by step, with every command and flag: [docs/GUIDE.md](docs/GUIDE.md).
 What each release contains is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Requirements
