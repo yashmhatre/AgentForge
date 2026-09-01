@@ -214,11 +214,17 @@ rather than one it inherits.
 
 ## Project configuration
 
-AgentForge reads `.agentforge/config.yaml` from the target repository when it
-exists. Reading is all it does: it never creates the directory or writes the
-file. Writing one is `agentforge init`, which is M5.
-Without a file, the documented Provider capability defaults are Claude
-`native` and every other Provider `fragment`.
+`agentforge init` writes `.agentforge/config.yaml` for the repository you run
+it in. It reports what it found -- the languages git knows about, the Plugins
+your root markers answer for, the suite it detected and the evidence for it --
+and writes the two things AgentForge reads. It refuses before creating anything
+if the repository has no GitHub remote, because ADR-0002 makes that a
+precondition for every Run. Re-running never clobbers a config you have edited:
+it reports what differs and writes nothing, and `--force` replaces it.
+
+The file is not a precondition. Without one, the documented Provider capability
+defaults are Claude `native` and every other Provider `fragment`, and the
+`tests` Gate runs `pytest`.
 
 ```yaml
 providers:
@@ -231,6 +237,12 @@ gates:
   tests:
     suite: pytest
 ```
+
+There is no `plugins:` key. Which Plugins answer for a repository is decided per
+Run from the frozen plan's blast radius (ADR-0016), so a repository-level list
+would be inert and misleading -- init prints what it detected instead. The file
+holds what AgentForge reads and nothing else; see
+[ADR-0020](docs/adr/0020-the-config-file-holds-only-what-is-read.md).
 
 A Role declares the skills it needs. A native Provider receives them through its
 CLI's skill mechanism; a fragment Provider receives the same `SKILL.md` text

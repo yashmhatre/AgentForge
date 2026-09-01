@@ -75,6 +75,19 @@ class Repository:
         """Paths touched in the working tree, staged or not."""
         return tuple(path for _, path in self.working_tree())
 
+    def tracked_files(self) -> tuple[str, ...]:
+        """Every file git knows about, as repository-relative posix paths.
+
+        Tracked rather than walked: a `.venv`, a `node_modules`, and a build
+        directory are all on disk and none of them are this repository's code,
+        and git already holds the only list that says which is which. `init`
+        reads this to census the languages a repository is written in.
+        """
+        listed = self._git("ls-files", check=False)
+        if not listed.ok:
+            return ()
+        return tuple(_normalize(line) for line in listed.stdout.splitlines() if line.strip())
+
     def create_branch(self, name: str) -> None:
         """Switch to `name`, creating it. An Agent never edits on the base branch."""
         existing = self._git("rev-parse", "--verify", "--quiet", name, check=False)

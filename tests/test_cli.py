@@ -13,6 +13,7 @@ import json
 import pytest
 
 from agentforge_framework import __version__, cli
+from agentforge_framework.core.config import CapabilityTier, load_config
 from agentforge_framework.core.contracts import ModelTier
 from agentforge_framework.core.plan_format import render_result_block
 
@@ -226,18 +227,16 @@ def test_the_banner_is_printed_once_however_many_questions_there_are(capsys):
     assert capsys.readouterr().out.count("press Enter on an empty line") == 1
 
 
-def test_init_is_still_honestly_unimplemented():
-    with pytest.raises(SystemExit, match="not implemented"):
-        cli.main(["init"])
-
-
-def test_the_help_says_which_command_is_not_built(capsys):
+def test_every_command_the_help_advertises_can_be_run(capsys):
     """A release whose `--help` advertises a command that exits 1 is a release
-    that answers "does this do what I need" wrongly."""
+    that answers "does this do what I need" wrongly. `init` was that command
+    until #76, and this is the test that noticed."""
     with pytest.raises(SystemExit):
         cli.main(["--help"])
 
-    assert "not built yet" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "not built yet" not in out
+    assert "init" in out and "run" in out
 
 
 def test_version_prints_the_version_and_exits_zero(capsys):
@@ -345,3 +344,137 @@ def test_the_wrong_arguments_exit_two_and_say_what_to_type(tmp_path, capsys):
     assert cli.main(["run", "scaffold-dbt-model", "-C", str(a_dbt_project(tmp_path))], FakeRunner()) == 2
 
     assert "agentforge run scaffold-dbt-model <name>" in capsys.readouterr().err
+
+
+# --- agentforge init -------------------------------------------------------
+
+
+def a_repository(tmp_path, tracked: str = "src/app.py\ntests/test_app.py\n") -> FakeRunner:
+    """A git repository with a GitHub remote, as git would report it."""
+    fake = FakeRunner()
+    fake.script("git", "rev-parse", "--show-toplevel", stdout=f"{tmp_path}\n")
+    fake.script("git", "remote", "get-url", stdout="https://github.com/acme/pipelines.git\n")
+    fake.script("git", "ls-files", stdout=tracked)
+    return fake
+
+
+def init(tmp_path, *flags, fake=None) -> int:
+    return cli.main(["init", "-C", str(tmp_path), *flags], fake or a_repository(tmp_path))
+
+
+def test_init_writes_a_config_the_loader_reads_back(tmp_path, capsys):
+    assert init(tmp_path) == 0
+
+    config = load_config(tmp_path)
+    assert config.test_suite == ("pytest",)
+    assert config.capability_for("claude") is CapabilityTier.NATIVE
+    assert "Wrote" in capsys.readouterr().out
+
+
+def test_init_creates_the_directory_when_it_is_absent(tmp_path):
+    assert not (tmp_path / ".agentforge").exists()
+
+    init(tmp_path)
+
+    assert (tmp_path / ".agentforge" / "config.yaml").is_file()
+
+
+def test_init_outside_a_git_repository_creates_nothing(tmp_path, capsys):
+    fake = FakeRunner()
+    fake.script("git", "rev-parse", "--show-toplevel", returncode=1)
+
+    assert init(tmp_path, fake=fake) == 2
+    assert not (tmp_path / ".agentforge").exists()
+    assert "not inside a git repository" in capsys.readouterr().err
+
+
+def test_init_without_an_origin_refuses_with_the_precondition_it_is_about(tmp_path, capsys):
+    """ADR-0002 makes a GitHub remote a precondition for every Run, and setup is
+    a better place to find that out than the first Run's halt."""
+    fake = a_repository(tmp_path)
+    fake.script("git", "remote", "get-url", stdout="")
+
+    assert init(tmp_path, fake=fake) == 2
+    assert not (tmp_path / ".agentforge").exists()
+    assert "ADR-0002" in capsys.readouterr().err
+
+
+def test_init_against_a_remote_that_is_not_github_refuses(tmp_path, capsys):
+    fake = a_repository(tmp_path)
+    fake.script("git", "remote", "get-url", stdout="git@gitlab.com:acme/pipelines.git\n")
+
+    assert init(tmp_path, fake=fake) == 2
+    assert not (tmp_path / ".agentforge").exists()
+    assert "not GitHub" in capsys.readouterr().err
+
+
+def test_an_unknown_provider_is_refused_by_name_rather_than_written(tmp_path, capsys):
+    assert init(tmp_path, "--provider", "cursor") == 2
+
+    assert not (tmp_path / ".agentforge").exists()
+    err = capsys.readouterr().err
+    assert "cursor" in err and "claude, codex" in err
+
+
+def test_the_provider_named_is_the_provider_written(tmp_path):
+    init(tmp_path, "--provider", "codex")
+
+    assert load_config(tmp_path).capability_for("codex") is CapabilityTier.FRAGMENT
+
+
+def test_init_prints_the_plugins_and_says_they_are_not_written(tmp_path, capsys):
+    """Activation is per Run from the frozen plan's blast radius. Printing it
+    keeps what init knows visible without writing a key nothing reads."""
+    (tmp_path / "dbt_project.yml").write_text("name: warehouse\n", encoding="utf-8")
+
+    init(tmp_path)
+
+    out = capsys.readouterr().out
+    assert "sql" in out
+    assert "printed, not written" in out
+    written = (tmp_path / ".agentforge" / "config.yaml").read_text(encoding="utf-8")
+    assert "sql" not in written, "a key nothing reads is a lie told to whoever edits it"
+
+
+def test_init_reports_the_languages_git_knows_about(tmp_path, capsys):
+    init(tmp_path, fake=a_repository(tmp_path, "a.py\nb.py\nmodels/orders.sql\n"))
+
+    assert "Languages: Python, SQL" in capsys.readouterr().out
+
+
+def test_re_running_reports_the_difference_and_writes_nothing(tmp_path, capsys):
+    init(tmp_path)
+    edited = (tmp_path / ".agentforge" / "config.yaml")
+    edited.write_text(
+        "providers: {claude: {capability_tier: native}}\ngates: {tests: {suite: [make, test]}}\n",
+        encoding="utf-8",
+    )
+
+    assert init(tmp_path) == 1
+
+    assert "make test" in capsys.readouterr().out
+    assert load_config(tmp_path).test_suite == ("make", "test"), "it overwrote an edited config"
+
+
+def test_re_running_against_a_config_that_matches_says_there_is_nothing_to_do(tmp_path, capsys):
+    init(tmp_path)
+
+    assert init(tmp_path) == 0
+    assert "Nothing to do" in capsys.readouterr().out
+
+
+def test_force_replaces_a_config_somebody_edited(tmp_path):
+    init(tmp_path)
+    (tmp_path / ".agentforge" / "config.yaml").write_text(
+        "gates: {tests: {suite: [make, test]}}\n", encoding="utf-8"
+    )
+
+    assert init(tmp_path, "--force") == 0
+    assert load_config(tmp_path).test_suite == ("pytest",)
+
+
+def test_a_repository_with_no_suite_to_find_is_told_what_it_got(tmp_path, capsys):
+    init(tmp_path, fake=a_repository(tmp_path, "README.md\n"))
+
+    assert "not detected" in capsys.readouterr().out
+    assert load_config(tmp_path).test_suite == ("pytest",)

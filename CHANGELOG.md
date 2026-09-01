@@ -98,6 +98,25 @@ What changed in each release of AgentForge. Dates are the day the tag was cut.
   inside a Run carries that Run's `--allow-commands`. See
   [ADR-0019](docs/adr/0019-a-command-runs-outside-a-run-and-decides-nothing.md).
 
+### Setting a repository up is one command
+
+- **`agentforge init`** inspects the repository in the working directory,
+  reports what it found -- the languages git tracks, the Plugins its root
+  markers answer for, the suite it detected and the evidence for it -- and
+  writes `.agentforge/config.yaml`. `--help` no longer says "not built yet".
+- It refuses before creating a directory or a file when the repository is not a
+  git repository, has no `origin`, or has an `origin` that is not GitHub, with
+  the refusal that names ADR-0002. Setup is a better place to learn that than
+  the first Run's halt.
+- **It writes only what `load_config` reads**, and prints the rest: there is no
+  `plugins:` key, because activation is decided per Run from the frozen plan's
+  blast radius. Every value it writes carries a comment saying whether it was
+  detected and on what evidence. See
+  [ADR-0020](docs/adr/0020-the-config-file-holds-only-what-is-read.md).
+- Re-running reports how an existing config differs from what init would write
+  and writes nothing; `--force` replaces it. The comparison is made against the
+  values the loader reads, so a file you reformatted is not a difference.
+
 ## 0.1.0 — 2026-08-28
 
 The first release. You state a task in your own words; AgentForge files a

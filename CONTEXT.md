@@ -105,7 +105,7 @@ What one Agent invocation consumed, in whatever unit its Provider reports — do
 _Avoid_: Cost, spend, price, tokens
 
 **Project Context**:
-What AgentForge learns about a target repository at `agentforge init` — its languages, its layout, its conventions, its active Plugins. Stored in `.agentforge/config.yaml` in the target repository, not in AgentForge.
+What AgentForge learns about a target repository at `agentforge init` — its languages, its suite, the Plugins its root markers answer for, and the Provider it will drive. The part that is read back is stored in `.agentforge/config.yaml` in the target repository, not in AgentForge; the rest is printed, because a key nothing consults is a lie told to whoever edits it. See ADR-0020.
 _Avoid_: Config, settings, profile, environment
 
 ### How an Agent is invoked

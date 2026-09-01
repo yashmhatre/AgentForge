@@ -82,14 +82,17 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("arguments", nargs="*", help="the Command's positional arguments")
     run.add_argument("-C", "--directory", default=".", help="repository to run in")
 
-    # Listed rather than hidden, and honest about it: somebody reading `--help`
-    # is deciding whether this tool does what they need, and both halves of that
-    # answer belong there. `main` exits non-zero on it.
     init = subcommands.add_parser(
         "init",
-        help="not built yet (M5): configure AgentForge for the repository in this directory",
+        help="inspect this repository and write .agentforge/config.yaml",
     )
-    init.add_argument("--provider", default="claude", help="coding-agent CLI to drive")
+    init.add_argument("--provider", default=None, help="coding-agent CLI to drive")
+    init.add_argument("-C", "--directory", default=".", help="repository to configure")
+    init.add_argument(
+        "--force",
+        action="store_true",
+        help="replace an existing config. Without it, init reports what differs and writes nothing",
+    )
 
     unslop = subcommands.add_parser("unslop", help="scan prose for machine-writing tells")
     unslop.add_argument("path", help="file to scan")
@@ -357,6 +360,79 @@ def _run_command(args: argparse.Namespace, runner=None) -> int:
     return 0
 
 
+def _run_init(args: argparse.Namespace, runner=None) -> int:
+    """`agentforge init`: look at the repository, say so, and write the config.
+
+    The precondition comes first and refuses loudly. A repository with no
+    GitHub remote cannot host a Run (ADR-0002), and finding that out at setup is
+    better than finding it out when the first Run halts — so nothing is created
+    until `open_repository` has answered.
+
+    What init detects and cannot yet persist it prints. `load_config` reads two
+    keys, and writing the rest would be writing keys nothing consults (ADR-0020).
+    """
+    from .core.config import load_config
+    from .core.contracts import Plan
+    from .core.process import SubprocessRunner
+    from .core.project import config_path, detect, differences, render_config
+    from .core.registry import activate
+    from .core.repo import PreconditionFailed, open_repository
+    from .providers import DEFAULT_PROVIDER, PROVIDERS
+
+    provider = (args.provider or DEFAULT_PROVIDER).strip().lower()
+    if provider not in PROVIDERS:
+        known = ", ".join(sorted(PROVIDERS))
+        print(f"agentforge: unknown provider {provider!r}; available: {known}", file=sys.stderr)
+        return 2
+
+    runner = runner if runner is not None else SubprocessRunner()
+    try:
+        repo = open_repository(runner, args.directory)
+    except PreconditionFailed as exc:
+        print(f"agentforge: {exc}", file=sys.stderr)
+        return 2
+
+    active = activate(Plan(summary=""), repo.root)
+    context = detect(
+        repo.root,
+        provider,
+        tracked=repo.tracked_files(),
+        plugins=tuple(plugin.name for plugin in active.plugins),
+    )
+
+    print(f"Repository: {repo.root}")
+    print(f"  Languages: {', '.join(context.languages) or 'none recognised'}")
+    print(f"  Provider:  {context.provider} ({context.capability_tier} capability tier)")
+    suite = " ".join(context.test_suite)
+    where = context.suite_detected or "not detected, so this is the documented default"
+    print(f"  Suite:     `{suite}` — {where}")
+    print(f"  Plugins:   {', '.join(context.plugins) or 'none by root marker'}")
+    print(
+        "             printed, not written: which Plugins answer is decided per Run\n"
+        "             from the frozen plan's blast radius, not from this file."
+    )
+
+    path = config_path(repo.root)
+    if path.is_file() and not args.force:
+        found = differences(context, path.read_text(encoding="utf-8"))
+        print(f"\n{path} already exists.")
+        if not found:
+            print("It matches what init would write. Nothing to do.")
+            return 0
+        for line in found:
+            print(f"  - {line}")
+        print("Nothing was written. Re-run with --force to replace it.")
+        return 1
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(render_config(context), encoding="utf-8")
+    load_config(repo.root)  # it reads back, or this command has not succeeded
+
+    print(f"\nWrote {path}")
+    print("Review it and commit it: AgentForge reads it and never edits it again.")
+    return 0
+
+
 def main(argv: list[str] | None = None, runner=None) -> int:
     """`runner` is the Command Runner seam: leave it unset and the real one is
     built. Tests pass a fake and the whole CLI runs offline."""
@@ -375,6 +451,8 @@ def main(argv: list[str] | None = None, runner=None) -> int:
         return _run_implement(args, runner)
     if args.command == "run":
         return _run_command(args, runner)
+    if args.command == "init":
+        return _run_init(args, runner)
 
     raise SystemExit(f"agentforge {args.command} is not implemented yet.")
 
