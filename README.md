@@ -68,9 +68,13 @@ Without `--allow-commands`, the Implementer remains default-deny and the Tester
 reports that it could not run the suite; it never substitutes reading tests and
 claims completion. Security, the Reviewer, and the Architect need no such flag —
 auditing, reviewing, and designing are reading. All six Roles `CONTEXT.md` names
-now run. Plugins have landed as a seam — a repository's technology contributes
-the conventions its Roles are held to — with the data-engineering ones still to
-come, alongside `agentforge init`. See [`docs/PLAN.md`](docs/PLAN.md).
+now run. Plugins have landed, and with them the data-engineering ones: a
+repository whose files import `pyspark` has its Roles told to write DataFrame
+expressions rather than RDDs, and a Databricks workspace gets Unity Catalog
+naming and the Delta MERGE idioms in the prompts that write code and the
+workspace's own posture in the one that audits it. A repository that matches
+neither hears neither. `agentforge init` is still to come. See
+[`docs/PLAN.md`](docs/PLAN.md).
 
 Before the first Role is invoked, AgentForge resolves a Context Pack from the
 frozen plan — the files it names, the symbols and imports inside them, the

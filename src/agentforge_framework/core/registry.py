@@ -31,8 +31,9 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..context.extractors import EXTRACTORS
+from ..context.extractors import EXTRACTORS, extract
 from ..context.extractors.base import Extraction
+from ..context.resolver import MAX_FILES, file_text, inside
 from ..plugins import BUILT_IN
 from .contracts import Plan, Plugin
 
@@ -46,6 +47,12 @@ MAX_FRAGMENT_CHARS = 1200
 #: spending the cap above is already more standing instruction than the Role's
 #: own prompt, and past that the Plugins are the Role.
 MAX_FRAGMENTS_PER_ROLE = 4
+
+#: The file types an `imports` declaration is asked about. An import is a Python
+#: idea, and a `.sql` file's references are tables rather than modules — reading
+#: those for a module name would activate a Plugin because a warehouse happened
+#: to hold a table with its name. See ADR-0017.
+IMPORT_SUFFIXES = (".py",)
 
 
 @dataclass(frozen=True)
@@ -75,19 +82,37 @@ def activate(
 ) -> Activation:
     """The Plugins that answer for this Plan in this repository.
 
-    A Plugin answers if the Plan's blast radius carries one of its suffixes, or
-    if the repository root carries one of its markers. Either is sufficient: a
+    A Plugin answers if the Plan's blast radius carries one of its suffixes, if
+    the repository root carries one of its markers, or if a Python file in that
+    blast radius imports one of the modules it names. Any one is sufficient: a
     Plan touching one `.sql` file in a Python repository is held to both sets of
     conventions, because both are true of the code being written.
+
+    Import detection is what a suffix cannot do. `.py` says a file is Python and
+    says nothing about whether it is a Spark job, so the `pyspark` Plugin
+    declares the module rather than the suffix and stays silent in the Django
+    app next door. See ADR-0017.
     """
     root = Path(root)
     suffixes = _suffixes(plan)
+
+    # Read once for the whole registry, and not at all where no Plugin asks: a
+    # repository with neither `pyspark` nor any third-party Plugin declaring an
+    # import opens no file to find that out. Memoised in a closure rather than
+    # computed up front so that the read happens inside the `try` below, where
+    # a Plugin declaring a broken `imports` costs itself and not the Run.
+    read: list[frozenset[str]] = []
+
+    def imported() -> frozenset[str]:
+        if not read:
+            read.append(_imported(plan, root))
+        return read[0]
 
     active: list[Plugin] = []
     skipped: list[str] = []
     for plugin in plugins:
         try:
-            if _answers(plugin, suffixes, root):
+            if _answers(plugin, suffixes, imported, root):
                 active.append(plugin)
         except Exception as exc:  # noqa: BLE001 — a Plugin must not end a Run
             skipped.append(f"{plugin.name} ({type(exc).__name__}: {exc})")
@@ -217,14 +242,86 @@ def _suffixes(plan: Plan) -> set[str]:
     }
 
 
-def _answers(plugin: Plugin, suffixes: set[str], root: Path) -> bool:
-    """Whether one Plugin answers for this blast radius or this repository."""
+def _imported(plan: Plan, root: Path) -> frozenset[str]:
+    """Every top-level module the Plan's Python files import.
+
+    Detection by suffix cannot tell a Spark job from a Django view: both are
+    `.py`, and only one of them wants to be told about the DataFrame API. So a
+    Plugin may declare the imports it answers for, and this reads the blast
+    radius to find them (ADR-0017).
+
+    Held to the same three promises as everything else here. It reads the files
+    the Plan names and never searches, so the answer is a function of the frozen
+    Plan and the repository. It reads at most `MAX_FILES` of them, through the
+    resolver's own size bound, so a Plan naming forty files costs forty reads
+    the pack was about to do anyway. And a file that is missing, unreadable, or
+    will not parse contributes nothing rather than raising — a Plugin whose
+    detection could be broken by a syntax error would be worse than no Plugin.
+
+    Imports are read with the built-in Python extractor rather than with a
+    regular expression: it is already the thing in this codebase that knows what
+    an import is, and `import pyspark` inside a docstring is not one. With the
+    built-in table rather than the widened one, because the widened table is
+    assembled from the Plugins this function is being asked to choose.
+    """
+    names: set[str] = set()
+
+    for raw in _planned_files(plan)[:MAX_FILES]:
+        path = inside(raw, root)
+        if path is None or Path(path).suffix.lower() not in IMPORT_SUFFIXES:
+            continue
+        text = file_text(root / path)
+        if not text:
+            continue
+        # `extract` swallows a file that will not parse, which is the answer
+        # detection wants: a Plugin that could be switched off by a syntax error
+        # in one file would be worse than a Plugin nobody wrote.
+        extraction = extract(path, text)
+        # A relative import keeps its dots and names no distributed package, and
+        # `pyspark.sql.functions` answers for `pyspark` the same way the bare
+        # import does.
+        names.update(
+            reference.partition(".")[0]
+            for reference in extraction.references
+            if not reference.startswith(".")
+        )
+
+    return frozenset(name for name in names if name)
+
+
+def _planned_files(plan: Plan) -> list[str]:
+    """Every path the frozen Plan names, in Plan order, without duplicates."""
+    seen: dict[str, None] = {}
+    for step in plan.steps:
+        for path in step.files:
+            if path:
+                seen.setdefault(str(path), None)
+    return list(seen)
+
+
+def _answers(
+    plugin: Plugin,
+    suffixes: set[str],
+    imported: Callable[[], frozenset[str]],
+    root: Path,
+) -> bool:
+    """Whether one Plugin answers for this blast radius or this repository.
+
+    Any of the three detections is sufficient, and they are asked in the order
+    they cost in: a suffix is a string comparison, a root marker is a `stat`,
+    and an import is the blast radius read — which `imported` defers until a
+    Plugin actually declares one.
+    """
     if any(suffix.lower() in suffixes for suffix in plugin.suffixes):
         return True
-    return any((root / marker).exists() for marker in plugin.root_markers)
+    if any((root / marker).exists() for marker in plugin.root_markers):
+        return True
+    declared = getattr(plugin, "imports", ())
+    return bool(declared) and any(name in imported() for name in declared)
 
 
 __all__ = [
+    "IMPORT_SUFFIXES",
     "MAX_FRAGMENTS_PER_ROLE",
     "MAX_FRAGMENT_CHARS",
     "NO_PLUGINS",

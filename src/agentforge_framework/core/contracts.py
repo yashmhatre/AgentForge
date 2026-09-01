@@ -328,10 +328,14 @@ class Plugin:
     so a Plugin carrying only Fragments is legal and is what the `python` Plugin
     is, while one carrying only Extractors is equally legal and is what `sql` is.
 
-    `suffixes` and `root_markers` are the two ways a Plugin is detected. A
-    suffix answers for the blast radius the frozen Plan names; a root marker
-    answers for the repository itself — a `pyproject.toml` says Python whatever
-    one Plan happens to touch.
+    `suffixes`, `root_markers`, and `imports` are the three ways a Plugin is
+    detected. A suffix answers for the blast radius the frozen Plan names; a
+    root marker answers for the repository itself — a `pyproject.toml` says
+    Python whatever one Plan happens to touch; an import answers for what a file
+    in that blast radius actually uses, because `.py` says nothing about whether
+    a module is a Spark job. All three are declarations rather than predicates,
+    so a Plugin stays data and `agentforge init` can write down what detection
+    already computed. See ADR-0017.
 
     Detection and contribution are separate on purpose. `suffixes` says when
     this Plugin is active; an `Extractor`'s own suffixes say what it reads once
@@ -343,6 +347,11 @@ class Plugin:
     name: str
     suffixes: tuple[str, ...] = ()
     root_markers: tuple[str, ...] = ()
+    #: Top-level module names whose import activates this Plugin — `pyspark`
+    #: matches both `import pyspark` and `from pyspark.sql import functions`.
+    #: Read out of the Python files the blast radius names, which is the only
+    #: place an import means anything.
+    imports: tuple[str, ...] = ()
     fragments: tuple[Fragment, ...] = ()
     extractors: tuple[Extractor, ...] = ()
 

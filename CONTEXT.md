@@ -93,7 +93,7 @@ The per-language reader that turns one file into what it defines and what it rea
 _Avoid_: Parser, analyzer, scanner, reader
 
 **Plugin**:
-A bundle of domain knowledge for one technology — Python, SQL, PySpark, Databricks — contributing Extractors, Fragments, validators, and Commands. Every contribution is optional. A Plugin is data with no behaviour: it declares the file suffixes and root markers it answers for, and `core/registry.py` decides which Plugins are active for a Run. Plugins are what make AgentForge useful in a data engineering repository rather than merely usable in one. See ADR-0016.
+A bundle of domain knowledge for one technology — Python, SQL, PySpark, Databricks — contributing Extractors, Fragments, validators, and Commands. Every contribution is optional. A Plugin is data with no behaviour: it declares the file suffixes, root markers, and imports it answers for, and `core/registry.py` decides which Plugins are active for a Run — an import because a `.py` file says nothing about whether it is a Spark job. Plugins are what make AgentForge useful in a data engineering repository rather than merely usable in one. See ADR-0016 and ADR-0017.
 _Avoid_: Extension, module, pack
 
 **Command**:

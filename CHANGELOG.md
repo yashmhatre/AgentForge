@@ -42,6 +42,26 @@ What changed in each release of AgentForge. Dates are the day the tag was cut.
   when it raises. A repository with no active Plugin resolves exactly the pack
   it resolved before.
 
+### The conventions a data engineering repo is held to
+
+- **`pyspark` ships one Fragment**, reaching the Implementer, Tester, and
+  Reviewer: DataFrame and Column expressions over RDDs, built-ins before UDFs,
+  a declared schema, and a bounded `collect()`.
+- **A Plugin can be detected by what the blast radius imports.** `.py` is the
+  suffix of a Spark job and of a Django view, so `pyspark` declares the module
+  rather than the suffix and stays silent next door. Detection reads the files
+  the frozen Plan names, through the resolver's own containment and size
+  bounds, with the Python extractor rather than a pattern — so the word in a
+  docstring is not an import and a file that will not parse switches nothing
+  on. See [ADR-0017](docs/adr/0017-a-plugin-is-detected-by-what-the-blast-radius-imports.md).
+- **`databricks` ships two Fragments and speaks differently to different
+  Roles.** The Implementer, Tester, and Reviewer get Unity Catalog three-part
+  naming and the Delta MERGE idioms; the Security Role gets the workspace
+  instead — secret scopes, service principals over personal access tokens,
+  the narrowest grant, and what a notebook widget is. It activates on the
+  workspace markers it declares, because a notebook imports nothing.
+- A plain Python repository activates neither, and its prompts are unchanged.
+
 ## 0.1.0 — 2026-08-28
 
 The first release. You state a task in your own words; AgentForge files a
