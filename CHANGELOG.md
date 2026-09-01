@@ -4,7 +4,11 @@ What changed in each release of AgentForge. Dates are the day the tag was cut.
 
 ## Unreleased
 
-Nothing yet.
+- `pip install agentforge-framework` is the install, and the README says so.
+  0.2.0 is the first release on PyPI, published by `release.yml` through
+  Trusted Publishing: no API token exists to leak or rotate, and the workflow
+  proves the install from a clean environment after the upload rather than
+  claiming it.
 
 ## 0.2.0 — 2026-09-01
 
