@@ -74,6 +74,8 @@ Validators landed with #58: a Plugin contributes Gate kinds, `core/registry.py` 
 
 Prompt fragments are the cheapest quality win in the project: Unity Catalog three-part naming, Delta MERGE idioms, DataFrame API over RDD. A few hundred tokens of convention per Role invocation, and the Implementer stops writing code that a reviewer would reject on sight.
 
+The *cheapest* half of that claim is now measured (#61) and the *quality win* half is not. A Role carrying the maximum Fragment payload the caps allow spends under 0.5% of what its Step costs anyway, and two live Runs could not attribute any cost to the Fragments at all: an agentic Step's own tool calls vary by ±100k tokens, which is over 300 times the payload being looked for. Whether the conventions make the output better needs a different instrument than a cost line.
+
 Commands are the expensive-to-build, high-payoff half. Scaffolding a dbt model or a pytest fixture runs as a template with zero inference. Start with the three chores you repeat most; a Command that saves a task nobody runs saves nothing.
 
 #59 landed the seam and the first chore: `agentforge run scaffold-dbt-model orders` writes the files and exits, with no Issue, no Run, and no model involved. A Command is data rather than a callable, so what it will do is readable without running it (ADR-0019). The remaining chores are a question of which ones a project repeats, which is what M5's `agentforge init` is placed to find out.
