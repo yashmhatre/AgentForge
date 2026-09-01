@@ -261,7 +261,7 @@ code rather than the verdict about the old code.
 - `providers/` — one adapter per coding-agent CLI.
 - `workflows/` — the three shipped Workflow definitions.
 - `context/` — the Context Pack resolver and its per-language Extractors.
-- `plugins/` — one package per technology, contributing the conventions a repository is held to; `core/registry.py` decides which are active for a Run.
+- `plugins/` — one package per technology, contributing the conventions a repository is held to, the readers its files are read with, and the Gate kinds its Workflows can name; `core/registry.py` decides which are active for a Run.
 - `skills/` — vendored third-party skills. Never edited in place; see `skills/MANIFEST.yaml`.
 
 Read [`CONTEXT.md`](CONTEXT.md) before writing anything, and [`docs/adr/`](docs/adr/) for the decisions that constrain it.

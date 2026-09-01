@@ -1,9 +1,11 @@
 """The SQL Plugin: what a `.sql` file means when dbt is what builds it.
 
-Deliberately two Extractors and no Fragment. The conventions a SQL change is
-held to are a `sql` Fragment's job and nobody has written one worth a Role's
-tokens yet; what this Plugin has that nothing else does is knowledge of what a
-dbt model *depends on*, and that belongs in the pack rather than in a prompt.
+Deliberately two Extractors, one Gate kind, and no Fragment. The conventions a
+SQL change is held to are a `sql` Fragment's job and nobody has written one
+worth a Role's tokens yet; what this Plugin has that nothing else does is
+knowledge of what a dbt model *depends on* and of what it means for a project to
+still parse — one belongs in the pack and the other in a Gate, and neither
+belongs in a prompt.
 
 The built-in SQL extractor reads tables out of a statement. In a dbt project
 that reading is not wrong so much as beside the point: a model says
@@ -11,6 +13,12 @@ that reading is not wrong so much as beside the point: a model says
 contain, so a generic read finds either nothing or the wrong thing. What breaks
 when the model changes is the models that `ref()` it, and that is what a Role
 needs to be told.
+
+The `dbt` Gate is the worked example of a validator. A Workflow in a dbt project
+writes `gate: dbt` after the Step that edits models, and the Run holds there
+until the project parses — the same YAML a Workflow writes for `tests`, and a
+Workflow in a repository this Plugin does not answer for is refused at load
+time, because nothing there would evaluate it.
 
 Detection and reading are separate, which is why `suffixes` here is `.sql`
 alone. A repository is a dbt project because of `dbt_project.yml`, and a Plan
@@ -30,7 +38,9 @@ import yaml as pyyaml
 from ...context.extractors import sql as builtin_sql
 from ...context.extractors import yaml as builtin_yaml
 from ...context.extractors.base import Extraction, ordered
-from ...core.contracts import Extractor, Plugin
+from ...core.contracts import Extractor, GateEntry, GateVerdict, Plugin, Validator
+from ...core.gates import GateContext, command_tail
+from ...core.process import MissingBinary
 
 #: `ref('model')`, `ref("model")`, and the two-argument `ref('package', 'model')`
 #: that a model in an installed package is reached by. The last argument is the
@@ -195,6 +205,90 @@ def _name(node) -> str:
     return str(name).strip() if name is not None else ""
 
 
+#: What the `dbt` Gate runs. `parse` rather than `build` or `test`: parsing
+#: resolves every `ref()` and `source()` and compiles every model without
+#: touching a warehouse, so the Gate holds a Run on a project that no longer
+#: hangs together without needing a connection, a profile, or data.
+DBT_PARSE = ("dbt", "parse")
+
+#: The status dbt spends on "it ran and the project has a problem", which is a
+#: report on the repository. It spends 2 on a usage error — no project here, a
+#: flag it does not know — and that is a report on the invocation instead.
+DBT_FAILED = 1
+
+
+def parses(context: GateContext) -> GateEntry:
+    """The dbt Gate: parse the project, and read the exit status.
+
+    The same three answers the test-suite Gate gives, for the same reasons. It
+    parsed. It ran and found the project broken — a model referencing one that
+    was renamed, a macro that no longer resolves — which the next commit can
+    fix, so the Run suspends rather than halting. Or it never reached a verdict,
+    and a Gate with nothing to clear halts the Run rather than inviting a resume
+    that suspends again.
+
+    It names nobody in `invalidates`. This verdict comes from re-running dbt
+    against the working tree rather than from reading what a Role said about it,
+    so no Step's output has been judged and every Step behind this Gate stays
+    behind it (ADR-0008).
+
+    A Plugin's Gate degrades a Run and never ends it: dbt missing from the
+    machine, or refusing to start, is an errored verdict rather than an
+    exception, which is what the runtime has a way of reporting.
+    """
+    if not context.runner.has_binary(DBT_PARSE[0]):
+        return _cannot_parse(f"{DBT_PARSE[0]!r} is not installed or not on PATH")
+
+    try:
+        result = context.runner.run(DBT_PARSE, cwd=context.root)
+    except MissingBinary as exc:
+        return _cannot_parse(str(exc))
+
+    if result.ok:
+        return GateEntry(
+            kind="",
+            verdict=GateVerdict.CLEARED,
+            summary="`dbt parse` resolved the project.",
+        )
+
+    if result.returncode == DBT_FAILED:
+        return GateEntry(
+            kind="",
+            verdict=GateVerdict.BLOCKED,
+            summary=(
+                "`dbt parse` failed, so the project does not resolve. The Run stops "
+                f"here rather than carrying that to Sign-off.\n\n{command_tail(result)}"
+            ),
+        )
+
+    return GateEntry(
+        kind="",
+        verdict=GateVerdict.ERRORED,
+        summary=(
+            f"`dbt parse` exited {result.returncode}, which is not a report on the "
+            "project: it did not run to a verdict, so there is nothing here for a "
+            f"later Run to clear.\n\n{command_tail(result)}"
+        ),
+    )
+
+
+def _cannot_parse(reason: str) -> GateEntry:
+    """dbt never started, which says nothing about the project.
+
+    Errored rather than blocked, for the reason the test-suite Gate errors:
+    waiting clears nothing, and what has to change is the machine rather than
+    the repository.
+    """
+    return GateEntry(
+        kind="",
+        verdict=GateVerdict.ERRORED,
+        summary=(
+            f"the dbt Gate cannot run `{' '.join(DBT_PARSE)}`: {reason}. Install dbt "
+            "where the Run executes, or drop the `dbt` Gate from this Workflow."
+        ),
+    )
+
+
 SQL = Plugin(
     name="sql",
     suffixes=(".sql",),
@@ -203,6 +297,15 @@ SQL = Plugin(
         Extractor(suffixes=(".sql",), read=extract_model),
         Extractor(suffixes=(".yml", ".yaml"), read=extract_schema),
     ),
+    validators=(Validator(kind="dbt", check=parses),),
 )
 
-__all__ = ["MAX_ITEMS", "SQL", "extract_model", "extract_schema"]
+__all__ = [
+    "DBT_FAILED",
+    "DBT_PARSE",
+    "MAX_ITEMS",
+    "SQL",
+    "extract_model",
+    "extract_schema",
+    "parses",
+]

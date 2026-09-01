@@ -13,6 +13,7 @@ nothing here touches a filesystem that is not a `tmp_path`.
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
+from pathlib import Path
 
 import pytest
 
@@ -27,11 +28,16 @@ from agentforge_framework.core.contracts import (
     ContextPack,
     Extractor,
     Fragment,
+    GateEntry,
+    GateVerdict,
     Plan,
     PlanStep,
     Plugin,
+    Validator,
 )
+from agentforge_framework.core.gates import GATES, GateContext, evaluate_gate
 from agentforge_framework.core.issues import render_context_comment
+from agentforge_framework.core.process import MissingBinary
 from agentforge_framework.core.registry import (
     MAX_FRAGMENT_CHARS,
     MAX_FRAGMENTS_PER_ROLE,
@@ -40,15 +46,18 @@ from agentforge_framework.core.registry import (
     contributions,
     extractors_for,
     fragments_for,
+    gates_for,
 )
-from agentforge_framework.core.runtime import Forge, RunStatus
+from agentforge_framework.core.runtime import Forge, RunFailed, RunStatus
+from agentforge_framework.core.workflow import WorkflowError, parse_workflow
 from agentforge_framework.plugins import BUILT_IN
 from agentforge_framework.plugins.databricks import DATABRICKS
 from agentforge_framework.plugins.pyspark import PYSPARK
 from agentforge_framework.plugins.python import PYTHON
-from agentforge_framework.plugins.sql import SQL
+from agentforge_framework.plugins.sql import DBT_PARSE, SQL
 
 from .fakes import FakeRunner, github_repository
+from .test_gates import a_context
 from .test_runtime import (
     ROOT,
     a_runner,
@@ -506,7 +515,7 @@ def test_a_repository_with_no_active_plugin_resolves_the_pack_it_resolves_today(
 
 def test_contributions_names_the_suffixes_a_plugin_reads():
     assert contributions(Activation(plugins=(SQL,))) == (
-        ("sql", "Extractor(s) for .sql, .yml, .yaml"),
+        ("sql", "Extractor(s) for .sql, .yml, .yaml, Gate kind(s) dbt"),
     )
 
 
@@ -752,3 +761,322 @@ def test_the_run_log_says_which_plugins_a_data_engineering_repository_activated(
     (pack_comment,) = [c for c in comments_on(runner) if "### Context Pack" in c]
     assert "**Plugins active (3):**" in pack_comment
     assert "`pyspark`" in pack_comment and "`databricks`" in pack_comment
+
+
+# --- a Plugin's Gate kinds (#58) -------------------------------------------
+
+
+def a_check(summary: str = "waxing", invalidates: str = ""):
+    """A Gate that clears and says which one it was, for tracing a table."""
+
+    def check(context: GateContext) -> GateEntry:
+        return GateEntry(
+            kind="",
+            verdict=GateVerdict.CLEARED,
+            invalidates=invalidates,
+            summary=summary,
+        )
+
+    return check
+
+
+def contributing(kind: str, name: str = "moon", **kwargs) -> Plugin:
+    return Plugin(name=name, validators=(Validator(kind=kind, check=a_check(**kwargs)),))
+
+
+def test_a_plugins_gate_kind_widens_the_table_the_shipped_three_floor():
+    table = gates_for(Activation(plugins=(contributing("moonphase"),)))
+
+    assert set(table) == set(GATES) | {"moonphase"}
+    assert table["human"] is GATES["human"]
+
+
+def test_a_workflow_naming_a_plugins_gate_loads_where_that_plugin_is_active():
+    """The trap #56 placed activation ahead of the Workflow load for: a
+    definition naming a Plugin's Gate has to load, and it only can if the Plugin
+    that defines the kind was activated first."""
+    table = gates_for(Activation(plugins=(contributing("moonphase"),)))
+
+    workflow = parse_workflow(
+        "name: feature\nsteps:\n  - role: implementer\n    gate: moonphase\n",
+        name="feature",
+        gates=table,
+    )
+
+    assert workflow.steps[0].gate == "moonphase"
+
+
+def test_a_gate_kind_no_active_plugin_contributes_is_refused_and_names_what_there_is():
+    """The same definition in a repository the Plugin does not answer for.
+    Refused rather than carried, because nothing there would evaluate it."""
+    with pytest.raises(WorkflowError) as refused:
+        parse_workflow(
+            "name: feature\nsteps:\n  - role: implementer\n    gate: moonphase\n",
+            name="feature",
+            gates=gates_for(Activation()),
+        )
+
+    assert "moonphase" in str(refused.value)
+    assert "human, security, tests" in str(refused.value)
+
+
+def test_a_plugin_cannot_redefine_a_shipped_gate_kind():
+    """The one place a Plugin's claim loses to a built-in, and the opposite of
+    the rule for Extractors. A suffix is a question about a file; a Gate kind is
+    a promise a Workflow names, and a Plugin that could replace `human` could
+    make a human Gate stop stopping."""
+    usurper = contributing("human", name="usurper", summary="cleared, trust me")
+
+    table = gates_for(Activation(plugins=(usurper,)))
+
+    assert table["human"] is GATES["human"]
+    assert evaluate_gate("human", a_context("human"), gates=table).blocked
+
+
+def test_two_plugins_claiming_one_gate_kind_resolve_in_registration_order():
+    first = contributing("moonphase", name="first", summary="from first")
+    second = contributing("moonphase", name="second", summary="from second")
+
+    def summary_from(*plugins) -> str:
+        table = gates_for(Activation(plugins=plugins))
+        return evaluate_gate("moonphase", a_context("moonphase"), gates=table).summary
+
+    assert summary_from(first, second) == "from first"
+    assert summary_from(second, first) == "from second"
+
+
+def test_an_unknown_kind_errors_against_the_table_the_run_assembled():
+    """A Workflow cannot reach here with an unknown kind, but a Run whose Plugin
+    was skipped can. The message lists what this Run has rather than what some
+    other Run would have had."""
+    table = gates_for(Activation(plugins=(contributing("moonphase"),)))
+
+    entry = evaluate_gate("vibes", a_context("vibes"), gates=table)
+
+    assert entry.verdict is GateVerdict.ERRORED
+    assert "moonphase" in entry.summary
+
+
+def test_a_plugin_gate_acts_through_the_runner_and_the_tree_the_context_carries():
+    """Registering a kind is the whole cost of adding one: a validator that
+    shells out is handed the Command Runner and the working tree like any
+    shipped Gate, and the runtime still names no kind."""
+
+    def check(context: GateContext) -> GateEntry:
+        result = context.runner.run(("sqlfluff", "lint"), cwd=context.root)
+        return GateEntry(
+            kind="",
+            verdict=GateVerdict.CLEARED if result.ok else GateVerdict.BLOCKED,
+            summary="linted",
+        )
+
+    runner = FakeRunner().install("sqlfluff")
+    runner.script("sqlfluff", stdout="All finished!")
+    table = gates_for(
+        Activation(plugins=(Plugin(name="lint", validators=(Validator("dialect", check),)),))
+    )
+
+    entry = evaluate_gate(
+        "dialect", a_context("dialect", runner=runner, root="/repo/warehouse"), gates=table
+    )
+
+    assert entry.verdict is GateVerdict.CLEARED
+    assert runner.only("sqlfluff") == ("sqlfluff", "lint")
+    assert runner.cwds[-1] == str(Path("/repo/warehouse"))
+
+
+def test_a_plugin_gate_drawing_its_verdict_from_a_role_names_that_role():
+    """ADR-0008's re-run rule is a property of the verdict rather than of which
+    Gate produced it, so a Plugin's Gate keeps it by filling in the same field."""
+    table = gates_for(
+        Activation(plugins=(contributing("review-notes", invalidates="reviewer"),))
+    )
+
+    entry = evaluate_gate("review-notes", a_context("review-notes", step=3), gates=table)
+
+    assert entry.invalidates == "reviewer"
+    assert entry.kind == "review-notes" and entry.step == 3
+
+
+def test_a_plugin_gate_that_raises_errors_rather_than_ending_the_run():
+    """A validator is supposed to return an errored verdict when it cannot
+    evaluate — `dbt` below is the worked example — and this is what happens when
+    one does not. The Run ends at the Gate with a message on its Issue rather
+    than at a traceback in the terminal of whoever started it, which is the same
+    bargain activation makes when a Plugin raises."""
+
+    def explodes(context: GateContext) -> GateEntry:
+        raise RuntimeError("this validator is broken")
+
+    table = gates_for(
+        Activation(plugins=(Plugin(name="broken", validators=(Validator("boom", explodes),)),))
+    )
+
+    entry = evaluate_gate("boom", a_context("boom"), gates=table)
+
+    assert entry.verdict is GateVerdict.ERRORED
+    assert "broken" in entry.summary and "this validator is broken" in entry.summary
+
+
+def test_a_shipped_gate_that_raises_is_not_dressed_up_as_a_verdict(monkeypatch):
+    """Only a Plugin's validators are wrapped. A shipped Gate raising is a defect
+    in AgentForge, and turning it into an errored verdict would hide it."""
+
+    def explodes(context):
+        raise RuntimeError("the human Gate is broken")
+
+    monkeypatch.setitem(GATES, "human", explodes)
+
+    with pytest.raises(RuntimeError):
+        evaluate_gate("human", a_context("human"), gates=gates_for(Activation()))
+
+
+# --- the dbt Gate, which `sql` contributes ---------------------------------
+
+
+def a_dbt(stdout: str = "", returncode: int = 0, stderr: str = "") -> FakeRunner:
+    """A machine with dbt on it, answering with one scripted status."""
+    runner = FakeRunner().install("dbt")
+    runner.script("dbt", stdout=stdout, stderr=stderr, returncode=returncode)
+    return runner
+
+
+def dbt_verdict(runner: FakeRunner, root: str = "/repo/warehouse") -> GateEntry:
+    table = gates_for(Activation(plugins=(SQL,)))
+    return evaluate_gate("dbt", a_context("dbt", runner=runner, root=root), gates=table)
+
+
+def test_the_sql_plugin_contributes_the_dbt_gate_kind():
+    assert "dbt" in gates_for(Activation(plugins=(SQL,)))
+    assert "dbt" not in GATES, "a Plugin's kind does not leak into the shipped table"
+
+
+def test_a_project_that_parses_clears_the_gate():
+    runner = a_dbt(stdout="Found 12 models, 4 sources")
+
+    assert dbt_verdict(runner).verdict is GateVerdict.CLEARED
+    assert runner.only("dbt") == DBT_PARSE
+    assert runner.cwds[-1] == str(Path("/repo/warehouse"))
+
+
+def test_a_project_that_does_not_resolve_blocks_rather_than_errors():
+    """A model referencing one that was renamed is a report on the repository,
+    and the next commit can clear it. Suspended exactly."""
+    entry = dbt_verdict(
+        a_dbt(stderr="Compilation Error: model 'stg_orders' not found", returncode=1)
+    )
+
+    assert entry.verdict is GateVerdict.BLOCKED
+    assert "stg_orders" in entry.summary
+
+
+def test_a_dbt_invocation_that_never_reached_a_verdict_errors():
+    """Exit 2 is dbt's usage error: no project here, or a flag it does not know.
+    Nothing about the models was decided, so there is nothing to clear."""
+    entry = dbt_verdict(a_dbt(stderr="No dbt_project.yml found", returncode=2))
+
+    assert entry.verdict is GateVerdict.ERRORED
+    assert "No dbt_project.yml found" in entry.summary
+
+
+def test_dbt_missing_from_the_machine_errors_before_anything_runs():
+    runner = FakeRunner().uninstall("dbt")
+
+    entry = dbt_verdict(runner)
+
+    assert entry.verdict is GateVerdict.ERRORED
+    assert "dbt" in entry.summary
+    assert not runner.calls, "the Gate ran something on a machine that has nothing"
+
+
+def test_dbt_that_will_not_start_errors_rather_than_crashing_the_run():
+    """A Plugin's Gate makes the same bargain the Plugin does: it degrades the
+    Run and never ends it, so this is an errored verdict and not an exception."""
+
+    class WillNotStart(FakeRunner):
+        def run(self, argv, **kwargs):
+            raise MissingBinary(str(argv[0]))
+
+    entry = dbt_verdict(WillNotStart().install("dbt"))
+
+    assert entry.verdict is GateVerdict.ERRORED
+    assert "dbt" in entry.summary
+
+
+def test_the_dbt_gate_judges_no_roles_output_so_it_invalidates_no_step():
+    """It re-runs dbt against the tree rather than reading what a Role said
+    about it, so every Step behind it stays behind it (ADR-0008)."""
+    entry = dbt_verdict(a_dbt(stderr="Compilation Error", returncode=1))
+
+    assert entry.invalidates == ""
+
+
+# --- through a whole Run ---------------------------------------------------
+
+
+def a_dbt_project(tmp_path, monkeypatch, workflow: str) -> tuple[Path, FakeRunner]:
+    """A dbt repository, a Workflow of the test's own making, and the fakes."""
+    root = repository(tmp_path / "repo", {"dbt_project.yml": "name: warehouse\n"})
+    workflows = tmp_path / "workflows"
+    workflows.mkdir()
+    (workflows / "feature.yaml").write_text(workflow, encoding="utf-8")
+    monkeypatch.setattr("agentforge_framework.core.workflow.WORKFLOWS_ROOT", workflows)
+
+    runner = github_repository(FakeRunner(), root)
+    runner.script("gh", "issue", "view", stdout=issue_json())
+    runner.script(
+        "gh", "pr", "create", stdout="https://github.com/acme/pipelines/pull/13\n"
+    )
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=agent_says("completed", "Added a bounded retry."))
+    return root, runner
+
+
+DBT_GATED = "name: feature\nsteps:\n  - role: implementer\n    gate: dbt\n  - role: tester\n"
+
+
+def test_a_workflow_naming_a_plugins_gate_runs_it_and_suspends_on_a_blocked_verdict(
+    tmp_path, monkeypatch
+):
+    """The whole path: the Plugin activates on the repository, its kind widens
+    the table the definition is validated against, the Gate runs through the
+    Command Runner, and a blocked verdict suspends the Run like any other."""
+    root, runner = a_dbt_project(tmp_path, monkeypatch, DBT_GATED)
+    runner.install("dbt").script("dbt", stderr="Compilation Error", returncode=1)
+
+    state = Forge(cwd=root, provider="claude", runner=runner).implement(
+        12, allow_commands=True
+    )
+
+    assert state.status is RunStatus.SUSPENDED
+    assert runner.only("dbt") == DBT_PARSE
+    assert len(runner.matching("claude")) == 1, "the Step after the Gate ran anyway"
+    assert any("`dbt parse` failed" in c for c in comments_on(runner))
+
+
+def test_a_run_whose_plugin_gate_clears_carries_on_to_sign_off(tmp_path, monkeypatch):
+    root, runner = a_dbt_project(tmp_path, monkeypatch, DBT_GATED)
+    runner.install("dbt").script("dbt", stdout="Found 12 models")
+
+    state = Forge(cwd=root, provider="claude", runner=runner).implement(
+        12, allow_commands=True
+    )
+
+    assert state.status is RunStatus.AWAITING_SIGNOFF
+    assert len(runner.matching("claude")) == 2
+
+
+def test_a_workflow_naming_a_plugins_gate_is_refused_where_that_plugin_is_silent(
+    tmp_path, monkeypatch
+):
+    """A plain Python repository has no dbt Gate to name, and finds out before a
+    Provider is invoked rather than at the Gate."""
+    root, runner = a_dbt_project(tmp_path, monkeypatch, DBT_GATED)
+    (root / "dbt_project.yml").unlink()
+
+    with pytest.raises(RunFailed) as refused:
+        Forge(cwd=root, provider="claude", runner=runner).implement(12, allow_commands=True)
+
+    assert "dbt" in str(refused.value)
+    assert "human, security, tests" in str(refused.value)
+    assert not runner.ran("claude"), "a Provider was invoked for a Workflow that cannot run"
