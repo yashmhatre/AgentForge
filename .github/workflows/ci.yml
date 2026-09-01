@@ -4,6 +4,11 @@ on:
   pull_request:
   push:
     branches: [main]
+  # `release.yml` gates the upload on this matrix rather than on a copy of it,
+  # so the Python versions a release is proved against are edited in one place
+  # and stay the ones `test_the_matrix_runs_every_python_the_metadata_claims`
+  # holds to `requires-python` (#77).
+  workflow_call:
 
 jobs:
   test:
