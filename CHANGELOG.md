@@ -4,6 +4,15 @@ What changed in each release of AgentForge. Dates are the day the tag was cut.
 
 ## Unreleased
 
+Nothing yet.
+
+## 0.2.0 — 2026-09-01
+
+Plugins, and one command to set a repository up. A repository's technology now
+reaches the prompts of the Roles that work on it, contributes the readers its
+files are read with and the Gate kinds its Workflows can name, and carries the
+chores it repeats. A repository that matches no Plugin runs exactly as it did.
+
 ### Plugins reach a prompt
 
 - **A Plugin contributes domain knowledge through one registry.** A Plugin is a

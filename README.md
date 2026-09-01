@@ -101,7 +101,7 @@ posted anyway with the report attached, because holding a finished Run on a
 cosmetic check trades a real cost for a stylistic one. The report reaches the
 Run Log either way.
 
-At 0.1 the stable surface is the Issue body: what AgentForge writes into an
+Before 1.0 the stable surface is the Issue body: what AgentForge writes into an
 issue keeps parsing, so a Run filed by one version resumes under a later one.
 Everything importable under `agentforge_framework.*` is private and changes
 without notice. See
@@ -109,7 +109,7 @@ without notice. See
 
 ## Install
 
-AgentForge publishes to no package index at 0.1, so neither route below is
+AgentForge publishes to no package index yet, so neither route below is
 `pip install agentforge-framework`. Both put the same `agentforge` command on
 your path.
 
@@ -131,9 +131,9 @@ Download the wheel attached to the
 install the file you downloaded:
 
 ```console
-$ pip install agentforge_framework-0.1.0-py3-none-any.whl
+$ pip install agentforge_framework-0.2.0-py3-none-any.whl
 $ agentforge --version
-agentforge 0.1.0
+agentforge 0.2.0
 ```
 
 **From a clone**, to work on AgentForge itself. An editable install leaves the
