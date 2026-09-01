@@ -50,7 +50,14 @@ from .issues import (
 )
 from .plan_format import PlanFormatError, render_issue_body, render_issue_title
 from .process import CommandRunner, SubprocessRunner
-from .registry import NO_PLUGINS, Activation, activate, contributions, fragments_for
+from .registry import (
+    NO_PLUGINS,
+    Activation,
+    activate,
+    contributions,
+    extractors_for,
+    fragments_for,
+)
 from .repo import PreconditionFailed, Repository, branch_for_issue, open_repository
 from .workflow import Workflow, WorkflowError, load_workflow
 
@@ -242,7 +249,14 @@ class Forge:
         # (ADR-0010). Doing it per Step would let what a Role sees drift between
         # Steps of one Run, which is the thing the frozen Plan exists to stop.
         pack = (
-            resolve_pack(state.plan, repo.root, state.context)
+            # The extractor table comes from the activation resolved above, so a
+            # Plugin's reader and a Plugin's Fragment are decided by one answer
+            # rather than two. A control Run activated nothing and gets the
+            # built-in three, which is what makes it a control for the readers
+            # as well as for the prompts.
+            resolve_pack(
+                state.plan, repo.root, state.context, extractors_for(activation)
+            )
             if resolve_context
             else ContextPack()
         )

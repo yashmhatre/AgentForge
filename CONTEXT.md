@@ -89,7 +89,7 @@ The bounded set of files, symbols, and conventions handed to an Agent at invocat
 _Avoid_: Context, payload, bundle, briefing
 
 **Extractor**:
-The per-language reader that turns one file into what it defines and what it reaches for — a Python module's functions and imports, a query's columns and tables, a config file's keys. An Extractor answers for one file and never opens a second, and a file type no Extractor claims degrades to its path rather than to an error. See ADR-0010.
+The per-language reader that turns one file into what it defines and what it reaches for — a Python module's functions and imports, a query's columns and tables, a config file's keys. An Extractor answers for one file and never opens a second, and a file type no Extractor claims degrades to its path rather than to an error. AgentForge ships three, and a Plugin contributes more: where two claim one suffix the first registered wins, and a Plugin's claim beats a built-in one, because a Plugin claims a suffix precisely where it knows something the built-in reader does not. See ADR-0010 and ADR-0016.
 _Avoid_: Parser, analyzer, scanner, reader
 
 **Plugin**:

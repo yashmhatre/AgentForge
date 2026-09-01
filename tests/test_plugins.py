@@ -16,9 +16,12 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
+from agentforge_framework.context.extractors import EXTRACTORS, Extraction
 from agentforge_framework.context.prompt import render_context_block
+from agentforge_framework.context.resolver import MAX_SYMBOLS_PER_FILE, resolve_pack
 from agentforge_framework.core.contracts import (
     ContextPack,
+    Extractor,
     Fragment,
     Plan,
     PlanStep,
@@ -31,11 +34,13 @@ from agentforge_framework.core.registry import (
     Activation,
     activate,
     contributions,
+    extractors_for,
     fragments_for,
 )
 from agentforge_framework.core.runtime import Forge, RunStatus
 from agentforge_framework.plugins import BUILT_IN
 from agentforge_framework.plugins.python import PYTHON
+from agentforge_framework.plugins.sql import SQL
 
 from .fakes import FakeRunner
 from .test_runtime import ROOT, a_runner, agent_says, comments_on, forge
@@ -89,8 +94,10 @@ def test_the_python_plugin_is_not_active_where_python_is_not_in_the_blast_radius
 
     active = activate(plan_touching("models/orders.sql"), tmp_path)
 
-    assert active.plugins == ()
-    assert not active
+    # `sql` answers for this Plan and is meant to (#57). The claim here is about
+    # `python` alone, and asserting an empty set would only have been asserting
+    # that no other Plugin had been written yet.
+    assert PYTHON not in active.plugins
 
 
 def test_activation_is_deterministic_and_in_registration_order(tmp_path):
@@ -311,4 +318,180 @@ def test_the_shipped_registry_is_ordered_and_holds_the_python_plugin():
 def test_contributions_reads_as_a_line_a_human_can_act_on():
     assert contributions(Activation(plugins=(PYTHON,))) == (
         ("python", "1 Fragment(s) for implementer, tester, reviewer"),
+    )
+
+
+# --- a Plugin's Extractors (#57) -------------------------------------------
+
+
+def an_extractor(marker: str):
+    """A reader that is unmistakably not one of the built-in three."""
+
+    def read(text: str) -> Extraction:
+        return Extraction(symbols=(marker,))
+
+    return read
+
+
+def test_the_table_starts_from_the_built_in_extractors():
+    """The base is a floor, not a default. A Run with no active Plugin reads
+    every suffix the way it has always been read, which is what makes the
+    control in #61 a control for readers as well as for prompts.
+    """
+    table = extractors_for(Activation())
+
+    assert table == EXTRACTORS
+    assert table is not EXTRACTORS  # a copy, so no caller can widen the built-ins
+
+
+def test_a_plugins_extractor_takes_precedence_over_a_built_in_one():
+    claimant = Plugin(
+        name="claimant",
+        extractors=(Extractor(suffixes=(".sql",), read=an_extractor("from-the-plugin")),),
+    )
+
+    table = extractors_for(Activation(plugins=(claimant,)))
+
+    assert table[".sql"](".sql text") == Extraction(symbols=("from-the-plugin",))
+    assert table[".py"] is EXTRACTORS[".py"]  # a suffix nobody claimed is untouched
+
+
+def test_two_plugins_claiming_one_suffix_resolve_in_registration_order():
+    """Documented as first-registered-wins, and asserted both ways round so
+    that a passing test cannot be dictionary insertion order agreeing by
+    accident.
+    """
+    first = Plugin(
+        name="first",
+        extractors=(Extractor(suffixes=(".sql",), read=an_extractor("first")),),
+    )
+    second = Plugin(
+        name="second",
+        extractors=(Extractor(suffixes=(".sql",), read=an_extractor("second")),),
+    )
+
+    assert extractors_for(Activation(plugins=(first, second)))[".sql"]("") == Extraction(
+        symbols=("first",)
+    )
+    assert extractors_for(Activation(plugins=(second, first)))[".sql"]("") == Extraction(
+        symbols=("second",)
+    )
+
+
+def test_a_shadowed_plugin_still_contributes_its_other_suffixes():
+    """Losing one suffix is not being switched off."""
+    first = Plugin(
+        name="first",
+        extractors=(Extractor(suffixes=(".sql",), read=an_extractor("first")),),
+    )
+    second = Plugin(
+        name="second",
+        extractors=(
+            Extractor(suffixes=(".sql", ".ddl"), read=an_extractor("second")),
+        ),
+    )
+
+    table = extractors_for(Activation(plugins=(first, second)))
+
+    assert table[".sql"]("") == Extraction(symbols=("first",))
+    assert table[".ddl"]("") == Extraction(symbols=("second",))
+
+
+def test_a_suffix_is_claimed_case_insensitively():
+    """A repository written on Windows has `.SQL` files and they are the same
+    language — the rule `EXTRACTORS` already applies at lookup.
+    """
+    shouty = Plugin(
+        name="shouty",
+        extractors=(Extractor(suffixes=(".SQL",), read=an_extractor("claimed")),),
+    )
+
+    assert ".sql" in extractors_for(Activation(plugins=(shouty,)))
+
+
+def test_an_extractor_that_raises_yields_nothing_and_the_file_is_still_carried(tmp_path):
+    """The bargain the registry makes at activation, one layer down: a Plugin
+    costs the pack one file's contents and never the Run.
+    """
+
+    def explode(text: str) -> Extraction:
+        raise RuntimeError("this reader is broken")
+
+    broken = Plugin(
+        name="broken",
+        extractors=(Extractor(suffixes=(".sql",), read=explode),),
+    )
+    (tmp_path / "query.sql").write_text("select id from orders", encoding="utf-8")
+
+    pack = resolve_pack(
+        plan_touching("query.sql"),
+        tmp_path,
+        None,
+        extractors_for(Activation(plugins=(broken,))),
+    )
+
+    assert pack.files == ("query.sql",)
+    assert pack.symbols == ()
+    assert pack.references == ()
+
+
+def test_a_plugins_output_is_held_to_the_resolvers_caps(tmp_path):
+    """An added Plugin cannot make a pack grow without bound. The cap is the
+    resolver's and falls on a Plugin's reader exactly as it falls on a built-in
+    one, which is why the reader here is deliberately incontinent.
+    """
+    flood = Plugin(
+        name="flood",
+        extractors=(
+            Extractor(
+                suffixes=(".sql",),
+                read=lambda text: Extraction(
+                    symbols=tuple(f"col{n}" for n in range(500))
+                ),
+            ),
+        ),
+    )
+    (tmp_path / "query.sql").write_text("select 1", encoding="utf-8")
+
+    pack = resolve_pack(
+        plan_touching("query.sql"),
+        tmp_path,
+        None,
+        extractors_for(Activation(plugins=(flood,))),
+    )
+
+    assert len(pack.symbols) == MAX_SYMBOLS_PER_FILE
+
+
+def test_two_resolutions_of_one_plan_agree_plugins_included(tmp_path):
+    (tmp_path / "model.sql").write_text(
+        "select id from {{ ref('stg_orders') }}", encoding="utf-8"
+    )
+    plan = plan_touching("model.sql")
+    table = extractors_for(Activation(plugins=(SQL,)))
+
+    assert resolve_pack(plan, tmp_path, None, table) == resolve_pack(
+        plan, tmp_path, None, table
+    )
+
+
+def test_a_repository_with_no_active_plugin_resolves_the_pack_it_resolves_today(
+    tmp_path,
+):
+    """The control that matters most: adding the `sql` Plugin to `BUILT_IN` must
+    not have changed what a Run without it sees.
+    """
+    (tmp_path / "query.sql").write_text(
+        "select o.id from analytics.orders as o", encoding="utf-8"
+    )
+    plan = plan_touching("query.sql")
+
+    assert resolve_pack(plan, tmp_path, None, extractors_for(Activation())) == (
+        resolve_pack(plan, tmp_path)
+    )
+
+
+def test_contributions_names_the_suffixes_a_plugin_reads():
+    assert contributions(Activation(plugins=(SQL,))) == (
+        ("sql", "Extractor(s) for .sql, .yml, .yaml"),
     )

@@ -16,7 +16,7 @@ these are pure functions and their tests need no repository.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from . import python as python_extractor
@@ -34,20 +34,37 @@ EXTRACTORS: dict[str, Callable[[str], Extraction]] = {
 }
 
 
-def extractor_for(path: str | Path) -> Callable[[str], Extraction] | None:
-    """The extractor for this path's file type, or `None` if nobody wrote one."""
-    return EXTRACTORS.get(Path(path).suffix.lower())
+def extractor_for(
+    path: str | Path, extractors: Mapping[str, Callable[[str], Extraction]] | None = None
+) -> Callable[[str], Extraction] | None:
+    """The extractor for this path's file type, or `None` if nobody wrote one.
+
+    `extractors` is the table to look in, defaulting to the built-in three. A
+    Run with active Plugins passes a wider one, assembled by `core.registry`,
+    and the widening is invisible from here: a Plugin's reader is looked up the
+    same way and by the same suffix.
+    """
+    table = EXTRACTORS if extractors is None else extractors
+    return table.get(Path(path).suffix.lower())
 
 
-def extract(path: str | Path, text: str) -> Extraction:
+def extract(
+    path: str | Path,
+    text: str,
+    extractors: Mapping[str, Callable[[str], Extraction]] | None = None,
+) -> Extraction:
     """Read one file with whatever extractor its type has.
 
     An unknown type and a file that will not parse produce the same empty
     extraction on purpose: in both cases AgentForge has nothing to say about the
     contents, and inventing a difference between them would be inventing a
     claim.
+
+    A Plugin's extractor is caught by the same `except` as a built-in one. A
+    Plugin that raises costs the pack one file's contents, never the Run — the
+    same bargain `core.registry` makes when a Plugin raises during activation.
     """
-    reader = extractor_for(path)
+    reader = extractor_for(path, extractors)
     if reader is None:
         return Extraction()
     try:

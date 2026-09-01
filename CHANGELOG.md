@@ -21,6 +21,27 @@ What changed in each release of AgentForge. Dates are the day the tag was cut.
 - The Context Pack comment names the active Plugins and what each contributed,
   and names any that raised and were skipped.
 
+### A Plugin reads the files it knows about
+
+- **A Plugin contributes Extractors.** `core/registry.py` assembles the
+  extractor table for a Run — the built-in three as the floor, widened by the
+  active Plugins — and the resolver reads with whatever table it is handed. A
+  Plugin's reader beats a built-in one for a suffix it claims; two Plugins
+  claiming one suffix resolve by registration order, first wins.
+- **`sql` ships two readers and no Fragment.** A dbt model's `ref()` and
+  `source()` targets are carried as references, in front of the table names a
+  generic read finds, because those are the names the repository actually
+  contains. A dbt schema file is read as dbt: a model and a column are symbols,
+  a column is qualified by its model, and a test is a reference — it is what
+  breaks when the column changes.
+- YAML that is not dbt-shaped falls through to the reader that already handled
+  it, so a repository with a `dbt_project.yml` still gets ordinary YAML read
+  ordinarily.
+- A Plugin's Extractor is a pure function of file text, is held to the
+  resolver's caps, and costs the pack one file's contents rather than the Run
+  when it raises. A repository with no active Plugin resolves exactly the pack
+  it resolved before.
+
 ## 0.1.0 — 2026-08-28
 
 The first release. You state a task in your own words; AgentForge files a
