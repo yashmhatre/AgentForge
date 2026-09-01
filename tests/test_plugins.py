@@ -24,9 +24,12 @@ from agentforge_framework.context.resolver import (
     MAX_SYMBOLS_PER_FILE,
     resolve_pack,
 )
+from agentforge_framework.core.commands import run_command
 from agentforge_framework.core.contracts import (
+    Command,
     ContextPack,
     Extractor,
+    FileTemplate,
     Fragment,
     GateEntry,
     GateVerdict,
@@ -43,6 +46,7 @@ from agentforge_framework.core.registry import (
     MAX_FRAGMENTS_PER_ROLE,
     Activation,
     activate,
+    commands_for,
     contributions,
     extractors_for,
     fragments_for,
@@ -54,7 +58,7 @@ from agentforge_framework.plugins import BUILT_IN
 from agentforge_framework.plugins.databricks import DATABRICKS
 from agentforge_framework.plugins.pyspark import PYSPARK
 from agentforge_framework.plugins.python import PYTHON
-from agentforge_framework.plugins.sql import DBT_PARSE, SQL
+from agentforge_framework.plugins.sql import DBT_PARSE, SCAFFOLD_MODEL, SQL
 
 from .fakes import FakeRunner, github_repository
 from .test_gates import a_context
@@ -515,7 +519,13 @@ def test_a_repository_with_no_active_plugin_resolves_the_pack_it_resolves_today(
 
 def test_contributions_names_the_suffixes_a_plugin_reads():
     assert contributions(Activation(plugins=(SQL,))) == (
-        ("sql", "Extractor(s) for .sql, .yml, .yaml, Gate kind(s) dbt"),
+        (
+            "sql",
+            (
+                "Extractor(s) for .sql, .yml, .yaml, Gate kind(s) dbt, "
+                "Command(s) scaffold-dbt-model"
+            ),
+        ),
     )
 
 
@@ -1080,3 +1090,210 @@ def test_a_workflow_naming_a_plugins_gate_is_refused_where_that_plugin_is_silent
     assert "dbt" in str(refused.value)
     assert "human, security, tests" in str(refused.value)
     assert not runner.ran("claude"), "a Provider was invoked for a Workflow that cannot run"
+
+
+# --- a Plugin's Commands (#59) ---------------------------------------------
+
+
+def scaffolding(*templates: tuple[str, str], name: str = "chore", **kwargs) -> Plugin:
+    """A Plugin contributing one Command, written here rather than shipped."""
+    return Plugin(
+        name="chores",
+        commands=(
+            Command(
+                name=name,
+                summary="does a chore",
+                arguments=kwargs.pop("arguments", ("name",)),
+                templates=tuple(FileTemplate(path=p, text=t) for p, t in templates),
+                **kwargs,
+            ),
+        ),
+    )
+
+
+def test_the_command_table_has_no_shipped_floor():
+    """The one table with no built-in half. AgentForge has no chores of its own,
+    and a Command that is not a Plugin's is nobody's."""
+    assert commands_for(Activation()) == {}
+
+
+def test_a_plugins_commands_are_the_table():
+    assert list(commands_for(Activation(plugins=(SQL,)))) == ["scaffold-dbt-model"]
+
+
+def test_two_plugins_claiming_one_command_name_resolve_in_registration_order():
+    first = scaffolding(("a.sql", "from first"), name="scaffold")
+    second = scaffolding(("b.sql", "from second"), name="scaffold")
+
+    table = commands_for(Activation(plugins=(first, second)))
+
+    assert table["scaffold"].templates[0].path == "a.sql"
+
+
+def test_a_command_writes_the_files_it_declares(tmp_path):
+    plugin = scaffolding(("models/$name.sql", "select * from $name"))
+
+    outcome = run_command(
+        plugin.commands[0], ["orders"], root=tmp_path, runner=FakeRunner()
+    )
+
+    assert outcome.ok
+    assert outcome.written == ("models/orders.sql",)
+    assert (tmp_path / "models" / "orders.sql").read_text(encoding="utf-8") == (
+        "select * from orders"
+    )
+
+
+def test_a_command_that_only_writes_files_starts_no_process():
+    """The point of a Command: no model, and here not even a subprocess. The
+    output is a diff, and there is nothing to review for hallucination."""
+    runner = FakeRunner()
+    plugin = scaffolding(("$name.sql", "select 1"))
+
+    run_command(plugin.commands[0], ["orders"], root=Path("."), runner=runner)
+
+    assert not runner.calls
+
+
+def test_a_command_never_replaces_a_file_that_is_already_there(tmp_path):
+    """A Command that clobbered a file would be one nobody dares run twice."""
+    (tmp_path / "models").mkdir()
+    (tmp_path / "models" / "orders.sql").write_text("the real model", encoding="utf-8")
+    plugin = scaffolding(("models/$name.sql", "a scaffold"))
+
+    outcome = run_command(
+        plugin.commands[0], ["orders"], root=tmp_path, runner=FakeRunner()
+    )
+
+    assert not outcome.ok
+    assert "already exists" in outcome.error
+    assert (tmp_path / "models" / "orders.sql").read_text(encoding="utf-8") == (
+        "the real model"
+    )
+
+
+def test_a_command_writes_nothing_at_all_when_one_of_its_files_is_in_the_way(tmp_path):
+    """Checked across every template before the first is written. Half a
+    scaffold is worse than none: the tree carries files whose partner is
+    missing, and the Command cannot be re-run to finish the job."""
+    (tmp_path / "models").mkdir()
+    (tmp_path / "models" / "orders.yml").write_text("the real schema", encoding="utf-8")
+
+    outcome = run_command(
+        SCAFFOLD_MODEL, ["orders"], root=tmp_path, runner=FakeRunner()
+    )
+
+    assert not outcome.ok
+    assert not (tmp_path / "models" / "orders.sql").exists()
+
+
+def test_a_command_refuses_to_write_outside_the_repository(tmp_path):
+    """A template path is data, and data that renders to `../authorized_keys`
+    is refused rather than clamped — the resolver's rule, in the one other
+    place a path in this codebase comes from something other than a human."""
+    root = tmp_path / "repo"
+    root.mkdir()
+    plugin = scaffolding(("../$name.sql", "escaped"))
+
+    outcome = run_command(plugin.commands[0], ["orders"], root=root, runner=FakeRunner())
+
+    assert not outcome.ok
+    assert "outside the repository" in outcome.error
+    assert not (tmp_path / "orders.sql").exists()
+
+
+def test_the_wrong_number_of_arguments_is_a_usage_line_rather_than_a_traceback(tmp_path):
+    outcome = run_command(SCAFFOLD_MODEL, [], root=tmp_path, runner=FakeRunner())
+
+    assert not outcome.ok
+    assert "agentforge run scaffold-dbt-model <name>" in outcome.error
+
+
+def test_a_command_that_runs_a_process_runs_it_through_the_command_runner(tmp_path):
+    """No second process boundary: a Command reaches the same port `gh`, git,
+    and the coding-agent CLIs reach."""
+    runner = FakeRunner().install("dbt")
+    runner.script("dbt", stdout="Completed successfully")
+    plugin = scaffolding(argv=("dbt", "run", "--select", "$name"), arguments=("name",))
+
+    outcome = run_command(
+        plugin.commands[0], ["orders"], root=tmp_path, runner=runner, allow_commands=True
+    )
+
+    assert outcome.ok
+    assert runner.only("dbt") == ("dbt", "run", "--select", "orders")
+    assert runner.cwds[-1] == str(tmp_path)
+
+
+def test_a_command_that_runs_a_process_is_refused_where_execution_is_denied(tmp_path):
+    """ADR-0007 in the place a Plugin could otherwise have got around it. A
+    human typing `agentforge run` is the grant; an unattended Run is not."""
+    runner = FakeRunner().install("dbt")
+    plugin = scaffolding(
+        ("models/$name.sql", "select 1"),
+        argv=("dbt", "run", "--select", "$name"),
+    )
+
+    outcome = run_command(plugin.commands[0], ["orders"], root=tmp_path, runner=runner)
+
+    assert not outcome.ok
+    assert "ADR-0007" in outcome.error and "--allow-commands" in outcome.error
+    assert not runner.calls
+    assert not (tmp_path / "models").exists(), "refused, and yet it wrote the files"
+
+
+def test_a_process_that_will_not_start_is_reported_rather_than_raised(tmp_path):
+    class WillNotStart(FakeRunner):
+        def run(self, argv, **kwargs):
+            raise MissingBinary(str(argv[0]))
+
+    plugin = scaffolding(argv=("dbt", "run"), arguments=())
+
+    outcome = run_command(
+        plugin.commands[0],
+        [],
+        root=tmp_path,
+        runner=WillNotStart().install("dbt"),
+        allow_commands=True,
+    )
+
+    assert not outcome.ok
+    assert "dbt" in outcome.error
+
+
+def test_a_process_that_fails_is_carried_in_the_outcome(tmp_path):
+    runner = FakeRunner().install("dbt")
+    runner.script("dbt", stderr="Database Error", returncode=1)
+    plugin = scaffolding(argv=("dbt", "run"), arguments=())
+
+    outcome = run_command(
+        plugin.commands[0], [], root=tmp_path, runner=runner, allow_commands=True
+    )
+
+    assert not outcome.ok
+    assert outcome.result.returncode == 1
+
+
+# --- the dbt scaffold, which `sql` contributes -----------------------------
+
+
+def test_the_scaffold_writes_a_model_and_the_schema_entry_beside_it(tmp_path):
+    outcome = run_command(
+        SCAFFOLD_MODEL, ["orders"], root=tmp_path, runner=FakeRunner()
+    )
+
+    assert outcome.written == ("models/orders.sql", "models/orders.yml")
+    model = (tmp_path / "models" / "orders.sql").read_text(encoding="utf-8")
+    schema = (tmp_path / "models" / "orders.yml").read_text(encoding="utf-8")
+    assert "{{ ref('stg_orders') }}" in model, "Jinja survived the templating"
+    assert "name: orders" in schema
+
+
+def test_the_scaffold_decides_nothing_a_person_has_to_decide(tmp_path):
+    """It writes the shape and leaves every judgement visible: what the model
+    selects, what it is called in prose, what its columns are tested for. A
+    scaffold that guessed those would be the thing a reviewer has to check."""
+    run_command(SCAFFOLD_MODEL, ["orders"], root=tmp_path, runner=FakeRunner())
+
+    schema = (tmp_path / "models" / "orders.yml").read_text(encoding="utf-8")
+    assert 'description: ""' in schema

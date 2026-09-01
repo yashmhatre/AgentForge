@@ -272,3 +272,76 @@ def test_the_control_run_is_one_flag(runner, capsys):
 
     prompts = [call[call.index("-p") + 1] for call in runner.matching("claude")]
     assert prompts and all("## Context Pack" not in prompt for prompt in prompts)
+
+
+# --- agentforge run --------------------------------------------------------
+
+
+def a_dbt_project(tmp_path):
+    (tmp_path / "dbt_project.yml").write_text("name: warehouse\n", encoding="utf-8")
+    return tmp_path
+
+
+def test_run_with_no_command_lists_what_this_repository_has(tmp_path, capsys):
+    assert cli.main(["run", "-C", str(a_dbt_project(tmp_path))], FakeRunner()) == 0
+
+    out = capsys.readouterr().out
+    assert "scaffold-dbt-model <name>" in out
+    assert "Write a dbt model" in out
+
+
+def test_run_in_a_repository_no_plugin_answers_for_says_so_rather_than_listing_nothing(
+    tmp_path, capsys
+):
+    assert cli.main(["run", "-C", str(tmp_path)], FakeRunner()) == 0
+
+    assert "no Commands to run" in capsys.readouterr().out
+
+
+def test_run_writes_the_files_and_leaves_committing_to_a_human(tmp_path, capsys):
+    root = a_dbt_project(tmp_path)
+
+    assert cli.main(["run", "scaffold-dbt-model", "orders", "-C", str(root)], FakeRunner()) == 0
+
+    out = capsys.readouterr().out
+    assert "wrote models/orders.sql" in out
+    assert "a Command commits nothing" in out
+    assert (root / "models" / "orders.sql").is_file()
+
+
+def test_run_files_no_issue_and_starts_no_run(tmp_path):
+    """The reason it is a separate command: a chore should not cost an Issue, a
+    branch, and six Role invocations. Nothing reaches the process boundary at
+    all, because this Command writes files and starts nothing."""
+    runner = FakeRunner()
+
+    cli.main(["run", "scaffold-dbt-model", "orders", "-C", str(a_dbt_project(tmp_path))], runner)
+
+    assert not runner.calls
+
+
+def test_an_unknown_command_exits_two_and_names_what_there_is(tmp_path, capsys):
+    root = a_dbt_project(tmp_path)
+
+    assert cli.main(["run", "scaffold-everything", "-C", str(root)], FakeRunner()) == 2
+
+    err = capsys.readouterr().err
+    assert "scaffold-everything" in err
+    assert "scaffold-dbt-model" in err
+
+
+def test_a_command_run_twice_refuses_rather_than_overwriting(tmp_path, capsys):
+    root = a_dbt_project(tmp_path)
+    cli.main(["run", "scaffold-dbt-model", "orders", "-C", str(root)], FakeRunner())
+    (root / "models" / "orders.sql").write_text("the real model", encoding="utf-8")
+
+    assert cli.main(["run", "scaffold-dbt-model", "orders", "-C", str(root)], FakeRunner()) == 2
+
+    assert "already exists" in capsys.readouterr().err
+    assert (root / "models" / "orders.sql").read_text(encoding="utf-8") == "the real model"
+
+
+def test_the_wrong_arguments_exit_two_and_say_what_to_type(tmp_path, capsys):
+    assert cli.main(["run", "scaffold-dbt-model", "-C", str(a_dbt_project(tmp_path))], FakeRunner()) == 2
+
+    assert "agentforge run scaffold-dbt-model <name>" in capsys.readouterr().err

@@ -97,7 +97,7 @@ A bundle of domain knowledge for one technology — Python, SQL, PySpark, Databr
 _Avoid_: Extension, module, pack
 
 **Command**:
-A repeated data-engineering chore expressed as a template or script that runs with no inference. Scaffolding a dbt model is a Command; deciding whether the model is correct is not.
+A repeated data-engineering chore expressed as a template or an argument vector that runs with no inference. Scaffolding a dbt model is a Command; deciding whether the model is correct is not. Contributed by a Plugin, invoked directly as `agentforge run <command>` with no Issue and no Run, and committed by nobody: its output is an ordinary diff. See ADR-0019.
 _Avoid_: Script, recipe, macro, tool
 
 **Usage**:

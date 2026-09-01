@@ -70,6 +70,18 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    run = subcommands.add_parser(
+        "run",
+        help="run a Plugin's Command: a repeated chore, with no model involved",
+    )
+    run.add_argument(
+        "name",
+        nargs="?",
+        help="the Command to run. Leave it out to list what this repository has",
+    )
+    run.add_argument("arguments", nargs="*", help="the Command's positional arguments")
+    run.add_argument("-C", "--directory", default=".", help="repository to run in")
+
     # Listed rather than hidden, and honest about it: somebody reading `--help`
     # is deciding whether this tool does what they need, and both halves of that
     # answer belong there. `main` exits non-zero on it.
@@ -277,6 +289,74 @@ def _run_implement(args: argparse.Namespace, runner=None) -> int:
     return 2
 
 
+def _run_command(args: argparse.Namespace, runner=None) -> int:
+    """`agentforge run`: a chore, run directly, with no Issue and no Run.
+
+    Activation outside a Run has no blast radius to read, so what answers is
+    what the repository is — its root markers. A dbt project has dbt chores
+    whatever anybody is editing today (ADR-0019).
+
+    The human typing this is ADR-0007's grant, so a Command that starts a
+    process may start it here. That is the difference between this and the same
+    Command reached from inside an unattended Run.
+    """
+    from pathlib import Path
+
+    from .core.commands import run_command
+    from .core.contracts import Plan
+    from .core.process import SubprocessRunner
+    from .core.registry import activate, commands_for
+
+    root = Path(args.directory).resolve()
+    table = commands_for(activate(Plan(summary=""), root))
+
+    if not args.name:
+        if not table:
+            print(f"No Plugin answers for {root}, so there are no Commands to run.")
+            print("A Command is contributed by a Plugin: see `agentforge --help`.")
+            return 0
+        print("Commands this repository's Plugins contribute:\n")
+        for name, command in sorted(table.items()):
+            named = " ".join(f"<{argument}>" for argument in command.arguments)
+            print(f"  {name} {named}".rstrip())
+            if command.summary:
+                print(f"      {command.summary}")
+        return 0
+
+    command = table.get(args.name.strip().lower())
+    if command is None:
+        available = ", ".join(sorted(table)) or "none in this repository"
+        print(f"agentforge: no Command named {args.name!r}; available: {available}", file=sys.stderr)
+        return 2
+
+    outcome = run_command(
+        command,
+        args.arguments,
+        root=root,
+        runner=runner if runner is not None else SubprocessRunner(),
+        allow_commands=True,
+    )
+
+    for path in outcome.written:
+        print(f"  wrote {path}")
+
+    if outcome.error:
+        print(f"agentforge: {outcome.error}", file=sys.stderr)
+        return 2
+
+    if outcome.result is not None and not outcome.result.ok:
+        rendered = " ".join(outcome.result.argv)
+        print(f"agentforge: `{rendered}` exited {outcome.result.returncode}", file=sys.stderr)
+        detail = (outcome.result.stderr or outcome.result.stdout).strip()
+        if detail:
+            print(f"  {detail[:800]}", file=sys.stderr)
+        return 1
+
+    if outcome.written:
+        print("\nReview them as a diff and commit them yourself: a Command commits nothing.")
+    return 0
+
+
 def main(argv: list[str] | None = None, runner=None) -> int:
     """`runner` is the Command Runner seam: leave it unset and the real one is
     built. Tests pass a fake and the whole CLI runs offline."""
@@ -293,6 +373,8 @@ def main(argv: list[str] | None = None, runner=None) -> int:
         return _run_plan(args, runner)
     if args.command == "implement":
         return _run_implement(args, runner)
+    if args.command == "run":
+        return _run_command(args, runner)
 
     raise SystemExit(f"agentforge {args.command} is not implemented yet.")
 
