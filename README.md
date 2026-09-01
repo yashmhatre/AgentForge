@@ -136,6 +136,12 @@ $ agentforge --version
 agentforge 0.2.0
 ```
 
+Publishing a release is a wizard rather than a checklist:
+`bash scripts/publish-wizard.sh` registers the Trusted Publishers on TestPyPI
+and PyPI, rehearses the whole upload path against TestPyPI, and stops before
+the one irreversible step. Whoever cuts the next release runs it instead of
+reading `release.yml`.
+
 **From a clone**, to work on AgentForge itself. An editable install leaves the
 command pointing at the checkout, so an edit takes effect without reinstalling,
 and `[dev]` adds the pytest and ruff that CI runs:
