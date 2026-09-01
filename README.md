@@ -109,9 +109,14 @@ without notice. See
 
 ## Install
 
-AgentForge publishes to no package index yet, so neither route below is
-`pip install agentforge-framework`. Both put the same `agentforge` command on
-your path.
+```console
+$ pip install agentforge-framework
+$ agentforge --version
+agentforge 0.2.0
+```
+
+That is the whole of it. The two routes below the naming note are for a machine
+that cannot reach PyPI, and for working on AgentForge itself.
 
 The distribution is `agentforge-framework` and it imports as
 `agentforge_framework`, because an older and larger project holds `agentforge`
@@ -125,15 +130,13 @@ other project installed, because its 0.5.0 through 0.6.5 declare an `agentforge`
 command too and whichever was installed last wins. See
 [ADR-0013](docs/adr/0013-the-name-stays-the-import-path-moves.md).
 
-**From a release wheel**, to run AgentForge against your own repositories.
-Download the wheel attached to the
-[latest release](https://github.com/yashmhatre/AgentForge/releases/latest) and
-install the file you downloaded:
+**From a release wheel**, for a machine with no route to PyPI. Every release
+attaches the same wheel and sdist that were uploaded to the index; download one
+from the [latest release](https://github.com/yashmhatre/AgentForge/releases/latest)
+and install the file:
 
 ```console
 $ pip install agentforge_framework-0.2.0-py3-none-any.whl
-$ agentforge --version
-agentforge 0.2.0
 ```
 
 Publishing a release is a wizard rather than a checklist:
