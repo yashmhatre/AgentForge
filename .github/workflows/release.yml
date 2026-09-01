@@ -1,0 +1,241 @@
+name: Release
+
+# Publishing is the one action in this project that cannot be undone. PyPI never
+# lets a version number be reused, so a bad upload is a burnt number rather than
+# a fixable mistake, and what reaches the index has to be what every check
+# already ran against — the same rule #53 settled for release artifacts, one step
+# further out.
+#
+# Two entry points, therefore. `workflow_dispatch` rehearses the whole path
+# against TestPyPI as often as you like. Only a published GitHub release reaches
+# the real index. See #77.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      rehearse:
+        description: "Upload to TestPyPI rather than PyPI"
+        type: boolean
+        default: true
+
+# Read-only by default. The two publish jobs widen this to `id-token: write`
+# themselves, and nothing else here writes anything.
+permissions:
+  contents: read
+
+jobs:
+  # #77 asks for the upload to be gated on the existing test matrix, so this
+  # calls that matrix rather than copying it. `ci.yml` carries `workflow_call`
+  # for this one caller: a release that fails on 3.11 never reaches an index,
+  # and the matrix stays edited in exactly one place.
+  tests:
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    name: sdist and wheel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # The floor of `requires-python`, matching the wheel job in `ci.yml`. Both
+      # artifacts are `py3-none-any`, so this is about package data rather than
+      # language level, and the oldest interpreter the metadata admits is the one
+      # most likely to object.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # A release names a version and the metadata has to agree. This is the
+      # unrecoverable mistake the rest of the file is careful about: tag v0.2.0
+      # shipping 0.1.0 burns both numbers at once.
+      - name: The tag and the metadata name the same version
+        if: github.event_name == 'release'
+        run: |
+          python - <<'PY'
+          import os
+          import tomllib
+
+          with open("pyproject.toml", "rb") as handle:
+              declared = tomllib.load(handle)["project"]["version"]
+
+          tag = os.environ["GITHUB_REF_NAME"]
+          if tag.removeprefix("v") != declared:
+              raise SystemExit(
+                  f"the release is tagged {tag} and pyproject.toml declares "
+                  f"{declared}; bump the metadata or retag before publishing"
+              )
+          print(f"{tag} == {declared}")
+          PY
+
+      - name: Build both artifacts
+        run: |
+          pip install build
+          python -m build
+
+      # `[tool.setuptools.package-data]` is written for the wheel, and an sdist
+      # is assembled by a different code path. AgentForge ships the three
+      # Workflow definitions and the whole vendored skills tree as package data,
+      # so an sdist that quietly drops them builds a wheel that imports cleanly
+      # and then cannot find its own Workflows — a failure that surfaces at
+      # somebody's first Run rather than at the upload. Listing the members gives
+      # that failure a readable name; the install below is what proves it.
+      - name: The sdist carries the package data
+        run: |
+          python - <<'PY'
+          import pathlib
+          import tarfile
+
+          sdist = next(pathlib.Path("dist").glob("*.tar.gz"))
+          with tarfile.open(sdist) as archive:
+              members = archive.getnames()
+
+          def carried(fragment):
+              return [name for name in members if fragment in name]
+
+          workflows = [
+              name
+              for name in carried("agentforge_framework/workflows/")
+              if name.endswith(".yaml")
+          ]
+          skills = carried("agentforge_framework/skills/")
+          plugin = carried("agentforge_framework/.claude-plugin/plugin.json")
+
+          missing = []
+          if len(workflows) < 3:
+              missing.append(f"the three shipped Workflows: found {workflows}")
+          if not any(name.endswith("MANIFEST.yaml") for name in skills):
+              missing.append("skills/MANIFEST.yaml, so provenance shipped with nothing")
+          if len(skills) < 20:
+              missing.append(f"the skills tree looks truncated: {len(skills)} entries")
+          if not plugin:
+              missing.append(".claude-plugin/plugin.json")
+
+          if missing:
+              for item in missing:
+                  print(f"absent from {sdist.name}: {item}")
+              raise SystemExit("the sdist would install without its package data")
+
+          print(f"{sdist.name}: {len(workflows)} Workflows, {len(skills)} skill files")
+          PY
+
+      # The proof #77 asks for by name: pip builds a wheel from the sdist and
+      # installs it into a virtual environment outside the checkout, so nothing
+      # below can be answered by the source tree.
+      - name: Install from the sdist alone, outside the checkout
+        run: |
+          python -m venv "$RUNNER_TEMP/sdist-check"
+          "$RUNNER_TEMP/sdist-check/bin/pip" install --quiet dist/*.tar.gz
+
+      - name: What the sdist installed is what answers
+        working-directory: ${{ runner.temp }}
+        run: |
+          reported=$("$RUNNER_TEMP/sdist-check/bin/python" -c 'from importlib.metadata import version; print(version("agentforge-framework"))')
+          actual=$("$RUNNER_TEMP/sdist-check/bin/agentforge" --version)
+          if [ "$actual" != "agentforge $reported" ]; then
+            echo "expected 'agentforge $reported', got '$actual'" >&2
+            exit 1
+          fi
+
+          # `unslop` exercises the bundle hardest: three vendored scanners run as
+          # subprocesses, each needing its sibling `_lang` module and, for the
+          # silhouette scan, a fixture two directories up. Package data that
+          # shipped flattened shows up here and nowhere else.
+          cp "$GITHUB_WORKSPACE/README.md" prose.md
+
+          # Exit 1 is findings in the prose, which is not what this asks about.
+          # Exit 2 is a scanner that could not run at all, which is.
+          status=0
+          "$RUNNER_TEMP/sdist-check/bin/agentforge" unslop --json prose.md > report.json || status=$?
+          if [ "$status" -gt 1 ]; then
+            cat report.json
+            echo "a scanner could not run from the sdist install" >&2
+            exit 1
+          fi
+          echo "$actual, with its skill bundle intact"
+
+      - name: Hand both artifacts to the publish jobs
+        uses: actions/upload-artifact@v7
+        with:
+          name: distributions
+          path: dist/
+          if-no-files-found: error
+
+  # The rehearsal. TestPyPI takes the first upload of any version, so the whole
+  # path — OIDC, metadata acceptance, a clean install off a real index — gets
+  # proved somewhere a burnt version number costs nothing.
+  testpypi:
+    name: TestPyPI
+    if: github.event_name == 'workflow_dispatch' && inputs.rehearse
+    needs: [tests, build]
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/project/agentforge-framework/
+    # Trusted Publishing: the job presents a short-lived OIDC identity the index
+    # already trusts, so there is no API token in repository secrets to leak or
+    # to rotate. This permission is what mints it.
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: distributions
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          # Rehearsing a version that was already rehearsed is not a failure
+          # worth stopping for. The real index below has no such setting.
+          skip-existing: true
+
+      # An upload the index accepted is not yet an install that works.
+      # `--extra-index-url` is what lets the dependencies resolve: TestPyPI is
+      # not a mirror, and `pyyaml` does not necessarily live there.
+      - name: Install it back out of TestPyPI
+        run: |
+          python -m venv "$RUNNER_TEMP/index-check"
+          "$RUNNER_TEMP/index-check/bin/pip" install --quiet \
+            --index-url https://test.pypi.org/simple/ \
+            --extra-index-url https://pypi.org/simple/ \
+            agentforge-framework
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/index-check/bin/agentforge" --version
+
+  # The real thing. Reached only by a published release, and only after the
+  # matrix and the sdist proof.
+  pypi:
+    name: PyPI
+    if: github.event_name == 'release'
+    needs: [tests, build]
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/agentforge-framework/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: distributions
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+      # The criterion #77 states as the user-visible one: one command, a clean
+      # environment, and `agentforge` on PATH answering with the tagged version.
+      # PyPI mirrors nothing and needs no extra index.
+      - name: "`pip install agentforge-framework` works from a clean environment"
+        run: |
+          python -m venv "$RUNNER_TEMP/index-check"
+          "$RUNNER_TEMP/index-check/bin/pip" install --quiet \
+            "agentforge-framework==${GITHUB_REF_NAME#v}"
+          cd "$RUNNER_TEMP"
+          actual=$("$RUNNER_TEMP/index-check/bin/agentforge" --version)
+          if [ "$actual" != "agentforge ${GITHUB_REF_NAME#v}" ]; then
+            echo "the index served '$actual' for tag $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+          echo "$actual"
