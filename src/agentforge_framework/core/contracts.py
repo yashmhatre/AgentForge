@@ -348,6 +348,46 @@ class Validator:
 
 
 @dataclass(frozen=True)
+class FileTemplate:
+    """One file a Command writes: where it goes, and what is in it.
+
+    Both are `string.Template` sources, so `$name` and `${name}` are the
+    placeholders and a literal dollar is `$$`. Not `str.format`, because a dbt
+    model is Jinja and a template full of `{{ ref(...) }}` would have to double
+    every brace it already has — a trap that fires the first time somebody adds
+    a macro to a template that looked fine.
+    """
+
+    path: str
+    text: str
+
+
+@dataclass(frozen=True)
+class Command:
+    """A repeated chore, expressed so that running it needs no inference.
+
+    Two shapes, and a Command may be both. `templates` are files it writes;
+    `argv` is the argument vector it runs through the Command Runner. Scaffolding
+    a dbt model is a Command; deciding whether the model is correct is not, and
+    nothing here consults a model, reads the repository, or makes a choice.
+
+    `arguments` names its positional parameters in order, which is what
+    `agentforge run <command> orders` binds against and what a wrong number of
+    arguments is reported against. Every placeholder in `templates` and `argv`
+    is one of these names, substituted the same way in both.
+
+    Data, like every other contribution: a Command carries no callable, so what
+    it will do is readable without running it. See ADR-0019.
+    """
+
+    name: str
+    summary: str = ""
+    arguments: tuple[str, ...] = ()
+    templates: tuple[FileTemplate, ...] = ()
+    argv: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class Plugin:
     """A bundle of domain knowledge for one technology, as data.
 
@@ -384,6 +424,7 @@ class Plugin:
     fragments: tuple[Fragment, ...] = ()
     extractors: tuple[Extractor, ...] = ()
     validators: tuple[Validator, ...] = ()
+    commands: tuple[Command, ...] = ()
 
 
 @dataclass(frozen=True)

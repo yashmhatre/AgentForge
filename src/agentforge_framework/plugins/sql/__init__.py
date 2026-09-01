@@ -38,7 +38,15 @@ import yaml as pyyaml
 from ...context.extractors import sql as builtin_sql
 from ...context.extractors import yaml as builtin_yaml
 from ...context.extractors.base import Extraction, ordered
-from ...core.contracts import Extractor, GateEntry, GateVerdict, Plugin, Validator
+from ...core.contracts import (
+    Command,
+    Extractor,
+    FileTemplate,
+    GateEntry,
+    GateVerdict,
+    Plugin,
+    Validator,
+)
 from ...core.gates import GateContext, command_tail
 from ...core.process import MissingBinary
 
@@ -289,6 +297,62 @@ def _cannot_parse(reason: str) -> GateEntry:
     )
 
 
+#: The model a scaffold writes. Deliberately a shape rather than a guess: a
+#: staging CTE and a final select is what a reviewer expects to read, and every
+#: decision that needs a person — what it selects from, what it filters, what it
+#: is materialized as — is left where they will see it rather than filled in
+#: with something plausible. `$$name` in a template is a literal dollar; `$name`
+#: is the argument.
+_MODEL_SQL = """with source as (
+
+    select * from {{ ref('stg_$name') }}
+
+),
+
+renamed as (
+
+    select
+        -- Name the columns this model exposes. `select *` here is how a
+        -- downstream break becomes a surprise.
+        *
+
+    from source
+
+)
+
+select * from renamed
+"""
+
+#: The schema entry beside it. A model with no description and no test is the
+#: thing `dbt parse` is happy with and a reviewer is not, so the scaffold writes
+#: the places both belong and fills in neither.
+_MODEL_YML = """version: 2
+
+models:
+  - name: $name
+    description: ""
+    columns:
+      - name: id
+        description: ""
+        data_tests:
+          - unique
+          - not_null
+"""
+
+#: The one chore this Plugin knows: two files, in the places dbt looks for them,
+#: with no inference anywhere. Writing them by asking a Role at `standard` tier
+#: is the most expensive way to produce a file whose shape was never in question.
+SCAFFOLD_MODEL = Command(
+    name="scaffold-dbt-model",
+    summary="Write a dbt model and the schema entry beside it.",
+    arguments=("name",),
+    templates=(
+        FileTemplate(path="models/$name.sql", text=_MODEL_SQL),
+        FileTemplate(path="models/$name.yml", text=_MODEL_YML),
+    ),
+)
+
+
 SQL = Plugin(
     name="sql",
     suffixes=(".sql",),
@@ -298,12 +362,14 @@ SQL = Plugin(
         Extractor(suffixes=(".yml", ".yaml"), read=extract_schema),
     ),
     validators=(Validator(kind="dbt", check=parses),),
+    commands=(SCAFFOLD_MODEL,),
 )
 
 __all__ = [
     "DBT_FAILED",
     "DBT_PARSE",
     "MAX_ITEMS",
+    "SCAFFOLD_MODEL",
     "SQL",
     "extract_model",
     "extract_schema",

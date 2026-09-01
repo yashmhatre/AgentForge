@@ -79,6 +79,25 @@ What changed in each release of AgentForge. Dates are the day the tag was cut.
 - A Workflow naming a Gate kind no active Plugin contributes is refused before a
   Provider is invoked, and the refusal names the kinds this Run does have.
 
+### A chore runs without a Run
+
+- **`agentforge run <command> [args]`** invokes a Plugin's Command directly: no
+  Issue, no Run, no branch, no model, and no git remote. `agentforge run` with
+  no name lists what this repository's Plugins contribute, and an unknown name
+  exits non-zero naming what there is.
+- **`sql` ships `scaffold-dbt-model`**, which writes a model and the schema
+  entry beside it and leaves every judgement visible -- what it selects from,
+  what its description says, what its columns are tested for.
+- **A Command is data**: its arguments, the files it writes as templates, and
+  the argument vector it runs, so what it will do is readable without running
+  it. It never replaces an existing file, writes nothing at all if one of its
+  targets is in the way, refuses a template path that renders outside the
+  repository, and commits nothing.
+- A Command that runs a process runs it through the Command Runner and is bound
+  by ADR-0007: typing `agentforge run` is the grant, and a Command reached
+  inside a Run carries that Run's `--allow-commands`. See
+  [ADR-0019](docs/adr/0019-a-command-runs-outside-a-run-and-decides-nothing.md).
+
 ## 0.1.0 — 2026-08-28
 
 The first release. You state a task in your own words; AgentForge files a

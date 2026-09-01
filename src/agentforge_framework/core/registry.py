@@ -35,7 +35,7 @@ from ..context.extractors import EXTRACTORS, extract
 from ..context.extractors.base import Extraction
 from ..context.resolver import MAX_FILES, file_text, inside
 from ..plugins import BUILT_IN
-from .contracts import GateEntry, GateVerdict, Plan, Plugin, Validator
+from .contracts import Command, GateEntry, GateVerdict, Plan, Plugin, Validator
 from .gates import GATES, GateCheck
 
 #: What one Plugin may contribute to one Role. A Fragment is a few hundred
@@ -251,6 +251,29 @@ def _guarded(plugin: Plugin, validator: Validator) -> GateCheck:
     return check
 
 
+def commands_for(activation: Activation) -> dict[str, Command]:
+    """The Commands this repository's active Plugins contribute, by name.
+
+    The fourth table, assembled the way the other three are, and the only one
+    with no shipped floor: AgentForge itself has no chores, and a Command that
+    is not a Plugin's is nobody's. A repository no Plugin answers for therefore
+    gets an empty table, and `agentforge run` says so rather than offering a
+    list of things that would fail.
+
+    Two Plugins claiming one name resolve by registration order, first wins,
+    which is the rule the other tables apply.
+    """
+    table: dict[str, Command] = {}
+
+    for plugin in activation.plugins:
+        for command in plugin.commands:
+            name = command.name.strip().lower()
+            if name and name not in table:
+                table[name] = command
+
+    return table
+
+
 def contributions(activation: Activation) -> tuple[tuple[str, str], ...]:
     """Each active Plugin and what it contributed, for the Run Log.
 
@@ -276,6 +299,10 @@ def contributions(activation: Activation) -> tuple[tuple[str, str], ...]:
             # Workflow writes: a reader who sees `dbt` here can go and find the
             # Step whose Gate it is, or add one.
             parts.append(f"Gate kind(s) {_named_kinds(plugin)}")
+        if plugin.commands:
+            # Named for the same reason, and because a Command is the one
+            # contribution a human can go and type.
+            parts.append(f"Command(s) {_named_commands(plugin)}")
         listed.append((plugin.name, ", ".join(parts) if parts else "nothing"))
     return tuple(listed)
 
@@ -296,6 +323,15 @@ def _named_kinds(plugin: Plugin) -> str:
     for validator in plugin.validators:
         if validator.kind not in names:
             names.append(validator.kind)
+    return ", ".join(names)
+
+
+def _named_commands(plugin: Plugin) -> str:
+    """The Commands this Plugin contributes, in declared order."""
+    names: list[str] = []
+    for command in plugin.commands:
+        if command.name not in names:
+            names.append(command.name)
     return ", ".join(names)
 
 
@@ -411,6 +447,7 @@ __all__ = [
     "NO_PLUGINS",
     "Activation",
     "activate",
+    "commands_for",
     "contributions",
     "extractors_for",
     "fragments_for",

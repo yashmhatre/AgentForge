@@ -66,7 +66,7 @@ Add a cost line to every Run Log comment. Without measurement, "token efficient"
 
 `plugins/python`, `plugins/sql`, `plugins/pyspark`, `plugins/databricks`, each contributing extractors, prompt fragments, validators, and Commands.
 
-The seam landed first (#56, ADR-0016): a Plugin is a frozen data object, `core/registry.py` answers which ones are active for a Run, and a Fragment rides in the Context Pack handed to a Step. `plugins/python` ships one Fragment; the remaining contribution kinds plug into the same registry (#57 Extractors, #58 validators as Gate kinds, #59 Commands still to come). `--no-plugins` is the control that isolates what the Fragments cost, because `--no-context-pack` removes the pack and the Fragments together.
+The seam landed first (#56, ADR-0016): a Plugin is a frozen data object, `core/registry.py` answers which ones are active for a Run, and a Fragment rides in the Context Pack handed to a Step. `plugins/python` ships one Fragment; the remaining contribution kinds plug into the same registry (#57 Extractors, #58 validators as Gate kinds, #59 Commands). `--no-plugins` is the control that isolates what the Fragments cost, because `--no-context-pack` removes the pack and the Fragments together.
 
 `plugins/pyspark` and `plugins/databricks` landed with #60, and they are the milestone's point rather than two more entries in the tuple: a data engineer gets the conventions their code is held to, and the fifth Plugin is written by reading one of the four rather than by reading the framework. `pyspark` is detected by what a file imports rather than by its suffix, because `.py` says nothing about whether a module is a Spark job (ADR-0017); `databricks` is detected by the workspace markers it declares, and says one thing to the Roles that write code and another to the Security Role.
 
@@ -75,6 +75,8 @@ Validators landed with #58: a Plugin contributes Gate kinds, `core/registry.py` 
 Prompt fragments are the cheapest quality win in the project: Unity Catalog three-part naming, Delta MERGE idioms, DataFrame API over RDD. A few hundred tokens of convention per Role invocation, and the Implementer stops writing code that a reviewer would reject on sight.
 
 Commands are the expensive-to-build, high-payoff half. Scaffolding a dbt model or a pytest fixture runs as a template with zero inference. Start with the three chores you repeat most; a Command that saves a task nobody runs saves nothing.
+
+#59 landed the seam and the first chore: `agentforge run scaffold-dbt-model orders` writes the files and exits, with no Issue, no Run, and no model involved. A Command is data rather than a callable, so what it will do is readable without running it (ADR-0019). The remaining chores are a question of which ones a project repeats, which is what M5's `agentforge init` is placed to find out.
 
 Registration goes in `core/registry.py`.
 

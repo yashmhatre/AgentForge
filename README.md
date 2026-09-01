@@ -163,7 +163,16 @@ AgentForge never touches a model API and handles no credentials of its own. What
 | --- | --- |
 | `agentforge plan "<task>"` | Runs the Orchestrator at the `deep` tier and files an issue carrying the plan and roster. |
 | `agentforge implement <n>` | Reads Issue `<n>`, runs its Workflow on a branch, posts each Agent Result, and opens a draft PR. Add `--allow-commands` when the Workflow must execute a suite. |
+| `agentforge run [<command> args]` | Runs a chore a Plugin contributes -- `agentforge run scaffold-dbt-model orders` writes the files and exits. With no command name it lists what this repository has. No issue, no Run, no model involved. |
 | `agentforge unslop <file>` | Scans prose for machine-writing tells. Deterministic; no model involved. |
+
+`agentforge run` writes into your working tree and commits nothing: review the
+diff and commit it yourself. It never replaces a file that is already there,
+and a Command that runs a process is bound by the same default-deny posture as
+everything else (ADR-0007) -- typing the command is the grant. Which Commands
+you have depends on which Plugins answer for the repository you are in, which
+outside a Run is what its root markers say: a `dbt_project.yml` gets you dbt
+chores. See [ADR-0019](docs/adr/0019-a-command-runs-outside-a-run-and-decides-nothing.md).
 
 Both agent commands take `--provider` and `--tier`. A bare `--tier deep` moves every Role; `--tier implementer=deep` moves one.
 
