@@ -4,6 +4,15 @@ What changed in each release of AgentForge. Dates are the day the tag was cut.
 
 ## Unreleased
 
+Nothing yet.
+
+## 0.2.1 — 2026-09-02
+
+A patch number carrying one breaking change, which is a deliberate exception
+rather than an oversight: 0.3.0 is reserved for a major release, so this went
+under it. If you script `agentforge plan` and count the Issues it files, read
+the first section before upgrading.
+
 ### Planning cuts a Task into a set of Issues
 
 Planning was one pass that filed one Issue, which is the right shape for one
@@ -40,7 +49,7 @@ Slices, then plan each Slice into an Issue of its own. See
   general usage: a Spec is an intermediate nothing executes against, and a
   Slice stops existing the moment it becomes an Issue.
 
-### Also
+### The install
 
 - `pip install agentforge-framework` is the install, and the README says so.
   0.2.0 is the first release on PyPI, published by `release.yml` through
