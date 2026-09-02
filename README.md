@@ -127,7 +127,7 @@ without notice. See
 ```console
 $ pip install agentforge-framework
 $ agentforge --version
-agentforge 0.2.2
+agentforge 0.2.3
 ```
 
 That is the whole of it. The two routes below the naming note are for a machine
@@ -151,7 +151,7 @@ from the [latest release](https://github.com/yashmhatre/AgentForge/releases/late
 and install the file:
 
 ```console
-$ pip install agentforge_framework-0.2.2-py3-none-any.whl
+$ pip install agentforge_framework-0.2.3-py3-none-any.whl
 ```
 
 Publishing a release is a wizard rather than a checklist:

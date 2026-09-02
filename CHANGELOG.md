@@ -2,7 +2,12 @@
 
 What changed in each release of AgentForge. Dates are the day the tag was cut.
 
-## Unreleased
+## 0.2.3 — 2026-09-02
+
+Two disclosure decisions and the answers to a compatibility question. Nothing
+here is a fix to a broken feature; 0.2.2 was that. What changes is what a Run
+publishes about a codebase, and what a pull request tells the human signing it
+off.
 
 - **The Context Pack comment no longer publishes a map of the codebase.** A Run
   posted every symbol it resolved and the import graph between them to the
