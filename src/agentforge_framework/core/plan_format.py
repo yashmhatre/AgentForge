@@ -15,6 +15,7 @@ is the authority — it is what every Role parses.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 
 from .contracts import (
     PLAN_FORMAT_VERSION,
@@ -22,6 +23,7 @@ from .contracts import (
     Plan,
     PlanDocument,
     Roster,
+    Slice,
     Task,
 )
 
@@ -36,6 +38,18 @@ RESULT_CLOSE = "<!-- /agentforge:result -->"
 #: Agent Results only. See ADR-0008.
 GATE_OPEN = "<!-- agentforge:gate -->"
 GATE_CLOSE = "<!-- /agentforge:gate -->"
+
+#: The two stages of `agentforge decompose` that produce something before any
+#: Issue exists. Neither reaches an Issue body: a Spec is prose handed to the
+#: next stage, and a Slice list is shown to the human and then planned. They are
+#: delimited anyway, and for the same reason the plan block is -- a stage reads
+#: what the stage before it wrote, and scraping prose for it would make the
+#: hand-off depend on how a model chose to lay out its reply. See ADR-0021.
+SPEC_OPEN = "<!-- agentforge:spec -->"
+SPEC_CLOSE = "<!-- /agentforge:spec -->"
+
+SLICES_OPEN = "<!-- agentforge:slices -->"
+SLICES_CLOSE = "<!-- /agentforge:slices -->"
 
 
 class PlanFormatError(ValueError):
@@ -92,6 +106,20 @@ def render_issue_body(task: Task, document: PlanDocument) -> str:
     for index, role in enumerate(document.roster, start=1):
         parts.append(f"| {index} | {role.name} | `{role.tier}` |")
     parts.append("")
+
+    if document.blocked_by:
+        parts += [
+            "## Blocked by",
+            "",
+            (
+                "This Issue is one Slice of a decomposed plan. `agentforge implement` "
+                "refuses to start it until every Issue below has reached Sign-off "
+                "(ADR-0021)."
+            ),
+            "",
+        ]
+        parts += [f"- #{number}" for number in document.blocked_by]
+        parts.append("")
 
     if document.context:
         parts += ["## Context Pack", ""]
@@ -216,6 +244,89 @@ def extract_gate_block(text: str) -> dict | None:
     except json.JSONDecodeError:
         return None
     return data if isinstance(data, dict) else None
+
+
+def extract_spec(text: str) -> str:
+    """The Spec one `to-spec` pass wrote, as Markdown.
+
+    Prose rather than JSON, because the next stage reads it as prose and a human
+    reads it when they ask why a Slice exists. Delimited so that the model's
+    preamble does not travel with it.
+    """
+    spec = _extract_block(text, SPEC_OPEN, SPEC_CLOSE)
+    if spec is None:
+        raise PlanFormatError("no AgentForge spec block found in the synthesis pass output")
+    if not spec.strip():
+        raise PlanFormatError("the spec block is empty")
+    return spec.strip()
+
+
+def extract_slices(text: str) -> tuple[Slice, ...]:
+    """The breakdown one `to-tickets` pass wrote.
+
+    Order is the model's, and it is not trusted: `order_slices` sorts by the
+    blocking edges, because a list that reads top to bottom and a graph that
+    does not agree is a list that files an Issue before the one it depends on.
+    """
+    payload = _extract_block(text, SLICES_OPEN, SLICES_CLOSE)
+    if payload is None:
+        raise PlanFormatError("no AgentForge slices block found in the breakdown pass output")
+
+    try:
+        data = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise PlanFormatError(f"slices block is not valid JSON: {exc}") from exc
+
+    entries = data.get("slices") if isinstance(data, dict) else data
+    if not isinstance(entries, list) or not entries:
+        raise PlanFormatError("slices block carries no `slices`")
+
+    try:
+        slices = tuple(Slice.from_dict(entry) for entry in entries)
+    except (KeyError, TypeError) as exc:
+        raise PlanFormatError(f"a slice is missing {exc}") from exc
+
+    seen: set[str] = set()
+    for one in slices:
+        if one.id in seen:
+            raise PlanFormatError(f"two slices share the id {one.id!r}")
+        seen.add(one.id)
+
+    for one in slices:
+        unknown = [name for name in one.blocked_by if name not in seen]
+        if unknown:
+            raise PlanFormatError(
+                f"slice {one.id!r} is blocked by {', '.join(repr(u) for u in unknown)}, "
+                "which no slice defines"
+            )
+    return slices
+
+
+def order_slices(slices: Sequence[Slice]) -> tuple[Slice, ...]:
+    """Blockers before what they block, ties broken by the order given.
+
+    A cycle is a breakdown that cannot be filed rather than one to file
+    arbitrarily: whichever Slice went first would carry a blocking edge to an
+    Issue that does not exist yet.
+    """
+    remaining = list(slices)
+    done: set[str] = set()
+    ordered: list[Slice] = []
+
+    while remaining:
+        ready = [one for one in remaining if all(b in done for b in one.blocked_by)]
+        if not ready:
+            stuck = ", ".join(one.id for one in remaining)
+            raise PlanFormatError(
+                f"the slices block their own ordering; {stuck} cannot start because each "
+                "waits on another"
+            )
+        for one in ready:
+            ordered.append(one)
+            done.add(one.id)
+            remaining.remove(one)
+
+    return tuple(ordered)
 
 
 def _extract_block(text: str, open_marker: str, close_marker: str) -> str | None:

@@ -26,6 +26,10 @@ from agentforge_framework.core.contracts import ContextPack, ModelTier, Outcome,
 from agentforge_framework.core.plan_format import (
     PLAN_CLOSE,
     PLAN_OPEN,
+    SLICES_CLOSE,
+    SLICES_OPEN,
+    SPEC_CLOSE,
+    SPEC_OPEN,
     render_result_block,
 )
 from agentforge_framework.providers.claude import ClaudeProvider
@@ -57,6 +61,69 @@ def orchestrator_output(
         + render_result_block({"outcome": outcome, "summary": summary}),
     }
     return json.dumps(envelope)
+
+
+# --- the decomposition pipeline ---------------------------------------------
+#
+# Planning is four stages now (ADR-0021), and every one of them is a `claude`
+# call the FakeRunner answers in order. These build the three stdouts a pass
+# consumes, so a test says what it is about rather than assembling envelopes.
+
+
+def _envelope(body: str) -> str:
+    return json.dumps({"type": "result", "is_error": False, "result": body})
+
+
+def spec_output(spec: str = "## Problem Statement\n\nThe loader gives up.") -> str:
+    return _envelope(
+        f"{SPEC_OPEN}\n{spec}\n{SPEC_CLOSE}\n\n"
+        + render_result_block({"outcome": "completed", "summary": "wrote the spec"})
+    )
+
+
+def slices_output(*slices: dict) -> str:
+    """One entry per Slice. A test that does not care passes one."""
+    cut = list(slices) or [{"id": "s1", "title": "Add a retry to the loader"}]
+    payload = {
+        "slices": [
+            {
+                "id": one["id"],
+                "title": one["title"],
+                "delivers": one.get("delivers", f"{one['title']}, end to end."),
+                "acceptance": one.get("acceptance", ["The loader retries."]),
+                "blocked_by": one.get("blocked_by", []),
+            }
+            for one in cut
+        ]
+    }
+    return _envelope(
+        f"{SLICES_OPEN}\n```json\n{json.dumps(payload)}\n```\n{SLICES_CLOSE}\n\n"
+        + render_result_block({"outcome": "completed", "summary": "cut it"})
+    )
+
+
+def no_more_questions() -> str:
+    """The round that ends an interview: the Orchestrator says it has enough."""
+    return _envelope(
+        render_result_block(
+            {"outcome": "completed", "summary": "nothing else would change the plan"}
+        )
+    )
+
+
+def pipeline(roster=None, slices=(), workflow=None) -> list[str]:
+    """Every stdout one whole planning pass consumes, in order.
+
+    Spec, then the cut, then one planning pass per Slice. The last entry repeats
+    forever in `FakeRunner`, so a cut of three Slices needs only one plan here
+    unless a test wants them to differ.
+    """
+    roster = roster or [{"role": "implementer"}]
+    return [
+        spec_output(),
+        slices_output(*slices),
+        orchestrator_output(roster, workflow=workflow),
+    ]
 
 
 # --- the Orchestrator picks the Workflow -------------------------------------

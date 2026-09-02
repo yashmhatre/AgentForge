@@ -297,11 +297,18 @@ def test_the_glossary_defines_exactly_these_terms():
     for one file and is not the resolver that calls it, and a Usage is what one
     invocation consumed in whatever unit its Provider reports — which is why it
     is not called Cost, the word the Run Log shows a human.
+
+    Spec and Slice arrived with ADR-0021, and both are narrower here than in
+    general usage. A Spec is an intermediate nothing executes against, and a
+    Slice stops existing the moment it is filed — which is the distinction that
+    keeps "Ticket" out of the vocabulary, since what gets filed is an Issue.
     """
     assert [t.name for t in _repo_terms()] == [
         "Task",
         "Issue",
         "Roster",
+        "Spec",
+        "Slice",
         "Orchestrator",
         "Role",
         "Agent",

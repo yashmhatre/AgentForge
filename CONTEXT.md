@@ -1,6 +1,6 @@
 # AgentForge
 
-AgentForge coordinates specialized software agents through reusable workflows: a human states a Task, the Orchestrator files an Issue carrying a frozen plan, and a Roster of Roles executes it. This file holds meanings only — decisions live in `docs/adr/`, mechanics live in the code, and a word earns a place here once it has been used to settle an argument.
+AgentForge coordinates specialized software agents through reusable workflows: a human states a Task, the Orchestrator cuts it into Slices and files an Issue for each carrying a frozen plan, and a Roster of Roles executes them. This file holds meanings only — decisions live in `docs/adr/`, mechanics live in the code, and a word earns a place here once it has been used to settle an argument.
 
 ## Language
 
@@ -18,10 +18,18 @@ _Avoid_: Ticket, task, work item, story
 The ordered list of Roles an Issue requires, chosen by the Orchestrator and recorded in the Issue body. A bug fix and a schema migration draw different Rosters.
 _Avoid_: Team, crew, pipeline, lineup
 
+**Spec**:
+One reading of what a human asked for, synthesized from their words and the answers the grill got out of them, and written before anything is cut into work. A Spec is an intermediate: it is handed to the pass that cuts it and never reaches an Issue, so nothing executes against one. See ADR-0021.
+_Avoid_: Design, requirements, brief, PRD
+
+**Slice**:
+One vertical cut of a Spec: a complete path through every layer the work touches, sized to be planned and executed on its own, declaring the Slices that must finish before it can start. A Slice is what a human approves and stops existing the moment it is filed — what gets filed is an ordinary Issue. See ADR-0021.
+_Avoid_: Ticket, chunk, phase, milestone
+
 ### Who does it
 
 **Orchestrator**:
-The Role that turns a Task into an Issue, assembling the Context Pack, choosing the Roster, and drafting the plan. The Orchestrator reasons; nothing downstream of it does.
+The Role that turns a Task into Issues — grilling the human, synthesizing a Spec, cutting it into Slices, and then planning each one: assembling the Context Pack, choosing the Roster, and drafting the plan. The Orchestrator reasons; nothing downstream of it does.
 _Avoid_: Planner, coordinator, manager, dispatcher
 
 **Role**:
