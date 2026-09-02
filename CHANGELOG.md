@@ -4,6 +4,12 @@ What changed in each release of AgentForge. Dates are the day the tag was cut.
 
 ## Unreleased
 
+- **`agentforge decompose` and `agentforge plan` work against a real model.**
+  The two prompts added in 0.2.1 asked for their own block and stopped, and a
+  Provider fails any invocation that comes back without a result block -- so
+  the pipeline failed on its first call every time. Both stages now ask for
+  their block and then a verdict, and either can escalate rather than guess.
+  0.2.1's headline feature did not work; this is the fix.
 - **The release verification no longer races PyPI's index.** An index takes an
   upload some seconds before it serves it, so the clean-environment install
   check asked too early and failed the 0.2.1 release over a package that was

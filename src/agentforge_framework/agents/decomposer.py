@@ -45,6 +45,8 @@ from ..core.contracts import (
     Task,
 )
 from ..core.plan_format import (
+    RESULT_CLOSE,
+    RESULT_OPEN,
     SLICES_CLOSE,
     SLICES_OPEN,
     SPEC_CLOSE,
@@ -105,8 +107,9 @@ not publish the spec, do not open an issue, and do not apply a label.
 
 ## Required output
 
-End your reply with this block and nothing after it. Markdown inside it, not \
-JSON:
+End your reply with these two blocks, in this order, and nothing after them.
+
+First the spec. Markdown inside it, not JSON:
 
 {spec_open}
 ## Problem Statement
@@ -128,10 +131,22 @@ JSON:
 ...
 {spec_close}
 
+Then your own verdict:
+
+{result_open}
+```json
+{{"outcome": "completed", "summary": "one line on what the spec covers"}}
+```
+{result_close}
+
 Cover the whole source. Anything in it that reaches no user story reaches no \
 Issue and does not get built. Scale the spec to what you were given: a \
 one-sentence Task earns a short spec, and padding one out invents scope nobody \
-asked for.\
+asked for.
+
+If the source is too thin to synthesize without inventing most of it, write the \
+verdict block with `"outcome": "escalated"` and a summary naming what you need \
+the human to supply. Omit the spec block in that case.\
 """
 
 SLICES = """\
@@ -186,7 +201,9 @@ publish anything, do not open an issue, and do not apply a label.
 
 ## Required output
 
-End your reply with this block and nothing after it:
+End your reply with these two blocks, in this order, and nothing after them.
+
+First the cut:
 
 {slices_open}
 ```json
@@ -202,7 +219,19 @@ End your reply with this block and nothing after it:
   ]
 }}
 ```
-{slices_close}\
+{slices_close}
+
+Then your own verdict:
+
+{result_open}
+```json
+{{"outcome": "completed", "summary": "one line on how you cut it and why"}}
+```
+{result_close}
+
+If the spec cannot be cut without guessing at something it left open, write the \
+verdict block with `"outcome": "escalated"` and a summary naming what has to be \
+settled first. Omit the slices block in that case.\
 """
 
 #: What one approved Slice looks like when it is handed to a planning pass. The
@@ -298,6 +327,8 @@ class Decomposer:
                 cwd=cwd,
                 spec_open=SPEC_OPEN,
                 spec_close=SPEC_CLOSE,
+                result_open=RESULT_OPEN,
+                result_close=RESULT_CLOSE,
             ),
             cwd,
         )
@@ -311,6 +342,8 @@ class Decomposer:
                 cap=MAX_SLICES,
                 slices_open=SLICES_OPEN,
                 slices_close=SLICES_CLOSE,
+                result_open=RESULT_OPEN,
+                result_close=RESULT_CLOSE,
             ),
             cwd,
         )
