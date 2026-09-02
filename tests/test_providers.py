@@ -8,6 +8,7 @@ adapter's test rather than surfacing later as a confusing Run.
 
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 from typing import ClassVar
 
@@ -52,7 +53,7 @@ def test_claude_runs_headlessly_with_the_prompt_it_was_given():
 
     call = runner.only("claude")
     assert call[1] == "-p"
-    assert "do the thing" in call
+    assert runner.prompt_to("claude") == "do the thing"
     assert "--output-format" in call and call[call.index("--output-format") + 1] == "json"
 
 
@@ -73,7 +74,7 @@ def test_claude_delivers_a_declared_skill_natively_without_inlining_it():
     )
 
     call = runner.only("claude")
-    prompt = call[call.index("-p") + 1]
+    prompt = runner.prompt_to("claude")
     assert "--plugin-dir" in call
     assert "/agentforge:grilling" in prompt
     assert "Grill the user" not in prompt
@@ -95,7 +96,7 @@ def test_a_non_native_provider_appends_the_same_skill_as_a_fragment():
         cwd=Path("/repo"),
     )
 
-    prompt = runner.only("codex")[-1]
+    prompt = runner.prompt_to("codex")
     assert "## Skill: grilling" in prompt
     assert read_skill("grilling").rstrip() in prompt
     assert "--plugin-dir" not in runner.only("codex")
@@ -120,7 +121,7 @@ def test_a_composite_skill_expands_into_its_parts_for_a_fragment_provider():
         cwd=Path("/repo"),
     )
 
-    prompt = runner.only("codex")[-1]
+    prompt = runner.prompt_to("codex")
     assert "## Skill: grill-with-docs" in prompt
     assert "## Skill: grilling" in prompt
     assert "## Skill: domain-modeling" in prompt
@@ -147,7 +148,7 @@ def test_a_composite_is_named_once_to_a_native_provider():
         cwd=Path("/repo"),
     )
 
-    prompt = runner.only("claude")[runner.only("claude").index("-p") + 1]
+    prompt = runner.prompt_to("claude")
     assert "/agentforge:grill-with-docs" in prompt
     assert "/agentforge:grilling" not in prompt
 
@@ -157,11 +158,6 @@ def native_claude(runner):
         runner,
         config=Config(provider_capabilities={"claude": CapabilityTier.NATIVE}),
     )
-
-
-def prompt_given_to(runner, binary="claude"):
-    call = runner.only(binary)
-    return call[call.index("-p") + 1]
 
 
 @pytest.mark.parametrize("name", sorted(fragment_only()))
@@ -184,7 +180,7 @@ def test_a_skill_that_forbids_model_invocation_is_a_fragment_at_the_native_tier(
         cwd=Path("/repo"),
     )
 
-    prompt = prompt_given_to(runner)
+    prompt = runner.prompt_to("claude")
     assert f"/agentforge:{name}" not in prompt
     assert f"## Skill: {name}" in prompt
     assert read_skill(name).rstrip() in prompt
@@ -213,12 +209,78 @@ def test_a_role_declaring_both_kinds_gets_both_deliveries():
         cwd=Path("/repo"),
     )
 
-    prompt = prompt_given_to(runner)
+    prompt = runner.prompt_to("claude")
     assert "/agentforge:grilling" in prompt
     assert "/agentforge:to-spec" not in prompt
     assert "## Skill: to-spec" in prompt
     assert "## Skill: grilling" not in prompt
     assert "--plugin-dir" in runner.only("claude")
+
+
+# --- the prompt travels on stdin (#100) ------------------------------------
+
+#: What `CreateProcess` allows a whole Windows command line to be. Linux allows
+#: roughly 2MB, which is why every `ubuntu-latest` job passed while `decompose`
+#: died on the author's own machine.
+WINDOWS_COMMAND_LINE_CAP = 32767
+
+RECORDED = {"claude": "claude_completed.json", "codex": "codex_completed.txt"}
+
+
+def a_provider_of(name, runner):
+    return get_provider(name, runner)
+
+
+@pytest.mark.parametrize("name", sorted(PROVIDERS))
+def test_the_prompt_reaches_the_cli_on_stdin_and_never_in_argv(name):
+    runner = FakeRunner().script(name, stdout=recorded(RECORDED[name]))
+    role = Role("implementer", ModelTier.STANDARD)
+
+    a_provider_of(name, runner).invoke(
+        role=role,
+        prompt="a distinctive instruction",
+        context=ContextPack(),
+        tier=role.tier,
+        cwd=Path("/repo"),
+    )
+
+    assert runner.prompt_to(name) == "a distinctive instruction"
+    assert not any("a distinctive instruction" in part for part in runner.only(name))
+
+
+@pytest.mark.parametrize("name", sorted(PROVIDERS))
+def test_a_prompt_past_the_windows_cap_still_leaves_a_short_command_line(name):
+    """The regression. A Spec of any real size pushed the `SLICES` prompt over
+    32,767 characters and `decompose` died as `[WinError 206]`; the prompt is
+    now the one thing in an invocation that cannot grow the command line."""
+    huge = "x" * (WINDOWS_COMMAND_LINE_CAP * 2)
+    runner = FakeRunner().script(name, stdout=recorded(RECORDED[name]))
+    role = Role("implementer", ModelTier.STANDARD)
+
+    a_provider_of(name, runner).invoke(
+        role=role,
+        prompt=huge,
+        context=ContextPack(),
+        tier=role.tier,
+        cwd=Path("/repo"),
+    )
+
+    argv = runner.only(name)
+    command_line = sum(len(part) + 1 for part in argv)
+    assert command_line < WINDOWS_COMMAND_LINE_CAP, (
+        f"{name} builds a {command_line}-character command line, which Windows refuses"
+    )
+    assert runner.prompt_to(name) == huge
+
+
+@pytest.mark.parametrize("name", sorted(PROVIDERS))
+def test_an_adapter_cannot_be_handed_the_prompt_to_put_in_argv(name):
+    """`build_argv` does not take one. A later change that wants the prompt back
+    in the argument vector has to alter the port to get it, rather than quietly
+    appending it to a tuple."""
+    provider = a_provider_of(name, FakeRunner())
+
+    assert "prompt" not in inspect.signature(provider.build_argv).parameters
 
 
 def test_an_unknown_declared_skill_fails_before_the_provider_is_invoked():
@@ -256,7 +318,7 @@ def test_provider_selection_uses_the_capability_tier_from_the_shared_loader(tmp_
         cwd=tmp_path,
     )
 
-    prompt = runner.argument_after("-p", "claude")
+    prompt = runner.prompt_to("claude")
     assert read_skill("grilling").rstrip() in prompt
     assert "--plugin-dir" not in runner.only("claude")
 

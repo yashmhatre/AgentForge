@@ -76,7 +76,7 @@ def a_runner(issues=(12,)) -> FakeRunner:
 
 def _prompts(runner: FakeRunner) -> list[str]:
     """What each stage was actually asked, in order. `claude -p <prompt>`."""
-    return [call[call.index("-p") + 1] for call in runner.matching("claude")]
+    return runner.prompts_to("claude")
 
 
 def bodies(runner: FakeRunner) -> list[str]:
@@ -520,7 +520,7 @@ def test_the_decomposer_reports_every_invocation_so_the_pass_can_be_priced():
 
 
 def _stage_prompts(runner: FakeRunner) -> list[str]:
-    return [call[call.index("-p") + 1] for call in runner.matching("claude")]
+    return runner.prompts_to("claude")
 
 
 def test_every_stage_asks_the_model_for_a_result_block():

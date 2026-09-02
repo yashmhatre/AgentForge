@@ -4,6 +4,16 @@ What changed in each release of AgentForge. Dates are the day the tag was cut.
 
 ## Unreleased
 
+- **The prompt reaches a coding-agent CLI on standard input, not in argv.**
+  Windows caps a command line at 32,767 characters and an AgentForge prompt
+  carries a Spec or a Context Pack, so `decompose` died as `[WinError 206]` on
+  any plan document worth decomposing. Linux allows roughly 2MB, which is why
+  every `ubuntu-latest` job in CI passed throughout. Always stdin rather than
+  stdin past a size threshold, so the path a Run takes is the path the tests
+  take. `build_argv` no longer takes the prompt — an out-of-tree adapter
+  implementing the Provider port needs the same change.
+- **CI runs the suite on Windows.** One job at the floor of `requires-python`.
+  The bug above was found by hand, on the author's own machine, after a release.
 - **A skill that forbids model invocation is delivered as a Fragment at every
   Capability Tier.** `to-spec` and `to-tickets` are both marked
   `disable-model-invocation` upstream, so offering them natively got them

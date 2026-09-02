@@ -133,9 +133,9 @@ class CliProvider(Provider):
             ) from exc
 
     @abstractmethod
-    def build_argv(
-        self, prompt: str, model: str, native_skills: tuple[str, ...] = ()
-    ) -> Sequence[str]: ...
+    def build_argv(self, model: str, native_skills: tuple[str, ...] = ()) -> Sequence[str]:
+        """The invocation, without the prompt. See `invoke` for why it is absent."""
+        ...
 
     @abstractmethod
     def parse_output(self, result: CommandResult) -> ProviderOutput: ...
@@ -149,9 +149,20 @@ class CliProvider(Provider):
         tier: ModelTier,
         cwd: Path,
     ) -> AgentResult:
+        """The prompt travels on stdin, never in the argument vector.
+
+        Windows caps a command line at 32,767 characters, and an AgentForge
+        prompt carries a Context Pack, a Spec, or both — `decompose` crossed the
+        cap on a 30k plan document and died as `[WinError 206]`. Linux allows
+        roughly 2MB, so every `ubuntu-latest` job in CI passed throughout (#100).
+
+        Always stdin, never "stdin when the prompt is long": a size threshold
+        would make this the rarely-taken path and the bug would return the first
+        time a prompt landed the other side of it.
+        """
         prompt, native_skills = self._deliver_skills(role, prompt)
-        argv = self.build_argv(prompt, self.model_for(tier), native_skills)
-        completed = self.runner.run(argv, cwd=cwd, timeout=self.timeout)
+        argv = self.build_argv(self.model_for(tier), native_skills)
+        completed = self.runner.run(argv, cwd=cwd, stdin=prompt, timeout=self.timeout)
         output = self.parse_output(completed)
         return to_agent_result(role=role, tier=tier, output=output)
 

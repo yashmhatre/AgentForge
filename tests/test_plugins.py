@@ -228,7 +228,7 @@ def test_fragments_never_travel_in_an_issue_body():
 
 def prompts_from(runner: FakeRunner) -> list[str]:
     """What each Agent was actually handed, read off the argument vector."""
-    return [call[call.index("-p") + 1] for call in runner.matching("claude")]
+    return runner.prompts_to("claude")
 
 
 def a_python_run() -> FakeRunner:
@@ -298,7 +298,7 @@ def test_a_fragment_reaches_both_capability_tiers_the_same_way():
     runner = a_python_run()
     Forge(cwd=ROOT, provider="codex", runner=runner).implement(12, allow_commands=True)
 
-    prompts = [call[call.index("exec") + 1] for call in runner.matching("codex")]
+    prompts = runner.prompts_to("codex")
     assert "Type-annotate new public functions" in prompts[0]
 
 

@@ -47,13 +47,16 @@ class ClaudeProvider(CliProvider):
     def permission_mode(self) -> str:
         return self.PERMITTED if self.allow_commands else self.DENIED
 
-    def build_argv(
-        self, prompt: str, model: str, native_skills: tuple[str, ...] = ()
-    ) -> Sequence[str]:
+    def build_argv(self, model: str, native_skills: tuple[str, ...] = ()) -> Sequence[str]:
+        """`-p` carries no prompt argument: with none, the CLI reads stdin.
+
+        Verified against the installed CLI rather than the help text, which
+        documents `-p` as "print response and exit" and says nothing about where
+        the prompt comes from.
+        """
         argv = (
             self.binary,
             "-p",
-            prompt,
             "--model",
             model,
             "--output-format",

@@ -272,7 +272,7 @@ def test_the_control_run_is_one_flag(runner, capsys):
 
     assert run(["implement", "12", "--allow-commands", "--no-context-pack"], runner) == 0
 
-    prompts = [call[call.index("-p") + 1] for call in runner.matching("claude")]
+    prompts = runner.prompts_to("claude")
     assert prompts and all("## Context Pack" not in prompt for prompt in prompts)
 
 
@@ -516,8 +516,7 @@ def test_the_document_reaches_the_synthesis_pass(runner, tmp_path):
 
     run(["decompose", str(plan), "--yes"], runner)
 
-    first = runner.matching("claude")[0]
-    prompt = first[first.index("-p") + 1]
+    prompt = runner.prompts_to("claude")[0]
     assert "Late-arriving facts need a handler." in prompt
     assert "PLAN.md" in prompt
 

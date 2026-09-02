@@ -108,7 +108,7 @@ def test_codex_options_precede_the_subcommand():
 
     for flag in ("--model", "--sandbox", "--ask-for-approval"):
         assert argv.index(flag) < exec_at, f"{flag} must precede `exec`"
-    assert argv[-1] != "exec", "the prompt is the subcommand's argument"
+    assert argv[-1] == "-", "the subcommand's argument is the stdin sentinel, not the prompt"
 
 
 def test_codex_no_longer_passes_a_flag_the_cli_does_not_have():
@@ -205,7 +205,7 @@ def test_a_denied_role_is_told_to_report_rather_than_substitute_inspection():
 
     Forge(cwd=ROOT, provider="claude", runner=runner).implement(12)
 
-    prompt = runner.only("claude")[2]
+    prompt = runner.prompt_to("claude")
     assert "cannot run commands" in prompt.lower()
     assert "escalate" in prompt.lower()
 

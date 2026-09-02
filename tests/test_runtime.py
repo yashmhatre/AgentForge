@@ -371,7 +371,7 @@ def test_opening_a_denied_run_resumes_at_the_tester():
 
     state = forge(runner).implement(12, allow_commands=True)
 
-    prompts = [call[call.index("-p") + 1] for call in runner.matching("claude")]
+    prompts = runner.prompts_to("claude")
 
     assert state.status is RunStatus.AWAITING_SIGNOFF
     assert len(prompts) == 3, "the completed implementer Step was run a second time"
@@ -624,7 +624,7 @@ def test_a_hand_edited_plan_naming_a_module_that_is_not_there_halts_rather_than_
 
     state = forge(runner).implement(12, allow_commands=True)
 
-    assert "src/nowhere/loader_v2.py" in runner.argument_after("-p", "claude")
+    assert "src/nowhere/loader_v2.py" in runner.prompt_to("claude")
     assert state.status is RunStatus.HALTED
     assert labels_applied(runner)[-1] == "agentforge:halted"
 
@@ -677,7 +677,7 @@ def test_a_corrected_plan_resumes_rather_than_restarting_the_completed_steps():
     ]
     assert state.done_roles == ("implementer", "tester", "security", "reviewer")
     assert state.results[0].summary == "Implemented the change."
-    prompts = [call[call.index("-p") + 1] for call in second.matching("claude")]
+    prompts = second.prompts_to("claude")
     assert len(prompts) == 3, "the completed Step was run a second time"
     assert "You are the Tester" in prompts[0]
     assert state.status is RunStatus.AWAITING_SIGNOFF
@@ -1079,7 +1079,7 @@ def test_a_second_invocation_resumes_from_the_suspension_point(tmp_path, monkeyp
     assert suspended.status is RunStatus.SUSPENDED
     assert resumed.status is RunStatus.AWAITING_SIGNOFF
     assert len(second.matching("claude")) == 1, "the completed Step was run a second time"
-    assert "You are the Tester" in second.argument_after("-p", "claude")
+    assert "You are the Tester" in second.prompt_to("claude")
     assert resumed.done_roles == ("implementer", "tester")
 
 
@@ -1142,7 +1142,7 @@ def test_a_gate_blocking_on_a_roles_output_re_runs_that_step_on_resume(
 
     assert suspended.done_roles == (), "the Gate did not mark its Step for re-run"
     assert suspended.current_step == 1
-    prompts = [call[call.index("-p") + 1] for call in second.matching("claude")]
+    prompts = second.prompts_to("claude")
     assert len(prompts) == 2, "the invalidated Step did not run again"
     assert "You are the Implementer" in prompts[0]
     assert "You are the Tester" in prompts[1]
@@ -1498,7 +1498,7 @@ def test_a_resumed_run_re_audits_rather_than_reading_the_finding_back(
     resumed = forge(second).implement(12, allow_commands=True)
 
     assert suspended.done_roles == ("implementer",), "the Gate did not un-retire its Step"
-    prompts = [call[call.index("-p") + 1] for call in second.matching("claude")]
+    prompts = second.prompts_to("claude")
     assert len(prompts) == 1, "the implementer Step ran again for a finding about its output"
     assert "You are the Security Role" in prompts[0]
     assert resumed.status is RunStatus.AWAITING_SIGNOFF
@@ -1566,7 +1566,7 @@ def test_the_bugfix_workflow_fixes_verifies_and_reports_without_an_audit():
 
     assert state.status is RunStatus.AWAITING_SIGNOFF
     assert state.done_roles == ("implementer", "tester", "reviewer")
-    prompts = [call[call.index("-p") + 1] for call in runner.matching("claude")]
+    prompts = runner.prompts_to("claude")
     assert not any("You are the Security Role" in prompt for prompt in prompts)
 
 
@@ -1629,7 +1629,7 @@ def test_a_workflow_naming_the_architect_loads_and_runs(tmp_path, monkeypatch):
 
     assert state.status is RunStatus.AWAITING_SIGNOFF
     assert state.done_roles == ("architect", "implementer")
-    prompts = [call[call.index("-p") + 1] for call in runner.matching("claude")]
+    prompts = runner.prompts_to("claude")
     assert "You are the Architect" in prompts[0]
     assert "the port stays dumb" in next(c for c in comments_on(runner) if "### architect" in c)
 
@@ -1661,7 +1661,7 @@ def test_every_role_is_handed_the_pack_resolved_from_the_frozen_plan():
 
     forge(runner).implement(12, allow_commands=True)
 
-    prompts = [call[call.index("-p") + 1] for call in runner.matching("claude")]
+    prompts = runner.prompts_to("claude")
     assert prompts, "no Agent was invoked"
     for prompt in prompts:
         assert "## Context Pack" in prompt
@@ -1707,7 +1707,7 @@ def test_the_control_run_hands_every_role_nothing_and_says_so():
 
     forge(runner).implement(12, allow_commands=True, resolve_context=False)
 
-    prompts = [call[call.index("-p") + 1] for call in runner.matching("claude")]
+    prompts = runner.prompts_to("claude")
     assert all("## Context Pack" not in prompt for prompt in prompts)
     assert "Context Pack — none" in comments_on(runner)[0]
 

@@ -39,6 +39,31 @@ jobs:
       - name: Test
         run: pytest -q
 
+  # Every job above is `ubuntu-latest`, where a command line may run to roughly
+  # 2MB. Windows `CreateProcess` stops at 32,767 characters, so `decompose` died
+  # on the author's own machine while CI stayed green through a release (#100).
+  # A platform nobody runs is a platform nobody supports.
+  #
+  # One entry at the floor of `requires-python` rather than the whole matrix
+  # doubled: the bugs this catches are about the operating system — path
+  # separators, line endings, process limits — and not about the language level.
+  windows:
+    name: windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      - name: Test
+        run: pytest -q
+
   # The suite above runs against an editable install, which leaves the source
   # tree on disk in its original shape and so proves nothing about packaging.
   # This job builds the wheel a release attaches, installs it where the source

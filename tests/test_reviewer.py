@@ -81,8 +81,7 @@ def scanners_say(runner: FakeRunner, *verdicts: bool) -> FakeRunner:
         def run(self, argv, *, cwd=None, stdin=None, timeout=None):
             argv = tuple(str(part) for part in argv)
             if argv[0] == sys.executable:
-                self.calls.append(argv)
-                self.cwds.append(None)
+                self._record(argv, None, stdin)
                 stdout, code = next(answers)
                 from agentforge_framework.core.process import CommandResult
 
@@ -127,7 +126,7 @@ def test_the_review_is_written_deep_and_the_rewrites_are_not():
 
 def prompts_of(runner) -> list[str]:
     """What the claude CLI was actually asked, in order."""
-    return [call[call.index("-p") + 1] for call in runner.matching("claude")]
+    return runner.prompts_to("claude")
 
 
 def test_the_first_draft_is_written_with_the_prose_skill_in_front_of_it():
@@ -225,7 +224,7 @@ def test_the_rewrite_is_handed_the_findings_rather_than_the_skill():
         plan=a_plan(), context=ContextPack(), cwd=Path("/repo")
     )
 
-    rewrite = [call[call.index("-p") + 1] for call in runner.matching("claude")][1]
+    rewrite = runner.prompts_to("claude")[1]
     assert "delve into" in rewrite
     assert "say what you looked at" in rewrite
     assert "Keep every claim you made" in rewrite
