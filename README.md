@@ -182,6 +182,14 @@ What each release contains is in [CHANGELOG.md](CHANGELOG.md).
 
 AgentForge never touches a model API and handles no credentials of its own. Whatever your coding-agent CLI is already authenticated with is what a Run costs.
 
+### Editors and IDEs
+
+AgentForge is a terminal tool. It runs fine from an IDE's terminal, but the IDE is not a Provider and its assistant is not one either.
+
+**Antigravity IDE cannot be a Provider** ([#101](https://github.com/yashmhatre/AgentForge/issues/101)). Checked by running it, so nobody has to derive it again: `antigravity-ide chat` accepts a prompt and reads stdin, which is the right shape for the argument vector — but it is a window launcher. Piping a prompt to it returns exit 0 immediately with `Reading from stdin via: …\code-stdin-XXXX` on stdout and nothing else, ever; the answer goes to a GUI session. A Provider adapter has to read the Agent's result off stdout, so there is nothing for `parse_output` to parse. The same is true of any editor CLI of this shape.
+
+**Do not run another agent against a checkout while a Run is going.** A Run commits every change to a file git already tracks, however it got there ([ADR-0015](docs/adr/0015-a-run-commits-what-it-declared.md)) — so a second agent's half-finished edits are committed into the Run's branch and attributed to a Role. Files nothing in the Run claimed are listed in the pull request body ([ADR-0023](docs/adr/0023-a-commit-names-what-nothing-claimed.md)), which makes it visible at Sign-off but does not prevent it. Use a separate clone.
+
 ## Commands
 
 | Command | What it does |
@@ -313,10 +321,21 @@ code rather than the verdict about the old code.
 
 Read [`CONTEXT.md`](CONTEXT.md) before writing anything, and [`docs/adr/`](docs/adr/) for the decisions that constrain it.
 
+## Changing AgentForge
+
+Clone it and install that clone editable. Never patch the installed copy.
+
+```console
+$ git clone https://github.com/yashmhatre/AgentForge.git
+$ cd AgentForge
+$ pip install -e ".[dev]"
+```
+
+Editing `site-packages/agentforge_framework/` appears to work and is the one change nothing will catch: the local install diverges from what ships, so the thing that works is not the thing anybody else gets, and the fix is lost the next time the package is upgraded. If a Run is failing badly enough that patching the install looks like the way forward, that is a bug worth filing — [#101](https://github.com/yashmhatre/AgentForge/issues/101) is what happened the last time somebody reached for it.
+
 ## Tests
 
 ```console
-$ pip install -e ".[dev]"
 $ pytest
 ```
 

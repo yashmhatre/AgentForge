@@ -2,6 +2,24 @@
 
 What changed in each release of AgentForge. Dates are the day the tag was cut.
 
+## Unreleased
+
+- **A pull request names the committed files no Agent claimed.** A Run commits
+  every change to a file git already tracks, however it got there (ADR-0015) —
+  which is right when the only writers are the Agents and their commands, and
+  is how a second agent sharing the checkout gets its half-finished work
+  committed into the Run's branch and attributed to a Role. The commit rule is
+  unchanged; the body now lists what nothing in the Run said it wrote, so the
+  reader at Sign-off sees it. See
+  [ADR-0023](docs/adr/0023-a-commit-names-what-nothing-claimed.md).
+- **Antigravity IDE is documented as an environment, not a Provider.** Checked
+  by running it: `antigravity-ide chat` is a window launcher that returns
+  immediately with nothing on stdout, so there is nothing for an adapter's
+  `parse_output` to read. Recorded in the README so it is not re-derived.
+- **The README says to clone and install editable.** Patching an installed
+  `site-packages` copy is the one change nothing catches, and it is what
+  happened the last time a Run failed badly enough to look unusable.
+
 ## 0.2.2 — 2026-09-02
 
 The release that makes 0.2.1 true. `agentforge decompose` shipped as 0.2.1's
