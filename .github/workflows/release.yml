@@ -191,16 +191,37 @@ jobs:
           # worth stopping for. The real index below has no such setting.
           skip-existing: true
 
-      # An upload the index accepted is not yet an install that works.
+      # An upload the index accepted is not yet an install that works: an index
+      # serves a new file some seconds after taking it, and asking in the same
+      # breath is a race the check loses (#94). So the resolution is retried
+      # against a deadline.
+      #
+      # Pinned, and to the wheel this job just uploaded rather than to anything
+      # a checkout would have to be added to read. Unpinned, this step passes
+      # against whatever version TestPyPI already had -- which with
+      # `skip-existing` above means a re-rehearsal can upload nothing and then
+      # verify nothing.
+      #
       # `--extra-index-url` is what lets the dependencies resolve: TestPyPI is
       # not a mirror, and `pyyaml` does not necessarily live there.
       - name: Install it back out of TestPyPI
         run: |
+          wheel=$(basename dist/*.whl)
+          version=$(echo "$wheel" | cut -d- -f2)
+          echo "verifying $version, from $wheel"
           python -m venv "$RUNNER_TEMP/index-check"
-          "$RUNNER_TEMP/index-check/bin/pip" install --quiet \
+          deadline=$((SECONDS + 300))
+          until "$RUNNER_TEMP/index-check/bin/pip" install --quiet --no-cache-dir \
             --index-url https://test.pypi.org/simple/ \
             --extra-index-url https://pypi.org/simple/ \
-            agentforge-framework
+            "agentforge-framework==$version"; do
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "TestPyPI did not serve $version within five minutes of accepting it" >&2
+              exit 1
+            fi
+            echo "not on the index yet; asking again in 15s"
+            sleep 15
+          done
           cd "$RUNNER_TEMP"
           "$RUNNER_TEMP/index-check/bin/agentforge" --version
 
@@ -227,14 +248,30 @@ jobs:
       # The criterion #77 states as the user-visible one: one command, a clean
       # environment, and `agentforge` on PATH answering with the tagged version.
       # PyPI mirrors nothing and needs no extra index.
+      #
+      # The resolution is retried and the version is not. PyPI takes an upload
+      # before it serves it, so a 404 seconds after a 200 says nothing yet
+      # (#94) -- but a version that resolves and then answers wrong is the exact
+      # failure this step exists to catch, and looping on that would turn a
+      # burnt number into a five-minute wait for the same bad news.
       - name: "`pip install agentforge-framework` works from a clean environment"
         run: |
+          version="${GITHUB_REF_NAME#v}"
           python -m venv "$RUNNER_TEMP/index-check"
-          "$RUNNER_TEMP/index-check/bin/pip" install --quiet \
-            "agentforge-framework==${GITHUB_REF_NAME#v}"
+          deadline=$((SECONDS + 300))
+          until "$RUNNER_TEMP/index-check/bin/pip" install --quiet --no-cache-dir \
+            "agentforge-framework==$version"; do
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "PyPI did not serve $version within five minutes of accepting it." >&2
+              echo "The upload itself may be fine: check https://pypi.org/project/agentforge-framework/$version/" >&2
+              exit 1
+            fi
+            echo "not on the index yet; asking again in 15s"
+            sleep 15
+          done
           cd "$RUNNER_TEMP"
           actual=$("$RUNNER_TEMP/index-check/bin/agentforge" --version)
-          if [ "$actual" != "agentforge ${GITHUB_REF_NAME#v}" ]; then
+          if [ "$actual" != "agentforge $version" ]; then
             echo "the index served '$actual' for tag $GITHUB_REF_NAME" >&2
             exit 1
           fi
