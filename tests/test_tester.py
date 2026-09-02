@@ -63,4 +63,4 @@ def test_an_open_tester_reaches_the_shared_provider_to_run_the_suite():
 
     assert result.outcome is Outcome.COMPLETED
     assert runner.ran("claude")
-    assert "run the repository's test suite" in runner.argument_after("-p", "claude")
+    assert "run the repository's test suite" in runner.prompt_to("claude")

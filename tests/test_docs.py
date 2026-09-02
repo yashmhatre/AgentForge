@@ -391,3 +391,26 @@ def test_the_matrix_runs_every_python_the_metadata_claims():
     tested = [int(version.split(".")[1]) for version in matrix]
 
     assert tested == list(range(floor, max(tested) + 1))
+
+
+def test_the_suite_runs_on_windows_somewhere_in_ci():
+    """#100 was a Windows process limit that every `ubuntu-latest` job stepped
+    over without noticing, on a project whose author develops on Windows. It
+    survived a release that way.
+
+    This asks only that some job runs the suite on Windows — which job, and on
+    which Python, is left open.
+    """
+    workflow = yaml.safe_load(
+        (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    )
+
+    on_windows = [
+        job
+        for job in workflow["jobs"].values()
+        if "windows" in str(job.get("runs-on", "")) + str(job.get("strategy", ""))
+    ]
+    assert on_windows, "no CI job runs on Windows"
+    assert any(
+        "pytest" in str(step.get("run", "")) for job in on_windows for step in job.get("steps", [])
+    ), "a Windows job exists but nothing runs the suite on it"

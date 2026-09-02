@@ -74,10 +74,14 @@ class CodexProvider(CliProvider):
     #: rather than an edit here.
     REASONING_EFFORT: ClassVar[str] = "medium"
 
-    def build_argv(
-        self, prompt: str, model: str, native_skills: tuple[str, ...] = ()
-    ) -> Sequence[str]:
+    def build_argv(self, model: str, native_skills: tuple[str, ...] = ()) -> Sequence[str]:
         """Options precede the subcommand: `codex [OPTIONS] <COMMAND> [ARGS]`.
+
+        The prompt argument is `-`, which `codex exec --help` documents as "read
+        instructions from stdin". Omitting it entirely reads stdin too, but the
+        sentinel says so out loud, and the same help says a prompt supplied
+        alongside piped stdin gets the stdin appended as a `<stdin>` block —
+        which is the failure mode the explicit `-` rules out.
 
         This adapter previously passed `--full-auto` after `exec`, which fails
         twice over: that flag does not exist in the current CLI, and options
@@ -98,7 +102,7 @@ class CodexProvider(CliProvider):
             "--ask-for-approval",
             self.PERMITTED if self.allow_commands else self.DENIED,
             "exec",
-            prompt,
+            "-",
         )
 
     def parse_output(self, result: CommandResult) -> ProviderOutput:

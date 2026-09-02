@@ -68,7 +68,7 @@ def an_orchestrator(*replies: str) -> tuple[Orchestrator, FakeRunner]:
 
 
 def prompts(runner: FakeRunner) -> list[str]:
-    return [call[call.index("-p") + 1] for call in runner.matching("claude")]
+    return runner.prompts_to("claude")
 
 
 # --- the interview -----------------------------------------------------------

@@ -45,6 +45,10 @@ class FakeRunner:
     binaries: set[str] = field(default_factory=lambda: {"git", "gh", "claude", "codex"})
     calls: list[tuple[str, ...]] = field(default_factory=list)
     cwds: list[str | None] = field(default_factory=list)
+    #: What each call was fed on stdin, positionally aligned with `calls`. A
+    #: coding-agent CLI is handed its prompt this way and never in argv (#100),
+    #: so a test asking what a Role was told asks `prompts_to`.
+    stdins: list[str | None] = field(default_factory=list)
     scripts: list[_Script] = field(default_factory=list)
     default: tuple[int, str, str] = (0, "", "")
 
@@ -90,10 +94,17 @@ class FakeRunner:
 
     # --- the port ----------------------------------------------------------
 
-    def run(self, argv, *, cwd=None, stdin=None, timeout=None) -> CommandResult:
-        argv = tuple(str(part) for part in argv)
+    def _record(self, argv: tuple[str, ...], cwd, stdin: str | None) -> None:
+        """The three ledgers stay positionally aligned, so a subclass that
+        answers some calls itself records through here rather than appending to
+        one of them and quietly desyncing the others."""
         self.calls.append(argv)
         self.cwds.append(str(cwd) if cwd is not None else None)
+        self.stdins.append(stdin)
+
+    def run(self, argv, *, cwd=None, stdin=None, timeout=None) -> CommandResult:
+        argv = tuple(str(part) for part in argv)
+        self._record(argv, cwd, stdin)
 
         for script in self.scripts:
             if script.matches(argv):
@@ -108,8 +119,27 @@ class FakeRunner:
 
     # --- assertions --------------------------------------------------------
 
+    def _indices(self, *prefix: str) -> list[int]:
+        return [i for i, call in enumerate(self.calls) if call[: len(prefix)] == tuple(prefix)]
+
     def matching(self, *prefix: str) -> list[tuple[str, ...]]:
-        return [call for call in self.calls if call[: len(prefix)] == tuple(prefix)]
+        return [self.calls[i] for i in self._indices(*prefix)]
+
+    def prompts_to(self, *prefix: str) -> list[str]:
+        """What each matching call was told, in call order.
+
+        The transport is this helper's business and not the caller's: a test
+        about what a Role was asked should not have to know that the prompt
+        arrives on stdin rather than after a flag.
+        """
+        return [self.stdins[i] or "" for i in self._indices(*prefix)]
+
+    def prompt_to(self, *prefix: str) -> str:
+        """What the single matching call was told; fails loudly if there is not
+        exactly one."""
+        found = self.prompts_to(*prefix)
+        assert len(found) == 1, f"expected exactly one {' '.join(prefix)} call, got {len(found)}"
+        return found[0]
 
     def only(self, *prefix: str) -> tuple[str, ...]:
         """The single call starting with `prefix`; fails loudly if there is not
