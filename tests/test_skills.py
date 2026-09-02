@@ -71,6 +71,43 @@ def test_every_composite_names_skills_that_exist():
             assert skills.read_skill(part)
 
 
+def test_the_forbidden_set_is_read_from_the_bundle_as_shipped():
+    """Not hand-listed. The mark is the skill author's, it arrives with a
+    refresh, and a set maintained here would go stale exactly when it matters."""
+    marked = skills.fragment_only()
+    assert marked == {
+        name
+        for name in (p.name for p in skills.SKILLS_ROOT.iterdir() if p.is_dir())
+        if "disable-model-invocation: true" in skills.read_skill(name)
+    }
+    assert "to-spec" in marked and "to-tickets" in marked
+
+
+def test_a_skill_nobody_marked_stays_natively_deliverable():
+    """The rule narrows delivery for the marked skills and for nothing else."""
+    assert not skills.forbids_model_invocation("grilling")
+    assert skills.forbids_model_invocation("to-spec")
+
+
+def test_a_composite_inherits_the_ban_from_any_part_it_names():
+    """Natively a composite fans out through the Skill tool, so one naming a
+    marked skill meets the same refusal one indirection later."""
+    assert skills.split_delivery(("grill-with-docs",)) == (("grill-with-docs",), ())
+
+    skills.COMPOSED["throwaway-composite"] = ("to-spec",)
+    try:
+        assert skills.forbids_model_invocation("throwaway-composite")
+    finally:
+        del skills.COMPOSED["throwaway-composite"]
+
+
+def test_delivery_splits_a_mixed_declaration_and_keeps_the_declared_order():
+    assert skills.split_delivery(("grilling", "to-spec", "unslop")) == (
+        ("grilling", "unslop"),
+        ("to-spec",),
+    )
+
+
 def test_unknown_skill_names_what_is_available():
     with pytest.raises(skills.SkillNotFound, match="grilling"):
         skills.skill_path("no-such-skill")

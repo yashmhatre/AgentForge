@@ -14,6 +14,13 @@ one task. `COMPOSED` says what each expands to, because a composite has to
 survive both Capability Tiers — natively it fans out through the Skill tool, and
 as a Fragment there is no tool to fan out with, so the delivery path inlines what
 it names.
+
+A skill's author can also forbid autonomous invocation outright, by marking
+`disable-model-invocation` in the frontmatter. ADR-0005 chose delivery from one
+input — what the Provider can do — and had none for what the skill permits, so a
+marked skill offered natively is refused by the Skill tool and the Role escalates
+instead of working. `fragment_only` reads the mark from the bundle as shipped, so
+the rule survives a refresh that marks a skill we have never heard of.
 """
 
 from __future__ import annotations
@@ -22,7 +29,10 @@ import json
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
+
+import yaml
 
 from .process import CommandRunner, SubprocessRunner
 
@@ -67,6 +77,74 @@ def expand(names: Sequence[str]) -> tuple[str, ...]:
             if part not in ordered:
                 ordered.append(part)
     return tuple(ordered)
+
+
+#: The frontmatter key by which a skill's author says a model may not invoke it
+#: autonomously — only a human typing the command may.
+MODEL_INVOCATION_KEY = "disable-model-invocation"
+
+
+def _frontmatter(text: str) -> dict:
+    """The YAML block a SKILL.md opens with, or nothing if it has none."""
+    if not text.startswith("---"):
+        return {}
+    parts = text.split("---", 2)
+    if len(parts) < 3:
+        return {}
+    data = yaml.safe_load(parts[1])
+    return data if isinstance(data, dict) else {}
+
+
+@lru_cache(maxsize=1)
+def fragment_only() -> frozenset[str]:
+    """Skills the bundle forbids a model to invoke, read from the bundle itself.
+
+    Hand-listing these would have exactly the problem vendoring exists to
+    prevent: a refresh that marks a third skill would be picked up by nobody,
+    and the failure arrives as an escalation from a planning pass rather than as
+    anything a reader would connect to a bundle bump.
+
+    Frontmatter that will not parse counts as marked. Fragment delivery costs
+    tokens; getting this wrong the other way costs the Run.
+    """
+    marked = set()
+    for path in sorted(SKILLS_ROOT.iterdir()):
+        source = path / "SKILL.md"
+        if not source.is_file():
+            continue
+        try:
+            data = _frontmatter(source.read_text(encoding="utf-8"))
+        except yaml.YAMLError:
+            marked.add(path.name)
+            continue
+        if data.get(MODEL_INVOCATION_KEY):
+            marked.add(path.name)
+    return frozenset(marked)
+
+
+def forbids_model_invocation(name: str) -> bool:
+    """Whether a skill, or anything it composes, may not be model-invoked.
+
+    A composite is checked through its parts as well: natively it fans out
+    through the Skill tool, so a composite naming a marked skill would reach the
+    same refusal one indirection later.
+    """
+    marked = fragment_only()
+    return any(part in marked for part in expand((name,)))
+
+
+def split_delivery(names: Sequence[str]) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Partition declared skills into the natively deliverable and the rest.
+
+    This is consulted before the Capability Tier, not after it. A marked skill
+    has no native delivery at any tier, so the Fragment is not the degraded form
+    here — it is the only one.
+    """
+    native: list[str] = []
+    fragment: list[str] = []
+    for name in names:
+        (fragment if forbids_model_invocation(name) else native).append(name)
+    return tuple(native), tuple(fragment)
 
 
 class SkillNotFound(LookupError):

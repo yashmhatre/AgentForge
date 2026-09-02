@@ -4,6 +4,14 @@ What changed in each release of AgentForge. Dates are the day the tag was cut.
 
 ## Unreleased
 
+- **A skill that forbids model invocation is delivered as a Fragment at every
+  Capability Tier.** `to-spec` and `to-tickets` are both marked
+  `disable-model-invocation` upstream, so offering them natively got them
+  refused by the Skill tool and the planning stage escalated instead of running
+  — the better the Provider, the more certainly it failed. The set is read from
+  the vendored bundle rather than listed in our source, so a refresh that marks
+  another skill is picked up rather than missed. See
+  [ADR-0022](docs/adr/0022-a-skill-can-refuse-native-delivery.md).
 - **`agentforge decompose` and `agentforge plan` work against a real model.**
   The two prompts added in 0.2.1 asked for their own block and stopped, and a
   Provider fails any invocation that comes back without a result block -- so
