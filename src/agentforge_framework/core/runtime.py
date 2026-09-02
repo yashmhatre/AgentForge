@@ -24,7 +24,7 @@ from ..agents.decomposer import Approver, Decomposed, Decomposer, slice_task
 from ..agents.orchestrator import Exchange, Interviewer, Orchestrator, Planned
 from ..context.resolver import resolve_pack
 from ..providers import DEFAULT_PROVIDER, get_provider
-from .config import load_config
+from .config import Config, load_config
 from .contracts import (
     AgentResult,
     ContextPack,
@@ -150,7 +150,9 @@ class Forge:
 
     # --- preconditions -----------------------------------------------------
 
-    def _prepare(self, allow_commands: bool = False) -> tuple[Repository, GitHub, object]:
+    def _prepare(
+        self, allow_commands: bool = False
+    ) -> tuple[Repository, GitHub, object, Config]:
         """Every check that can fail for free, before anything is spent.
 
         Absent git, absent remote, absent `gh`, absent coding-agent CLI. A Run
@@ -163,11 +165,12 @@ class Forge:
             raise RunFailed(str(exc)) from exc
 
         github = GitHub(self.runner, repo.root)
+        config = load_config(repo.root)
         provider = get_provider(
             self.provider_name,
             self.runner,
             allow_commands=allow_commands,
-            config=load_config(repo.root),
+            config=config,
         )
         try:
             github.preflight()
@@ -175,7 +178,7 @@ class Forge:
         except (IssueError, RuntimeError) as exc:
             raise RunFailed(str(exc)) from exc
 
-        return repo, github, provider
+        return repo, github, provider, config
 
     # --- agentforge plan ---------------------------------------------------
 
@@ -214,7 +217,7 @@ class Forge:
         the caller supplies an approver that always says yes when the human
         asked for exactly that.
         """
-        repo, github, provider = self._prepare()
+        repo, github, provider, _config = self._prepare()
 
         # Only when interviewing: every stage is told to change nothing, and two
         # extra `git status` calls on an unattended pass buy nothing.
@@ -374,7 +377,7 @@ class Forge:
         off already suppresses them, and a Run with neither cannot say which of
         the two moved the total. See ADR-0016 for the three conditions.
         """
-        repo, github, provider = self._prepare(allow_commands=allow_commands)
+        repo, github, provider, config = self._prepare(allow_commands=allow_commands)
 
         if repo.is_dirty():
             raise RunFailed(
@@ -472,7 +475,10 @@ class Forge:
                     github.post_comment(
                         number,
                         render_context_comment(
-                            state.context, contributions(activation), activation.skipped
+                            state.context,
+                            contributions(activation),
+                            activation.skipped,
+                            publish_inventory=config.publish_pack_inventory,
                         ),
                     )
                 role = resolve_role(step.role)

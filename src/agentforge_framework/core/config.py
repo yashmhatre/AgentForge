@@ -41,6 +41,13 @@ class Config:
     #: Command in the glossary's sense: nothing infers anything from it.
     test_suite: tuple[str, ...] = DEFAULT_TEST_SUITE
 
+    #: Whether the Context Pack comment publishes the symbols and import graph
+    #: it resolved, or only their counts. Off by default: the Issue already
+    #: carries the pack's file paths in the frozen Plan, and nothing else on it
+    #: carries private symbol names. A tracker whose audience matches the
+    #: code's turns this on. See ADR-0024.
+    publish_pack_inventory: bool = False
+
     def capability_for(self, provider: str) -> CapabilityTier:
         return self.provider_capabilities.get(provider, CapabilityTier.FRAGMENT)
 
@@ -55,7 +62,13 @@ def load_config(root: Path | str) -> Config:
     capabilities = dict(DEFAULT_CAPABILITIES)
     for name, provider in (data.get("providers") or {}).items():
         capabilities[str(name)] = CapabilityTier(provider["capability_tier"])
-    return Config(provider_capabilities=capabilities, test_suite=_test_suite(data))
+    return Config(
+        provider_capabilities=capabilities,
+        test_suite=_test_suite(data),
+        publish_pack_inventory=bool(
+            (data.get("context") or {}).get("publish_inventory", False)
+        ),
+    )
 
 
 def _test_suite(data: dict) -> tuple[str, ...]:

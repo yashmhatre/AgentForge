@@ -142,6 +142,14 @@ gates:
     # The argument vector the `tests` Gate runs, in this repository.
     # {because}
     suite: [{suite}]
+
+context:
+  # Whether the Context Pack comment names the symbols and imports it resolved,
+  # or only counts them (ADR-0024). A Run posts that comment to the Issue, and
+  # a tracker can have a wider audience than the code — so the names are off
+  # unless this repository says otherwise. The file list is published either
+  # way: the frozen Plan on the Issue already carries it.
+  publish_inventory: false
 """
 
 

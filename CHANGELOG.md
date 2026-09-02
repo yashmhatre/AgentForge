@@ -4,6 +4,14 @@ What changed in each release of AgentForge. Dates are the day the tag was cut.
 
 ## Unreleased
 
+- **The Context Pack comment no longer publishes a map of the codebase.** A Run
+  posted every symbol it resolved and the import graph between them to the
+  Issue, which can have a wider audience than the code. The counts and the file
+  list stay — the frozen Plan already carries the paths, and a count is not a
+  map — and the names are withheld unless `context.publish_inventory: true`
+  says the tracker's audience is the code's audience. `agentforge init` writes
+  the key. See
+  [ADR-0024](docs/adr/0024-the-issue-publishes-no-more-than-the-plan-does.md).
 - **A pull request names the committed files no Agent claimed.** A Run commits
   every change to a file git already tracks, however it got there (ADR-0015) —
   which is right when the only writers are the Agents and their commands, and
