@@ -2,7 +2,18 @@
 
 What changed in each release of AgentForge. Dates are the day the tag was cut.
 
-## Unreleased
+## 0.2.2 — 2026-09-02
+
+The release that makes 0.2.1 true. `agentforge decompose` shipped as 0.2.1's
+headline feature and could not complete a single invocation: it failed at the
+first stage on every platform, at the second once that was fixed, and at the
+third on Windows. Three bugs, none of which 661 offline tests could reach, all
+found by running the thing against a real model. This release is those fixes
+and the live run that proves them — `decompose` now cuts a plan document into
+Slices end to end.
+
+Anyone on 0.2.1 who tried `decompose` or `plan` should upgrade; there is no
+workaround on 0.2.1 and no configuration that avoids the failure.
 
 - **The prompt reaches a coding-agent CLI on standard input, not in argv.**
   Windows caps a command line at 32,767 characters and an AgentForge prompt
