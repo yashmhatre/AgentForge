@@ -23,6 +23,11 @@ from agentforge_framework.agents.decomposer import (
 )
 from agentforge_framework.core.contracts import Slice
 from agentforge_framework.core.plan_format import (
+    RESULT_CLOSE,
+    RESULT_OPEN,
+    SLICES_OPEN,
+    SPEC_CLOSE,
+    SPEC_OPEN,
     PlanFormatError,
     extract_slices,
     order_slices,
@@ -500,3 +505,71 @@ def test_the_decomposer_reports_every_invocation_so_the_pass_can_be_priced():
     assert cut.ok
     assert len(cut.results) == 2
     assert len(cut.slices) == 3
+
+
+# --- every stage asks for a verdict ----------------------------------------
+#
+# The bug this file did not catch (#96). Each stage's prompt asked for its own
+# block and stopped, and `providers/base.py` requires a result block from every
+# invocation — so `decompose` failed on its first call against a real model
+# while 27 tests passed. The fixtures were more generous than the prompts: they
+# appended a result block nothing had asked the model to write.
+#
+# So these read the prompt rather than a fake response. A fixture cannot prove
+# that a prompt asks for what the parser needs; only the prompt can.
+
+
+def _stage_prompts(runner: FakeRunner) -> list[str]:
+    return [call[call.index("-p") + 1] for call in runner.matching("claude")]
+
+
+def test_every_stage_asks_the_model_for_a_result_block():
+    """Whatever else a stage wants, it wants a verdict. `providers/base.py`
+    fails any invocation that comes back without one."""
+    runner = a_runner()
+    runner.script("claude", stdout=pipeline())
+
+    forge(runner).plan("add a retry", approver=_yes)
+
+    prompts = _stage_prompts(runner)
+    assert len(prompts) == 3, "spec, cut, and one planning pass"
+    for index, prompt in enumerate(prompts):
+        assert RESULT_OPEN in prompt, f"stage {index} never asks for a result block"
+        assert RESULT_CLOSE in prompt
+
+
+def test_the_spec_stage_asks_for_the_spec_block_and_then_the_verdict():
+    runner = a_runner()
+    runner.script("claude", stdout=pipeline())
+
+    forge(runner).plan("add a retry", approver=_yes)
+
+    prompt = _stage_prompts(runner)[0]
+    assert prompt.index(SPEC_OPEN) < prompt.index(RESULT_OPEN), "in that order"
+    assert '"outcome": "escalated"' in prompt, "a source too thin to use has a way out"
+
+
+def test_the_cut_stage_asks_for_the_slices_block_and_then_the_verdict():
+    runner = a_runner()
+    runner.script("claude", stdout=pipeline())
+
+    forge(runner).plan("add a retry", approver=_yes)
+
+    prompt = _stage_prompts(runner)[1]
+    assert prompt.index(SLICES_OPEN) < prompt.index(RESULT_OPEN), "in that order"
+    assert '"outcome": "escalated"' in prompt
+
+
+def test_a_stage_that_answers_with_only_its_own_block_is_the_bug_that_shipped():
+    """Reproduces #96 exactly: a model that does what the old prompt asked, and
+    nothing more, gets a failed Agent Result rather than a spec."""
+    runner = a_runner()
+    runner.script(
+        "claude",
+        stdout=_envelope(f"{SPEC_OPEN}\n## Problem Statement\n\nNo verdict.\n{SPEC_CLOSE}"),
+    )
+
+    outcome = forge(runner).plan("add a retry", approver=_yes)
+
+    assert outcome.failure is not None
+    assert "without reporting a result block" in outcome.failure.summary
