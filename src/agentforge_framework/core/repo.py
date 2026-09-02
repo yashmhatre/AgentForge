@@ -145,6 +145,21 @@ class Repository:
         self._git("push", "--set-upstream", "origin", branch)
 
 
+def unclaimed(committed: Iterable[str], declared: Iterable[str]) -> tuple[str, ...]:
+    """Of the paths committed, the ones nothing in the Run said it would touch.
+
+    ADR-0015 commits every change to a tracked file however it arrived, and its
+    reasoning holds as long as the only writers are the Agents and the commands
+    they were allowed to run. A second agent editing the same checkout breaks
+    that — its half-finished work is committed into the Run's branch and
+    attributed to a Role, and nothing about the file on disk says otherwise
+    (#101). This does not change what is committed; it names what nothing
+    claimed, so the disclosure reaches the human at Sign-off.
+    """
+    named = {_normalize(path) for path in declared}
+    return tuple(path for path in committed if _normalize(path) not in named)
+
+
 def _normalize(path: str) -> str:
     r"""A declared path in the spelling `git status` uses.
 

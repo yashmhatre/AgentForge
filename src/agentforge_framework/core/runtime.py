@@ -64,7 +64,13 @@ from .registry import (
     fragments_for,
     gates_for,
 )
-from .repo import PreconditionFailed, Repository, branch_for_issue, open_repository
+from .repo import (
+    PreconditionFailed,
+    Repository,
+    branch_for_issue,
+    open_repository,
+    unclaimed,
+)
 from .workflow import Workflow, WorkflowError, load_workflow
 
 
@@ -535,14 +541,22 @@ class Forge:
             )
 
         changed = repo.changed_files()
+        declared = _declared_surface(state, results)
         committed = repo.commit_declared(
             f"{issue.title}\n\nImplements #{number} via AgentForge.",
-            _declared_surface(state, results),
+            declared,
         )
         # Left in the working tree on purpose (ADR-0015), and named rather
         # than dropped: the human at Sign-off is the only one who can say
         # whether an undeclared file was an Agent's work or its suite's.
         left = tuple(path for path in changed if path not in committed)
+        # The other half of the same disclosure. A tracked file is committed
+        # however it changed (ADR-0015), which is right when the only writers
+        # are the Agents and their commands, and is how a second agent sharing
+        # the checkout gets its work committed and attributed to a Role (#101).
+        # Naming these is the difference between a data-loss bug and a line at
+        # Sign-off.
+        unclaimed_paths = unclaimed(committed, declared)
         base = github.default_branch()
         # An empty working tree is only a failure when the branch has nothing on
         # it either. Plenty of Runs legitimately write nothing here: an audit
@@ -573,7 +587,7 @@ class Forge:
         repo.push(branch)
         url = github.open_draft_pr(
             title=issue.title,
-            body=_pr_body(number, state, results, committed, left),
+            body=_pr_body(number, state, results, committed, left, unclaimed_paths),
             head=branch,
             base=base,
         )
@@ -761,7 +775,7 @@ def _end(github: GitHub, issue: Issue, state: RunState) -> RunState:
     return state
 
 
-def _pr_body(number: int, state: RunState, results, committed, left=()) -> str:
+def _pr_body(number: int, state: RunState, results, committed, left=(), unclaimed=()) -> str:
     lines = [
         f"Closes #{number}.",
         "",
@@ -791,6 +805,21 @@ def _pr_body(number: int, state: RunState, results, committed, left=()) -> str:
             "",
         ]
         lines += [f"- `{path}`" for path in left]
+    if unclaimed:
+        lines += [
+            "",
+            "## Committed, but no Agent claimed them",
+            "",
+            (
+                "These are in the diff. Git already tracked them, so AgentForge committed "
+                "them however they changed (ADR-0015) — but neither the Plan nor any Agent "
+                "Result named them, so nothing in this Run says they are its work. Read "
+                "them before you sign off. Another agent or a person editing this checkout "
+                "while the Run was going is the reason worth ruling out."
+            ),
+            "",
+        ]
+        lines += [f"- `{path}`" for path in unclaimed]
     lines += [
         "",
         "---",

@@ -1903,6 +1903,62 @@ def test_the_pull_request_lists_only_what_was_committed():
     assert "loader.cpython-311.pyc" not in body.split("## Left uncommitted")[0]
 
 
+#: A second agent editing the same checkout while the Run is going. The Run's
+#: own file is modified as expected; `src/telemetry.py` is somebody else's
+#: half-finished work, and git tracks it, so ADR-0015 commits it either way.
+CONCURRENT_EDIT = " M src/loader.py\n M src/telemetry.py\n"
+
+
+def test_a_committed_file_no_agent_claimed_is_named_in_the_pull_request():
+    """The concurrency hazard in #101. Antigravity's agent and a Run share one
+    checkout; ADR-0015 commits every change to a tracked file however it
+    arrived, so the other agent's work lands in the branch attributed to a Role.
+    Nothing about the file on disk says otherwise, so the Run says it instead."""
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=["", CONCURRENT_EDIT])
+    runner.script("claude", stdout=agent_says("completed", "retry added"))
+
+    forge(runner).implement(12, allow_commands=True)
+
+    assert "src/telemetry.py" in staged(runner), "ADR-0015 still commits it"
+    body = runner.argument_after("--body", "gh", "pr", "create")
+    unclaimed_section = body.split("## Committed, but no Agent claimed them")[1]
+    assert "- `src/telemetry.py`" in unclaimed_section
+    assert "- `src/loader.py`" not in unclaimed_section, (
+        "the Role declared this one; naming it would bury the one that matters"
+    )
+
+
+def test_a_run_whose_every_file_was_declared_says_nothing_about_unclaimed_ones():
+    """The section is a disclosure, not a fixture of the body. An ordinary Run
+    that names what it changed reads exactly as it did before."""
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=agent_says("completed", "retry added"))
+
+    forge(runner).implement(12, allow_commands=True)
+
+    body = runner.argument_after("--body", "gh", "pr", "create")
+    assert "no Agent claimed" not in body
+
+
+def test_a_role_that_spelled_its_path_the_windows_way_still_claimed_the_file():
+    """A Role reports `src\\telemetry.py` and git answers `src/telemetry.py`.
+    Comparing those literally would accuse an Agent of somebody else's edit on
+    every Windows Run, which is the platform this hazard was found on."""
+    runner = a_runner()
+    runner.script("git", "status", "--porcelain", stdout=["", CONCURRENT_EDIT])
+    runner.script(
+        "claude",
+        stdout=agent_says("completed", "retry added", files=("src\\telemetry.py",)),
+    )
+
+    forge(runner).implement(12, allow_commands=True)
+
+    body = runner.argument_after("--body", "gh", "pr", "create")
+    assert "no Agent claimed" not in body
+
+
 def test_what_was_left_behind_is_named_rather_than_dropped():
     """A build artifact is the usual reason and an Agent writing outside its
     Step is the one worth reading, and only a human can tell them apart."""
