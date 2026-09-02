@@ -35,7 +35,12 @@ from agentforge_framework.core.plan_format import (
 from agentforge_framework.core.runtime import Forge, RunFailed
 
 from .fakes import FakeRunner, github_repository
-from .test_agents import orchestrator_output, plan_block
+from .test_agents import (
+    no_more_questions,
+    orchestrator_output,
+    pipeline,
+    plan_block,
+)
 from .test_contracts import a_plan
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -77,6 +82,12 @@ def forge(runner: FakeRunner) -> Forge:
     return Forge(cwd=ROOT, provider="claude", runner=runner)
 
 
+def _yes(slices) -> bool:
+    """The human approving the breakdown. `--yes` is this, and so is a terminal
+    where somebody typed y; nothing is filed without one (ADR-0021)."""
+    return True
+
+
 def recorded_claude_run() -> str:
     """A real `claude` envelope, so a Run is priced by what a CLI actually said."""
     return (FIXTURES / "claude_completed.json").read_text(encoding="utf-8")
@@ -87,14 +98,14 @@ def recorded_claude_run() -> str:
 
 def test_planning_files_an_issue_a_human_can_judge_before_any_code_is_written():
     runner = a_runner()
-    runner.script("claude", stdout=orchestrator_output([{"role": "implementer"}]))
+    runner.script("claude", stdout=pipeline())
 
-    outcome = forge(runner).plan("add a retry to the loader")
+    outcome = forge(runner).plan("add a retry to the loader", approver=_yes)
 
-    assert outcome.filed
-    assert outcome.issue.number == 12
+    assert len(outcome.filed) == 1
+    assert outcome.filed[0].issue.number == 12
     body = runner.argument_after("--body", "gh", "issue", "create")
-    assert "> add a retry to the loader" in body
+    assert "> Add a retry to the loader, end to end." in body
     assert "| 1 | implementer | `standard` |" in body
 
 
@@ -102,9 +113,9 @@ def test_the_filed_body_is_the_body_implement_will_parse_back():
     """The two halves of ADR-0002 and ADR-0003 meeting: what is written once is
     what is read many times."""
     runner = a_runner()
-    runner.script("claude", stdout=orchestrator_output([{"role": "implementer"}]))
+    runner.script("claude", stdout=pipeline())
 
-    forge(runner).plan("add a retry to the loader")
+    forge(runner).plan("add a retry to the loader", approver=_yes)
 
     body = runner.argument_after("--body", "gh", "issue", "create")
     document = parse_issue_body(body)
@@ -112,21 +123,21 @@ def test_the_filed_body_is_the_body_implement_will_parse_back():
     assert document.workflow == "feature"
 
 
-def test_exactly_one_issue_is_filed_per_plan_and_it_is_ours():
-    """The vendored `to-spec` skill ends by publishing to a tracker and applying
-    its own `ready-for-agent` label. AgentForge files the Issue, under its own
-    label — and ADR-0007's default-deny is what makes that structural: a
-    planning pass cannot reach `gh` to file a second one even if the skill text
-    tells it to."""
+def test_every_issue_is_filed_by_agentforge_and_never_by_the_skill():
+    """The vendored `to-spec` and `to-tickets` skills both end by publishing to a
+    tracker and applying a `ready-for-agent` label. AgentForge does the filing
+    and the labelling itself, once, at the end — and ADR-0007's default-deny is
+    what makes that structural: a planning pass cannot reach `gh` to file
+    anything even if the skill text tells it to."""
     runner = a_runner()
-    runner.script("claude", stdout=orchestrator_output([{"role": "implementer"}]))
+    runner.script("claude", stdout=pipeline())
 
-    forge(runner).plan("add a retry")
+    forge(runner).plan("add a retry", approver=_yes)
 
     created = runner.matching("gh", "issue", "create")
     assert len(created) == 1
-    assert "--label" in created[0]
-    assert "ready-for-agent" not in " ".join(created[0])
+    assert "agentforge:planned" in created[0]
+    assert "ready-for-agent" in created[0]
     assert all("--dangerously-skip-permissions" not in call for call in runner.matching("claude"))
 
 
@@ -134,9 +145,9 @@ def test_the_workflow_the_orchestrator_chose_survives_to_the_run():
     """#16's whole point: the Issue names the Workflow, and `implement` runs
     that one rather than the default."""
     runner = a_runner()
-    runner.script("claude", stdout=orchestrator_output([{"role": "implementer"}], workflow="review"))
+    runner.script("claude", stdout=pipeline(workflow="review"))
 
-    forge(runner).plan("review the incoming branch")
+    forge(runner).plan("review the incoming branch", approver=_yes)
 
     body = runner.argument_after("--body", "gh", "issue", "create")
     assert "Running the `review` Workflow" in body
@@ -145,9 +156,9 @@ def test_the_workflow_the_orchestrator_chose_survives_to_the_run():
 
 def test_a_freshly_filed_issue_is_labelled_planned():
     runner = a_runner()
-    runner.script("claude", stdout=orchestrator_output([{"role": "implementer"}]))
+    runner.script("claude", stdout=pipeline())
 
-    forge(runner).plan("add a retry")
+    forge(runner).plan("add a retry", approver=_yes)
 
     create = runner.only("gh", "issue", "create")
     assert create[create.index("--label") + 1] == "agentforge:planned"
@@ -170,7 +181,7 @@ def test_an_escalating_orchestrator_files_nothing():
         ),
     )
 
-    outcome = forge(runner).plan("fix the loader")
+    outcome = forge(runner).plan("fix the loader", approver=_yes)
 
     assert not outcome.filed
     assert not runner.ran("gh", "issue", "create")
@@ -178,11 +189,15 @@ def test_an_escalating_orchestrator_files_nothing():
 
 def test_a_tier_override_moves_the_orchestrator():
     runner = a_runner()
-    runner.script("claude", stdout=orchestrator_output([{"role": "implementer"}]))
+    runner.script("claude", stdout=pipeline())
 
-    forge(runner).plan("add a retry", tier=ModelTier.CHEAP)
+    forge(runner).plan("add a retry", tier=ModelTier.CHEAP, approver=_yes)
 
-    assert runner.argument_after("--model", "claude") == "haiku"
+    # Every stage of the pass, not just the one that writes the plan block: a
+    # tier the human named moves the whole planning pass or none of it.
+    invocations = runner.matching("claude")
+    assert invocations
+    assert all(call[call.index("--model") + 1] == "haiku" for call in invocations)
 
 
 def test_planning_interviews_the_human_and_files_one_issue():
@@ -205,13 +220,16 @@ def test_planning_interviews_the_human_and_files_one_issue():
                     ),
                 }
             ),
-            orchestrator_output([{"role": "implementer"}]),
+            no_more_questions(),
+            *pipeline(),
         ],
     )
 
-    outcome = forge(runner).plan("add a retry", interviewer=lambda q: "The orders loader.")
+    outcome = forge(runner).plan(
+        "add a retry", interviewer=lambda q: "The orders loader.", approver=_yes
+    )
 
-    assert outcome.filed
+    assert len(outcome.filed) == 1
     assert len(runner.matching("gh", "issue", "create")) == 1
     assert [e.answer for e in outcome.interview] == ["The orders loader."]
 
@@ -222,9 +240,9 @@ def test_what_the_interview_left_in_the_working_tree_is_reported():
     start on it."""
     runner = a_runner()
     runner.script("git", "status", "--porcelain", stdout=["", " M CONTEXT.md\n"])
-    runner.script("claude", stdout=orchestrator_output([{"role": "implementer"}]))
+    runner.script("claude", stdout=pipeline())
 
-    outcome = forge(runner).plan("add a retry", interviewer=lambda q: "yes")
+    outcome = forge(runner).plan("add a retry", interviewer=lambda q: "yes", approver=_yes)
 
     assert outcome.touched == ("CONTEXT.md",)
 
@@ -232,9 +250,9 @@ def test_what_the_interview_left_in_the_working_tree_is_reported():
 def test_a_file_the_human_had_already_changed_is_not_blamed_on_the_interview():
     runner = a_runner()
     runner.script("git", "status", "--porcelain", stdout=" M src/loader.py\n")
-    runner.script("claude", stdout=orchestrator_output([{"role": "implementer"}]))
+    runner.script("claude", stdout=pipeline())
 
-    outcome = forge(runner).plan("add a retry", interviewer=lambda q: "yes")
+    outcome = forge(runner).plan("add a retry", interviewer=lambda q: "yes", approver=_yes)
 
     assert outcome.touched == ()
 

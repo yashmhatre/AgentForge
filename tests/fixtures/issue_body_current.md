@@ -41,6 +41,7 @@ Running the `feature` Workflow, in this order. A Gate between two Steps holds th
 <!-- agentforge:plan -->
 ```json
 {
+  "blocked_by": [],
   "context": {
     "conventions": [
       "ruff, line length 100"

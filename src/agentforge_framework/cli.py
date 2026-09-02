@@ -14,6 +14,12 @@ TIER_HELP = (
     "to move one Role. Repeatable."
 )
 
+YES_HELP = (
+    "file the breakdown without showing it first. Planning cuts a Task into "
+    "Slices and files one issue per Slice (ADR-0021); without this the cut is "
+    "printed and confirmed, and with nobody at a terminal nothing is filed at all"
+)
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -29,11 +35,24 @@ def build_parser() -> argparse.ArgumentParser:
 
     subcommands = parser.add_subparsers(dest="command", metavar="<command>")
 
-    plan = subcommands.add_parser("plan", help="turn a task into a GitHub issue")
+    plan = subcommands.add_parser("plan", help="turn a task into GitHub issues")
     plan.add_argument("task", help="the task, in your own words")
     plan.add_argument("--provider", default=None, help="coding-agent CLI to drive")
     plan.add_argument("--tier", default=None, help="Model Tier for the Orchestrator")
     plan.add_argument("-C", "--directory", default=".", help="repository to plan against")
+    plan.add_argument("--yes", action="store_true", help=YES_HELP)
+
+    decompose = subcommands.add_parser(
+        "decompose",
+        help="turn a plan document you already wrote into GitHub issues",
+    )
+    decompose.add_argument("path", help="the plan document to read")
+    decompose.add_argument("--provider", default=None, help="coding-agent CLI to drive")
+    decompose.add_argument("--tier", default=None, help="Model Tier for the Orchestrator")
+    decompose.add_argument(
+        "-C", "--directory", default=".", help="repository to plan against"
+    )
+    decompose.add_argument("--yes", action="store_true", help=YES_HELP)
 
     implement = subcommands.add_parser(
         "implement", help="run an issue's roster and open a draft pull request"
@@ -42,6 +61,15 @@ def build_parser() -> argparse.ArgumentParser:
     implement.add_argument("--provider", default=None, help="coding-agent CLI to drive")
     implement.add_argument("--tier", action="append", default=[], help=TIER_HELP)
     implement.add_argument("-C", "--directory", default=".", help="repository to work in")
+    implement.add_argument(
+        "--ignore-blockers",
+        action="store_true",
+        help=(
+            "start the Run even though Issues this one declares as blockers have not "
+            "signed off (ADR-0021). The edges are the Orchestrator's reading of what "
+            "cannot start yet; this is you saying you know better for this Run"
+        ),
+    )
     implement.add_argument(
         "--allow-commands",
         action="store_true",
@@ -185,46 +213,155 @@ def build_interviewer(stdin=None, prompt=input):
     return ask
 
 
+def build_approver(assume_yes: bool = False, stdin=None, prompt=input):
+    """The human, as a callable, answering once about the breakdown.
+
+    `--yes` is a human who has already answered, so it is a callable that says
+    yes rather than an absent one. Nobody at a terminal and no `--yes` returns
+    `None`, and the runtime files nothing: a decomposition nobody has read is
+    the one outcome worth refusing by default, because undoing it is fifteen
+    issues to close by hand.
+    """
+    if assume_yes:
+        return lambda slices: True
+
+    stream = stdin if stdin is not None else sys.stdin
+    if not (hasattr(stream, "isatty") and stream.isatty()):
+        return None
+
+    def approve(slices) -> bool:
+        from .agents.decomposer import render_breakdown
+
+        print(f"\nThis cuts into {len(slices)} Slice(s), each filed as its own issue:\n")
+        for line in render_breakdown(slices):
+            print(f"  {line}")
+        print("\nBlockers are filed first, and a Slice waits for the ones it names.")
+        try:
+            answer = prompt("\nFile these? [y/N] ").strip().lower()
+        except EOFError:
+            print()
+            return False
+        return answer in {"y", "yes"}
+
+    return approve
+
+
+def _plan_source(args: argparse.Namespace) -> tuple[str, str] | None:
+    """What to plan, and where it came from, for whichever command was typed."""
+    if args.command == "plan":
+        return args.task, "Typed at the command line just now, in their own words."
+
+    from pathlib import Path
+
+    path = Path(args.path)
+    try:
+        document = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"agentforge: cannot read {path}: {exc}", file=sys.stderr)
+        return None
+
+    if not document.strip():
+        print(f"agentforge: {path} is empty; there is nothing to decompose.", file=sys.stderr)
+        return None
+
+    return document, f"A plan document they wrote, at `{path}` in this repository."
+
+
 def _run_plan(args: argparse.Namespace, runner=None) -> int:
+    """`agentforge plan` and `agentforge decompose`: one pipeline, two sources."""
+    from .core.issues import render_run_cost
     from .core.runtime import Forge, RunFailed
     from .providers import DEFAULT_PROVIDER
+
+    source = _plan_source(args)
+    if source is None:
+        return 2
+    document, provenance = source
 
     forge = Forge(cwd=args.directory, provider=args.provider or DEFAULT_PROVIDER, runner=runner)
 
     try:
-        outcome = forge.plan(
-            args.task,
+        outcome = forge.decompose(
+            document,
+            source=provenance,
             tier=_tier(args.tier) if args.tier else None,
             interviewer=build_interviewer(),
+            approver=build_approver(args.yes),
         )
     except RunFailed as exc:
         print(f"agentforge: {exc}", file=sys.stderr)
         return 2
 
-    result = outcome.result
-    if not outcome.filed:
-        heading = "needs a decision from you" if result.escalated else "could not plan this task"
-        print(f"agentforge: the Orchestrator {heading}.", file=sys.stderr)
-        print(f"  {result.summary}", file=sys.stderr)
-        return 1 if result.escalated else 2
-
-    issue = outcome.issue
-    document = outcome.document
-    print(f"\nFiled issue #{issue.number}: {issue.url}")
-    print(f"  Roster: {', '.join(f'{r.name} ({r.tier})' for r in document.roster)}")
     if outcome.interview:
-        print(f"  Interview: {len(outcome.interview)} question(s) answered")
-    for note in document.notes:
-        print(f"  Note: {note}")
+        print(f"\nInterview: {len(outcome.interview)} question(s) answered")
 
-    if outcome.touched:
-        print("\nThe interview left changes in your working tree:")
-        for path in outcome.touched:
-            print(f"  - {path}")
-        print("Review and commit them: a Run refuses to start on a dirty tree.")
+    code = _report_filed(outcome)
+    _report_touched(outcome)
+    if outcome.results:
+        print(f"\n  Cost: {render_run_cost(outcome.results)}")
+    return code
 
-    print(f"\nRun it with:  agentforge implement {issue.number}")
+
+def _report_filed(outcome) -> int:
+    """What was filed, what was not, and what to type next."""
+    if outcome.declined:
+        if not outcome.slices:
+            print("agentforge: nothing to file.", file=sys.stderr)
+            return 2
+        print(
+            f"\nNothing filed. The cut stands at {len(outcome.slices)} Slice(s); "
+            "re-run to cut it again, or re-run with --yes to file this one.",
+            file=sys.stderr,
+        )
+        return 1
+
+    for one in outcome.filed:
+        print(f"\nFiled issue #{one.issue.number}: {one.issue.url}")
+        print(f"  {one.slice.title}")
+        print(f"  Roster: {', '.join(f'{r.name} ({r.tier})' for r in one.document.roster)}")
+        if one.blocked_by:
+            print(f"  Blocked by: {', '.join(f'#{n}' for n in one.blocked_by)}")
+        for note in one.document.notes:
+            print(f"  Note: {note}")
+
+    if outcome.unwritten_edges:
+        print(
+            "\nThis tracker would not record these edges natively, so they live in "
+            "the issue bodies alone:"
+        )
+        for number, blocker in outcome.unwritten_edges:
+            print(f"  - #{number} blocked by #{blocker}")
+
+    if outcome.failure is not None:
+        stage = "a Slice could not be planned" if outcome.filed else "planning stopped"
+        print(f"\nagentforge: {stage}.", file=sys.stderr)
+        print(f"  {outcome.failure.summary}", file=sys.stderr)
+        if outcome.filed:
+            print(
+                f"  The {len(outcome.filed)} issue(s) above are complete and stand on "
+                "their own; the Slices after this one were not filed.",
+                file=sys.stderr,
+            )
+        return 1 if outcome.failure.escalated else 2
+
+    if not outcome.filed:
+        print("agentforge: nothing was filed.", file=sys.stderr)
+        return 2
+
+    first = outcome.filed[0].issue.number
+    print(f"\nStart with:  agentforge implement {first}")
+    if len(outcome.filed) > 1:
+        print("Each later issue refuses to start until the ones it names have signed off.")
     return 0
+
+
+def _report_touched(outcome) -> None:
+    if not outcome.touched:
+        return
+    print("\nThe interview left changes in your working tree:")
+    for path in outcome.touched:
+        print(f"  - {path}")
+    print("Review and commit them: a Run refuses to start on a dirty tree.")
 
 
 def _run_implement(args: argparse.Namespace, runner=None) -> int:
@@ -243,6 +380,7 @@ def _run_implement(args: argparse.Namespace, runner=None) -> int:
             allow_commands=args.allow_commands,
             resolve_context=not args.no_context_pack,
             use_plugins=not args.no_plugins,
+            ignore_blockers=args.ignore_blockers,
         )
     except (RunFailed, IssueError) as exc:
         print(f"agentforge: {exc}", file=sys.stderr)
@@ -445,7 +583,7 @@ def main(argv: list[str] | None = None, runner=None) -> int:
 
     if args.command == "unslop":
         return _run_unslop(args, runner)
-    if args.command == "plan":
+    if args.command in {"plan", "decompose"}:
         return _run_plan(args, runner)
     if args.command == "implement":
         return _run_implement(args, runner)

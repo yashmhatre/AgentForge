@@ -2,7 +2,7 @@
 
 AgentForge is a standalone Python framework for coordinating specialized software agents through reusable workflows.
 
-A human states a Task. The Orchestrator files a GitHub issue carrying a frozen plan and the Roster of Roles that will execute it. `agentforge implement <n>` runs the Issue's Workflow and opens a draft pull request for a human to sign off. No workflow ever merges.
+A human states a Task. The Orchestrator grills them on it, writes a spec, cuts the spec into Slices, and files a GitHub issue for each -- every one carrying a frozen plan, the Roster of Roles that will execute it, and the issues that block it. `agentforge implement <n>` runs one Issue's Workflow and opens a draft pull request for a human to sign off. No workflow ever merges.
 
 ![An Issue carries the frozen plan and the Roster. Each Agent reads that Issue and appends its result as the Run Log. The Workflow ends at a draft pull request that only a human can merge.](docs/assets/one-issue-number.svg)
 
@@ -24,11 +24,26 @@ Answer them, or press Enter on an empty line to plan with what it has.
   Retry on 5xx only, or timeouts too?
   > both, cap it at three attempts
 
-Filed issue #12: https://github.com/acme/pipelines/issues/12
-  Roster: implementer (standard)
-  Interview: 2 question(s) answered
+This cuts into 1 Slice(s), each filed as its own issue:
 
-Run it with:  agentforge implement 12
+  1. Add a bounded retry to the orders loader  [retry]
+       Delivers: The orders loader retries a failed fetch up to three times.
+       Blocked by: nothing -- can start immediately
+       - A 5xx or a timeout is retried; a 4xx is not.
+
+Blockers are filed first, and a Slice waits for the ones it names.
+
+File these? [y/N] y
+
+Interview: 2 question(s) answered
+
+Filed issue #12: https://github.com/acme/pipelines/issues/12
+  Add a bounded retry to the orders loader
+  Roster: implementer (standard)
+
+Start with:  agentforge implement 12
+
+  Cost: $0.41
 
 $ agentforge implement 12 --allow-commands
   [ok] implementer (standard) — Wrapped the fetch in a bounded retry.
@@ -171,8 +186,9 @@ AgentForge never touches a model API and handles no credentials of its own. What
 
 | Command | What it does |
 | --- | --- |
-| `agentforge plan "<task>"` | Runs the Orchestrator at the `deep` tier and files an issue carrying the plan and roster. |
-| `agentforge implement <n>` | Reads Issue `<n>`, runs its Workflow on a branch, posts each Agent Result, and opens a draft PR. Add `--allow-commands` when the Workflow must execute a suite. |
+| `agentforge plan "<task>"` | Grills you on the task, writes a spec, cuts it into Slices, and files one issue per Slice carrying the plan, the roster, and the issues that block it. Add `--yes` to file without reviewing the cut. |
+| `agentforge decompose <path>` | The same pipeline over a plan document you already wrote. Use it when the plan is longer than a sentence and already lives in the repository. |
+| `agentforge implement <n>` | Reads Issue `<n>`, runs its Workflow on a branch, posts each Agent Result, and opens a draft PR. Refuses to start while an issue it declares as a blocker has not signed off; `--ignore-blockers` overrides. Add `--allow-commands` when the Workflow must execute a suite. |
 | `agentforge run [<command> args]` | Runs a chore a Plugin contributes -- `agentforge run scaffold-dbt-model orders` writes the files and exits. With no command name it lists what this repository has. No issue, no Run, no model involved. |
 | `agentforge unslop <file>` | Scans prose for machine-writing tells. Deterministic; no model involved. |
 

@@ -42,6 +42,17 @@ from .process import CommandRunner, MissingBinary, require
 GH_HINT = "Install the GitHub CLI (https://cli.github.com) and run `gh auth login`."
 
 
+#: The triage label every filed Slice wears alongside its status label. A Slice
+#: is agent-grabbable by construction -- it was cut to be planned and executed on
+#: its own -- so saying so is the whole point of filing it. The string is the one
+#: `docs/agents/triage-labels.md` maps the canonical role onto.
+READY_FOR_AGENT = "ready-for-agent"
+
+#: What a label AgentForge creates says about itself, for the repository that
+#: did not have it. Everything not named here is a Run status.
+LABEL_DESCRIPTIONS = {READY_FOR_AGENT: "Fully specified, ready for an AFK agent"}
+
+
 class IssueError(RuntimeError):
     """The tracker could not be read or written."""
 
@@ -64,6 +75,15 @@ class Issue:
     url: str = ""
     labels: tuple[str, ...] = ()
     comments: tuple[Comment, ...] = field(default=())
+    #: `OPEN` or `CLOSED`, as `gh` spells it. Read so that a blocking edge can be
+    #: judged: a blocker somebody closed by hand has cleared, whatever label it
+    #: was wearing when its Run stopped. Defaults to open, because an Issue whose
+    #: state nobody asked for is one that is still in play.
+    state: str = "OPEN"
+
+    @property
+    def closed(self) -> bool:
+        return self.state.upper() == "CLOSED"
 
 
 class GitHub:
@@ -99,7 +119,7 @@ class GitHub:
             "view",
             str(number),
             "--json",
-            "number,title,body,url,labels,comments",
+            "number,title,body,url,labels,comments,state",
         )
         try:
             data = json.loads(result.stdout)
@@ -119,6 +139,7 @@ class GitHub:
                 )
                 for comment in data.get("comments") or ()
             ),
+            state=str(data.get("state") or "OPEN"),
         )
 
     # --- writing -----------------------------------------------------------
@@ -135,9 +156,55 @@ class GitHub:
     def post_comment(self, number: int, body: str) -> None:
         self._gh("issue", "comment", str(number), "--body", body)
 
-    def ensure_label(self, label: str) -> None:
+    def database_id(self, number: int) -> int | None:
+        """An Issue's numeric database id, which is not its `#number`.
+
+        Only the dependencies endpoint wants this. It is a second call per
+        blocking edge and there is no way around it: `gh issue view` reports the
+        number and the node id, and the endpoint takes neither.
+        """
+        result = self._gh(
+            "api", "repos/{owner}/{repo}/issues/" + str(number), "--jq", ".id", check=False
+        )
+        if not result.ok:
+            return None
+        try:
+            return int(result.stdout.strip())
+        except ValueError:
+            return None
+
+    def block_on(self, number: int, blocker: int) -> bool:
+        """Record `blocker` as blocking `number`, natively. See ADR-0021.
+
+        GitHub's own issue dependencies rather than a line of prose, because
+        this is the representation the tracker's UI reads and filters on -- a
+        human looking at the board should see the sequence without parsing an
+        Issue body.
+
+        Returns whether the edge was recorded. A repository where the endpoint
+        is unavailable gets `False` and no exception: the plan block and the
+        body already carry the same edges, so a decomposition that could not
+        write them natively is degraded rather than broken, and the caller says
+        so once rather than failing a Run that would otherwise have worked.
+        """
+        identifier = self.database_id(blocker)
+        if identifier is None:
+            return False
+        result = self._gh(
+            "api",
+            "--method",
+            "POST",
+            f"repos/{{owner}}/{{repo}}/issues/{number}/dependencies/blocked_by",
+            "-F",
+            f"issue_id={identifier}",
+            check=False,
+        )
+        return result.ok
+
+    def ensure_label(self, label: str, description: str = "") -> None:
         """Labels are created on demand; a fresh repository has none of ours."""
-        self._gh("label", "create", label, "--description", "AgentForge run status", check=False)
+        described = description or LABEL_DESCRIPTIONS.get(label, "AgentForge run status")
+        self._gh("label", "create", label, "--description", described, check=False)
 
     def set_label(self, number: int, label: str) -> None:
         self.ensure_label(label)
@@ -658,7 +725,18 @@ def run_state(issue: Issue, resolve=None) -> RunState:
         gates=gates,
         status=status,
         workflow=document.workflow,
+        blocked_by=document.blocked_by,
     )
+
+
+def status_of(issue: Issue) -> RunStatus | None:
+    """The Run status an Issue is wearing, or `None` if it wears none.
+
+    Labels only. Unlike `run_state` this parses no body, which is what makes it
+    usable on a blocker: a Run asking whether the Slice before it has finished
+    should not have to parse that Slice's plan to find out.
+    """
+    return _status_from_labels(issue.labels)
 
 
 def _status_from_labels(labels: tuple[str, ...]) -> RunStatus | None:

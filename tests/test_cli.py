@@ -14,11 +14,12 @@ import pytest
 
 from agentforge_framework import __version__, cli
 from agentforge_framework.core.config import CapabilityTier, load_config
-from agentforge_framework.core.contracts import ModelTier
+from agentforge_framework.core.contracts import ModelTier, Slice
 from agentforge_framework.core.plan_format import render_result_block
 
 from .fakes import FakeRunner
-from .test_agents import orchestrator_output
+from .test_agents import pipeline
+from .test_decompose import THREE
 from .test_runtime import (
     HUMAN_GATED,
     ROOT,
@@ -35,7 +36,8 @@ def runner() -> FakeRunner:
 
 
 def run(argv, runner) -> int:
-    return cli.main([*argv, "-C", str(ROOT)] if argv[0] in {"plan", "implement"} else argv, runner)
+    directed = {"plan", "decompose", "implement"}
+    return cli.main([*argv, "-C", str(ROOT)] if argv[0] in directed else argv, runner)
 
 
 def test_no_command_prints_help_rather_than_failing_obscurely(capsys):
@@ -44,9 +46,9 @@ def test_no_command_prints_help_rather_than_failing_obscurely(capsys):
 
 
 def test_plan_reports_the_issue_and_how_to_run_it(runner, capsys):
-    runner.script("claude", stdout=orchestrator_output([{"role": "implementer"}]))
+    runner.script("claude", stdout=pipeline())
 
-    assert run(["plan", "add a retry to the loader"], runner) == 0
+    assert run(["plan", "add a retry to the loader", "--yes"], runner) == 0
 
     out = capsys.readouterr().out
     assert "Filed issue #12" in out
@@ -56,10 +58,11 @@ def test_plan_reports_the_issue_and_how_to_run_it(runner, capsys):
 
 def test_plan_surfaces_dropped_roles_where_the_user_will_read_them(runner, capsys):
     runner.script(
-        "claude", stdout=orchestrator_output([{"role": "implementer"}, {"role": "bulldozer"}])
+        "claude",
+        stdout=pipeline(roster=[{"role": "implementer"}, {"role": "bulldozer"}]),
     )
 
-    run(["plan", "add a retry"], runner)
+    run(["plan", "add a retry", "--yes"], runner)
 
     assert "Note: Unknown Role `bulldozer`" in capsys.readouterr().out
 
@@ -478,3 +481,104 @@ def test_a_repository_with_no_suite_to_find_is_told_what_it_got(tmp_path, capsys
 
     assert "not detected" in capsys.readouterr().out
     assert load_config(tmp_path).test_suite == ("pytest",)
+
+
+# --- agentforge decompose ---------------------------------------------------
+
+
+def test_decompose_reads_the_plan_document_and_files_the_slices(runner, capsys, tmp_path):
+    plan = tmp_path / "PLAN.md"
+    plan.write_text("# The manifest work\n\nRead them, write them, round-trip them.\n", "utf-8")
+    runner.script("claude", stdout=pipeline(slices=THREE))
+    runner.script(
+        "gh",
+        "issue",
+        "create",
+        stdout=[f"https://github.com/acme/pipelines/issues/{n}\n" for n in (12, 13, 14)],
+    )
+    runner.script("gh", "api", contains=("--jq",), stdout="900000\n")
+    runner.script("gh", "api", contains=("--method",), stdout="")
+
+    assert run(["decompose", str(plan), "--yes"], runner) == 0
+
+    out = capsys.readouterr().out
+    assert "Filed issue #12" in out
+    assert "Filed issue #14" in out
+    assert "Blocked by: #12, #13" in out
+    assert "Start with:  agentforge implement 12" in out
+
+
+def test_the_document_reaches_the_synthesis_pass(runner, tmp_path):
+    """Otherwise `decompose` is `plan` with a longer argument."""
+    plan = tmp_path / "PLAN.md"
+    plan.write_text("Late-arriving facts need a handler.\n", encoding="utf-8")
+    runner.script("claude", stdout=pipeline())
+
+    run(["decompose", str(plan), "--yes"], runner)
+
+    first = runner.matching("claude")[0]
+    prompt = first[first.index("-p") + 1]
+    assert "Late-arriving facts need a handler." in prompt
+    assert "PLAN.md" in prompt
+
+
+def test_a_plan_document_that_is_not_there_fails_before_anything_is_spent(runner, capsys):
+    assert run(["decompose", "docs/NOPE.md"], runner) == 2
+
+    assert "cannot read" in capsys.readouterr().err
+    assert not runner.ran("claude")
+
+
+def test_an_empty_plan_document_is_refused(runner, capsys, tmp_path):
+    plan = tmp_path / "PLAN.md"
+    plan.write_text("   \n", encoding="utf-8")
+
+    assert run(["decompose", str(plan)], runner) == 2
+
+    assert "nothing to decompose" in capsys.readouterr().err
+    assert not runner.ran("claude")
+
+
+def test_without_a_terminal_and_without_yes_nothing_is_filed(runner, capsys):
+    """pytest is not a tty, which is the same position a CI job is in."""
+    runner.script("claude", stdout=pipeline(slices=THREE))
+
+    assert run(["plan", "build the round-trip"], runner) == 1
+
+    assert "Nothing filed" in capsys.readouterr().err
+    assert not runner.ran("gh", "issue", "create")
+
+
+def test_the_breakdown_is_printed_for_approval_before_it_is_filed(capsys):
+    approve = cli.build_approver(stdin=_a_terminal(), prompt=lambda _: "y")
+
+    assert approve(
+        (
+            Slice(id="reader", title="Read the manifest", delivers="Reads it."),
+            Slice(id="rt", title="Round-trip", delivers="Both ways.", blocked_by=("reader",)),
+        )
+    )
+
+    out = capsys.readouterr().out
+    assert "This cuts into 2 Slice(s)" in out
+    assert "Blocked by: Read the manifest" in out
+
+
+def test_anything_but_yes_declines(capsys):
+    approve = cli.build_approver(stdin=_a_terminal(), prompt=lambda _: "")
+
+    assert not approve((Slice(id="one", title="One"),))
+
+
+def test_yes_skips_the_question_entirely():
+    """A human who typed --yes has already answered it."""
+    approve = cli.build_approver(assume_yes=True)
+
+    assert approve((Slice(id="one", title="One"),))
+
+
+class _a_terminal:
+    """Something `build_approver` will believe is a console."""
+
+    def isatty(self) -> bool:
+        return True

@@ -4,6 +4,44 @@ What changed in each release of AgentForge. Dates are the day the tag was cut.
 
 ## Unreleased
 
+### Planning cuts a Task into a set of Issues
+
+Planning was one pass that filed one Issue, which is the right shape for one
+sentence and the wrong shape for anything larger. It is now four stages, and
+both entry points run all four: grill the human, synthesize a Spec, cut it into
+Slices, then plan each Slice into an Issue of its own. See
+[ADR-0021](docs/adr/0021-a-plan-document-decomposes-into-blocked-issues.md).
+
+- **`agentforge decompose <path>`** reads a plan document the project already
+  keeps and runs it through the same pipeline. This is the way in for work that
+  was written down before AgentForge was asked about it.
+- **`agentforge plan "<task>"` no longer files exactly one Issue.** A
+  one-sentence Task cuts to one Slice and looks as it always did; anything
+  larger files one Issue per Slice. Anything counting on one Issue per
+  invocation needs to count differently.
+- **The vendored skills do the work they were shipped for.** `grill-with-docs`
+  interviews, `to-spec` synthesizes without interviewing, `to-tickets` cuts.
+  One skill per stage: a pass holding the method for a job it is not doing yet
+  is a pass that starts doing that job.
+- **The cut is shown before anything is filed.** `--yes` skips the confirmation;
+  with nobody at a terminal and no `--yes`, nothing is filed at all.
+- **Blocking edges are real.** A Slice names what must finish first, blockers
+  are filed first so the edges carry Issue numbers, and they are recorded as
+  GitHub's native issue dependencies as well as in the frozen plan block.
+  `agentforge implement` refuses an Issue whose blockers have not reached
+  Sign-off, and `--ignore-blockers` is how you say you know better.
+- **Every filed Issue wears `agentforge:planned` and `ready-for-agent`.** A
+  Slice is agent-grabbable by construction, so saying so is the point of filing
+  it.
+- **`PlanDocument` gains `blocked_by`**, an added field with a default. An
+  Issue filed before this still parses and the plan format version does not
+  move.
+- **`Spec` and `Slice` enter the glossary.** Both are narrower here than in
+  general usage: a Spec is an intermediate nothing executes against, and a
+  Slice stops existing the moment it becomes an Issue.
+
+### Also
+
 - `pip install agentforge-framework` is the install, and the README says so.
   0.2.0 is the first release on PyPI, published by `release.yml` through
   Trusted Publishing: no API token exists to leak or rotate, and the workflow

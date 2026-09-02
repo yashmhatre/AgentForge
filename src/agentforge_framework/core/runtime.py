@@ -1,10 +1,11 @@
-"""The two commands, as one object.
+"""The commands, as one object.
 
-`plan` turns a Task into an Issue. `implement` turns an Issue number into a
-draft pull request. Between them they exercise all four ADRs: agents are CLI
-subprocesses (0001), the Issue carries the handoff and the Run Log (0002), the
-plan freezes when it is filed (0003), and every invocation names a tier rather
-than a model (0004).
+`decompose` turns a Task into a set of Issues in dependency order, and `plan` is
+that same pipeline handed a Task typed at a shell rather than read from a file
+(ADR-0021). `implement` turns one Issue number into a draft pull request. Between
+them they exercise all four founding ADRs: agents are CLI subprocesses (0001),
+the Issue carries the handoff and the Run Log (0002), the plan freezes when it is
+filed (0003), and every invocation names a tier rather than a model (0004).
 
 `implement` walks the Steps of a Workflow, running the ones the Run Log does not
 already account for and passing through the Gate that follows each. It names no
@@ -19,6 +20,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from ..agents import RUNNERS, resolve_role
+from ..agents.decomposer import Approver, Decomposed, Decomposer, slice_task
 from ..agents.orchestrator import Exchange, Interviewer, Orchestrator, Planned
 from ..context.resolver import resolve_pack
 from ..providers import DEFAULT_PROVIDER, get_provider
@@ -34,11 +36,13 @@ from .contracts import (
     Role,
     RunState,
     RunStatus,
+    Slice,
     Task,
     retirement,
 )
 from .gates import GateContext, evaluate_gate
 from .issues import (
+    READY_FOR_AGENT,
     GitHub,
     Issue,
     IssueError,
@@ -47,6 +51,7 @@ from .issues import (
     render_run_log_comment,
     render_terminal_comment,
     run_state,
+    status_of,
 )
 from .plan_format import PlanFormatError, render_issue_body, render_issue_title
 from .process import CommandRunner, SubprocessRunner
@@ -68,22 +73,60 @@ class RunFailed(RuntimeError):
 
 
 @dataclass(frozen=True)
-class PlanOutcome:
-    """What `agentforge plan` produced."""
+class FiledSlice:
+    """One Slice, once it is an Issue with a number and its edges written."""
 
-    result: AgentResult
-    issue: Issue | None = None
-    document: PlanDocument | None = None
+    slice: Slice
+    issue: Issue
+    document: PlanDocument
+
+    @property
+    def blocked_by(self) -> tuple[int, ...]:
+        return self.document.blocked_by
+
+
+@dataclass(frozen=True)
+class PlanOutcome:
+    """What a planning pass produced, from either entry point. See ADR-0021.
+
+    `filed` is a tuple because a Task cuts into as many Slices as it has work in
+    it. A one-sentence Task fills it with one, which is what `agentforge plan`
+    always did, and nothing here special-cases that.
+    """
+
+    #: Every invocation the pass made, in order -- the grill rounds, the Spec,
+    #: the cut, and one planning pass per Slice. The caller prices the whole
+    #: thing from this and says which stage stopped when one did.
+    results: tuple[AgentResult, ...] = ()
+    spec: str = ""
+    slices: tuple[Slice, ...] = ()
+    filed: tuple[FiledSlice, ...] = ()
     #: What the human was asked and answered, empty when nobody was there.
     interview: tuple[Exchange, ...] = ()
     #: Files the planning pass left changed in the working tree. An interview
     #: records settled terms in the project's glossary, and a human who is not
     #: told that has an unexplained diff and a Run that then refuses to start.
     touched: tuple[str, ...] = ()
+    #: Set when a stage did not produce what the next one needs. Whatever was
+    #: filed before it stands; a Slice already filed is not un-filed because a
+    #: later one could not be planned.
+    failure: AgentResult | None = None
+    #: True when the breakdown was shown and the human said no. Not a failure --
+    #: rejecting a cut is the reason it is shown.
+    declined: bool = False
+    #: Edges the tracker would not record natively. The plan block and the Issue
+    #: body carry them regardless, so this degrades the view rather than the
+    #: contract, and the caller says so once.
+    unwritten_edges: tuple[tuple[int, int], ...] = ()
 
     @property
-    def filed(self) -> bool:
-        return self.issue is not None
+    def issues(self) -> tuple[Issue, ...]:
+        return tuple(one.issue for one in self.filed)
+
+    @property
+    def result(self) -> AgentResult | None:
+        """The stage that stopped the pass, or the last one that ran."""
+        return self.failure or (self.results[-1] if self.results else None)
 
 
 class Forge:
@@ -135,45 +178,162 @@ class Forge:
         statement: str,
         tier: ModelTier | None = None,
         interviewer: Interviewer | None = None,
+        approver: Approver | None = None,
     ) -> PlanOutcome:
-        """Turn a Task into an Issue, interviewing first if anybody is there.
+        """A Task, as typed. Everything else is `decompose`."""
+        return self.decompose(
+            statement,
+            source="Typed at the command line just now, in their own words.",
+            tier=tier,
+            interviewer=interviewer,
+            approver=approver,
+        )
 
-        `interviewer` is the human, as a callable. Passing none is the
-        single-shot path: a scheduled Run has nobody to ask, and waiting for an
-        answer that will never come is worse than planning from what was typed.
+    def decompose(
+        self,
+        document: str,
+        source: str,
+        tier: ModelTier | None = None,
+        interviewer: Interviewer | None = None,
+        approver: Approver | None = None,
+    ) -> PlanOutcome:
+        """Grill, synthesize, cut, plan each Slice, file in dependency order.
+
+        `interviewer` is the human, as a callable, and `approver` is the same
+        human answering once about the breakdown. Passing neither is the
+        unattended path: a scheduled Run has nobody to ask, and waiting on an
+        answer that will never arrive is worse than planning from what was
+        typed. But nothing is filed without an approver -- committing somebody
+        to fifteen Issues they have not seen is not a default worth having, and
+        the caller supplies an approver that always says yes when the human
+        asked for exactly that.
         """
         repo, github, provider = self._prepare()
-        task = Task(statement=statement)
 
-        # Only when interviewing: the planning pass is told to change nothing,
-        # and two extra `git status` calls on every plan buy nothing there.
+        # Only when interviewing: every stage is told to change nothing, and two
+        # extra `git status` calls on an unattended pass buy nothing.
         before = set(repo.changed_files()) if interviewer else set()
 
-        planned: Planned = Orchestrator(provider, tier=tier).plan(task, repo.root, interviewer)
+        cut = Decomposer(provider, tier=tier).decompose(
+            document, source, repo.root, interviewer
+        )
         touched = (
             tuple(path for path in repo.changed_files() if path not in before)
             if interviewer
             else ()
         )
-
-        if planned.document is None:
-            return PlanOutcome(
-                result=planned.result, interview=planned.interview, touched=touched
-            )
-
-        body = render_issue_body(task, planned.document)
-        issue = github.create_issue(
-            title=render_issue_title(task),
-            body=body,
-            labels=(RunStatus.PLANNED.label,),
-        )
-        return PlanOutcome(
-            result=planned.result,
-            issue=issue,
-            document=planned.document,
-            interview=planned.interview,
+        outcome = PlanOutcome(
+            results=cut.results,
+            spec=cut.spec,
+            slices=cut.slices,
+            interview=cut.interview,
             touched=touched,
+            failure=cut.failure,
         )
+        if not cut.ok:
+            return outcome
+
+        if approver is None or not approver(cut.slices):
+            return replace(outcome, declined=True)
+
+        return self._file_slices(github, provider, repo, cut, outcome, tier)
+
+    def _file_slices(
+        self,
+        github: GitHub,
+        provider,
+        repo: Repository,
+        cut: Decomposed,
+        outcome: PlanOutcome,
+        tier: ModelTier | None,
+    ) -> PlanOutcome:
+        """One planning pass per Slice, filed as its blockers become numbers.
+
+        Blockers first, always: `order_slices` guarantees it, and the ordering is
+        what makes an edge writable at all -- an Issue cannot declare it is
+        blocked by one that does not exist yet.
+
+        A Slice that will not plan stops the pass and leaves what came before it
+        filed. Those Issues are complete and executable on their own, which is
+        the property the cut was for; discarding them would throw away good work
+        to tidy up after a bad Slice.
+        """
+        orchestrator = Orchestrator(provider, tier=tier)
+        numbers: dict[str, int] = {}
+        by_id = {one.id: one for one in cut.slices}
+        filed: list[FiledSlice] = []
+        results = list(outcome.results)
+        unwritten: list[tuple[int, int]] = []
+
+        for one in cut.slices:
+            blockers = tuple(by_id[name] for name in one.blocked_by)
+            planned: Planned = orchestrator.plan(
+                slice_task(one, cut.spec, blockers), repo.root, interviewer=None
+            )
+            results.append(planned.result)
+
+            if planned.document is None:
+                return replace(
+                    outcome,
+                    results=tuple(results),
+                    filed=tuple(filed),
+                    unwritten_edges=tuple(unwritten),
+                    failure=planned.result,
+                )
+
+            blocked_by = tuple(numbers[name] for name in one.blocked_by)
+            document = replace(planned.document, blocked_by=blocked_by)
+
+            # The Issue body says what this Slice delivers, not what the
+            # planning pass was handed: that prompt carries the whole Spec, and
+            # repeating it in fifteen bodies is fifteen copies to go stale.
+            headline = Task(statement=one.delivers or one.title)
+            issue = github.create_issue(
+                title=render_issue_title(Task(statement=one.title)),
+                body=render_issue_body(headline, document),
+                labels=(RunStatus.PLANNED.label, READY_FOR_AGENT),
+            )
+            numbers[one.id] = issue.number
+
+            for blocker in blocked_by:
+                if not github.block_on(issue.number, blocker):
+                    unwritten.append((issue.number, blocker))
+
+            filed.append(FiledSlice(slice=one, issue=issue, document=document))
+
+        return replace(
+            outcome,
+            results=tuple(results),
+            filed=tuple(filed),
+            unwritten_edges=tuple(unwritten),
+        )
+
+    def _unmet_blockers(self, github: GitHub, blocked_by: Sequence[int]) -> tuple[tuple[int, str], ...]:
+        """The blockers that have not cleared, each with why it has not.
+
+        Two things clear a blocker: its Run reached Sign-off, or somebody closed
+        the Issue. The second matters as much as the first -- a human who
+        decided a Slice was unnecessary and closed it has cleared the edge as
+        surely as a Run that finished it, and a check that only read labels
+        would leave the rest of the plan stuck behind a decision already made.
+
+        A blocker that cannot be read at all does not block. The tracker being
+        unreachable is not evidence the work is unfinished, and refusing a Run
+        over a failed read would make an outage look like a dependency.
+        """
+        unmet: list[tuple[int, str]] = []
+        for number in blocked_by:
+            try:
+                blocker = github.read_issue(number)
+            except IssueError:
+                continue
+            if blocker.closed:
+                continue
+            status = status_of(blocker)
+            if status is RunStatus.AWAITING_SIGNOFF:
+                continue
+            unmet.append((number, status.value if status else "not started"))
+        return tuple(unmet)
 
     # --- agentforge implement ----------------------------------------------
 
@@ -185,8 +345,14 @@ class Forge:
         allow_commands: bool = False,
         resolve_context: bool = True,
         use_plugins: bool = True,
+        ignore_blockers: bool = False,
     ) -> RunState:
         """Run the Issue's Workflow. `tier` moves every Role; `tier_overrides` moves one.
+
+        `ignore_blockers` overrides ADR-0021's ordering. The edges are the
+        Orchestrator's reading of what genuinely cannot start yet, and the human
+        who wrote the plan may know better -- but they say so per Run rather
+        than having the edges quietly not mean anything.
 
         `allow_commands` is ADR-0007's gate. It is per-Run rather than
         configuration on purpose: a config key would persist a standing grant
@@ -218,6 +384,17 @@ class Forge:
             raise RunFailed(f"issue #{number} cannot be implemented: {exc}") from exc
         except LookupError as exc:
             raise RunFailed(f"issue #{number} names a Role that cannot run: {exc}") from exc
+
+        if not ignore_blockers:
+            unmet = self._unmet_blockers(github, state.blocked_by)
+            if unmet:
+                listed = ", ".join(f"#{n} ({why})" for n, why in unmet)
+                raise RunFailed(
+                    f"issue #{number} is blocked by {listed}. It is one Slice of a "
+                    "decomposed plan and the Slices before it have not finished "
+                    "(ADR-0021). Run those first, or pass --ignore-blockers if you "
+                    "know this Slice does not actually need them."
+                )
 
         # Before the Workflow is loaded, not after. A later ticket lets a Plugin
         # register a Gate kind, and `parse_workflow` refuses an unknown kind at

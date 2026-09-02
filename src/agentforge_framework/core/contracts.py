@@ -226,6 +226,47 @@ class Plan:
 
 
 @dataclass(frozen=True)
+class Slice:
+    """One vertical cut of a decomposed plan document, before it becomes an Issue.
+
+    A Slice is what `to-tickets` produces and what `agentforge decompose` shows
+    the human for approval: a complete path through every layer, sized to be
+    planned and executed on its own. It is not yet an Issue and carries no plan
+    — the planning pass that turns it into one runs after the breakdown is
+    approved, so a rejected cut costs one invocation rather than fifteen.
+
+    `blocked_by` names other Slices by `id`, because at this point no Issue has
+    a number. `PlanDocument.blocked_by` carries the same edges once they do.
+    See ADR-0021.
+    """
+
+    id: str
+    title: str
+    delivers: str = ""
+    acceptance: tuple[str, ...] = ()
+    blocked_by: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "title": self.title,
+            "delivers": self.delivers,
+            "acceptance": list(self.acceptance),
+            "blocked_by": list(self.blocked_by),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> Slice:
+        return cls(
+            id=str(data["id"]),
+            title=str(data["title"]),
+            delivers=str(data.get("delivers") or ""),
+            acceptance=tuple(str(a) for a in data.get("acceptance") or ()),
+            blocked_by=tuple(str(b) for b in data.get("blocked_by") or ()),
+        )
+
+
+@dataclass(frozen=True)
 class Role:
     """A named specialization with a fixed job, model tier, prompt, and skills.
 
@@ -786,6 +827,10 @@ class RunState:
     branch: str = ""
     pull_request: str = ""
     workflow: str = DEFAULT_WORKFLOW
+    #: Issues that must reach Sign-off before this Run may start, carried
+    #: through from the frozen plan block. Empty for anything that was not cut
+    #: from a larger plan. See ADR-0021.
+    blocked_by: tuple[int, ...] = ()
 
     @property
     def done_roles(self) -> tuple[str, ...]:
@@ -852,6 +897,11 @@ class PlanDocument:
     version: int = PLAN_FORMAT_VERSION
     notes: tuple[str, ...] = field(default=())
     workflow: str = DEFAULT_WORKFLOW
+    #: Issue numbers that must reach Sign-off before this one may run, set when
+    #: `agentforge decompose` files a Slice whose blockers were filed first. Empty
+    #: for an Issue from `agentforge plan`, which has nothing before it. An added
+    #: field with a default, so an Issue filed before ADR-0021 still parses.
+    blocked_by: tuple[int, ...] = ()
 
     def to_dict(self) -> dict:
         return {
@@ -861,6 +911,7 @@ class PlanDocument:
             "context": self.context.to_dict(),
             "notes": list(self.notes),
             "workflow": self.workflow,
+            "blocked_by": list(self.blocked_by),
         }
 
     @classmethod
@@ -872,4 +923,5 @@ class PlanDocument:
             version=int(data.get("version", PLAN_FORMAT_VERSION)),
             notes=tuple(data.get("notes") or ()),
             workflow=str(data.get("workflow") or DEFAULT_WORKFLOW),
+            blocked_by=tuple(int(n) for n in data.get("blocked_by") or ()),
         )
