@@ -35,7 +35,7 @@ from ..core.contracts import (
 )
 from ..core.plan_format import extract_result_block
 from ..core.process import CommandResult, CommandRunner, MissingBinary, require
-from ..core.skills import expand, read_skill
+from ..core.skills import expand, read_skill, split_delivery
 
 
 class ProviderError(RuntimeError):
@@ -166,6 +166,10 @@ class CliProvider(Provider):
         here and every body travels. Without that, a skill whose text says "run
         these two" reaches a Provider that cannot run anything and the Role is
         left with an instruction pointing at nothing.
+
+        A skill whose author forbids model invocation is a Fragment whatever the
+        tier, so the two deliveries are not exclusive: a Role can declare one of
+        each and the prompt carries both.
         """
         if not role.skills:
             return prompt, ()
@@ -173,16 +177,24 @@ class CliProvider(Provider):
         if self.capability_tier is CapabilityTier.NATIVE:
             for name in role.skills:
                 read_skill(name)  # refuse a name nothing answers for, before the CLI runs
-            commands = ", ".join(f"/agentforge:{name}" for name in role.skills)
+            native, inlined = split_delivery(role.skills)
+        else:
+            native, inlined = (), tuple(role.skills)
+
+        if native:
+            commands = ", ".join(f"/agentforge:{name}" for name in native)
             instruction = (
                 f"Use the declared native AgentForge skills before doing this work: {commands}."
             )
-            return f"{instruction}\n\n{prompt}", role.skills
+            prompt = f"{instruction}\n\n{prompt}"
 
-        fragments = [
-            f"## Skill: {name}\n\n{read_skill(name).rstrip()}" for name in expand(role.skills)
-        ]
-        return f"{prompt}\n\n" + "\n\n".join(fragments) + "\n", ()
+        if inlined:
+            fragments = [
+                f"## Skill: {name}\n\n{read_skill(name).rstrip()}" for name in expand(inlined)
+            ]
+            prompt = f"{prompt}\n\n" + "\n\n".join(fragments) + "\n"
+
+        return prompt, native
 
 
 def to_agent_result(*, role: Role, tier: ModelTier, output: ProviderOutput) -> AgentResult:

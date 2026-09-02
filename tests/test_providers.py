@@ -17,7 +17,7 @@ from agentforge_framework.agents.implementer import IMPLEMENTER
 from agentforge_framework.core.config import CapabilityTier, Config, load_config
 from agentforge_framework.core.contracts import ContextPack, ModelTier, Outcome, Role
 from agentforge_framework.core.process import CommandResult
-from agentforge_framework.core.skills import read_skill
+from agentforge_framework.core.skills import fragment_only, read_skill
 from agentforge_framework.providers import PROVIDERS, get_provider
 from agentforge_framework.providers.base import Provider, ProviderError
 from agentforge_framework.providers.claude import ClaudeProvider
@@ -150,6 +150,75 @@ def test_a_composite_is_named_once_to_a_native_provider():
     prompt = runner.only("claude")[runner.only("claude").index("-p") + 1]
     assert "/agentforge:grill-with-docs" in prompt
     assert "/agentforge:grilling" not in prompt
+
+
+def native_claude(runner):
+    return ClaudeProvider(
+        runner,
+        config=Config(provider_capabilities={"claude": CapabilityTier.NATIVE}),
+    )
+
+
+def prompt_given_to(runner, binary="claude"):
+    call = runner.only(binary)
+    return call[call.index("-p") + 1]
+
+
+@pytest.mark.parametrize("name", sorted(fragment_only()))
+def test_a_skill_that_forbids_model_invocation_is_a_fragment_at_the_native_tier(name):
+    """The Skill tool refuses these, correctly — so declaring one natively
+    escalates the Role instead of running it, and the higher the Capability Tier
+    the more certainly the pipeline fails.
+
+    Parametrized from the bundle rather than from a list written here: a refresh
+    that marks a third skill has to break this test, not a live Run.
+    """
+    runner = FakeRunner().script("claude", stdout=recorded("claude_completed.json"))
+    role = Role("orchestrator", ModelTier.DEEP, skills=(name,))
+
+    native_claude(runner).invoke(
+        role=role,
+        prompt="do the thing",
+        context=ContextPack(),
+        tier=role.tier,
+        cwd=Path("/repo"),
+    )
+
+    prompt = prompt_given_to(runner)
+    assert f"/agentforge:{name}" not in prompt
+    assert f"## Skill: {name}" in prompt
+    assert read_skill(name).rstrip() in prompt
+    assert "--plugin-dir" not in runner.only("claude"), (
+        "nothing is offered natively, so the plugin directory has nothing to serve"
+    )
+
+
+def test_the_bundle_carries_at_least_one_skill_that_forbids_model_invocation():
+    """Guards the parametrization above: an empty set would make it vacuous."""
+    assert fragment_only()
+
+
+def test_a_role_declaring_both_kinds_gets_both_deliveries():
+    """The two are not exclusive. `to-spec` has no native form to fall back to
+    and `grilling` gains nothing from being inlined, so each travels its own way
+    in one prompt."""
+    runner = FakeRunner().script("claude", stdout=recorded("claude_completed.json"))
+    role = Role("orchestrator", ModelTier.DEEP, skills=("grilling", "to-spec"))
+
+    native_claude(runner).invoke(
+        role=role,
+        prompt="do the thing",
+        context=ContextPack(),
+        tier=role.tier,
+        cwd=Path("/repo"),
+    )
+
+    prompt = prompt_given_to(runner)
+    assert "/agentforge:grilling" in prompt
+    assert "/agentforge:to-spec" not in prompt
+    assert "## Skill: to-spec" in prompt
+    assert "## Skill: grilling" not in prompt
+    assert "--plugin-dir" in runner.only("claude")
 
 
 def test_an_unknown_declared_skill_fails_before_the_provider_is_invoked():
