@@ -117,6 +117,7 @@ def test_the_written_file_round_trips_through_load_config(tmp_path):
     config = load_config(tmp_path)
     assert config.test_suite == context.test_suite
     assert config.capability_for("codex") is context.capability_tier
+    assert config.publish_pack_inventory is False
 
 
 def test_an_argument_with_a_dash_in_it_survives_the_round_trip(tmp_path):
@@ -138,12 +139,13 @@ def test_the_file_says_which_values_were_detected_and_which_were_defaulted():
 
 
 def test_the_file_carries_no_key_nothing_reads():
-    """`docs/PLAN.md` promised a config owning plugin activation; `load_config`
-    reads two keys. A key that has no effect is a lie told to whoever edits it,
-    so activation is printed and the file says why (ADR-0020)."""
+    """`docs/PLAN.md` promised a config owning plugin activation, and the file
+    holds only what `load_config` reads. A key that has no effect is a lie told
+    to whoever edits it, so activation is printed and the file says why
+    (ADR-0020). Every key here arrived with its reader."""
     written = render_config(a_context(plugins=("sql", "databricks")))
 
-    assert set(yaml.safe_load(written)) == {"providers", "gates"}
+    assert set(yaml.safe_load(written)) == {"providers", "gates", "context"}
     assert "databricks" not in written
     # The absence is explained where somebody looking for the key will look.
     assert "no `plugins:` key here to edit" in written

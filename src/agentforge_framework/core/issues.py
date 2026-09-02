@@ -381,6 +381,7 @@ def render_context_comment(
     context: ContextPack,
     plugins: Sequence[tuple[str, str]] = (),
     skipped: Sequence[str] = (),
+    publish_inventory: bool = False,
 ) -> str:
     """The pack this Run's Agents were handed, recorded before the first one ran.
 
@@ -389,6 +390,14 @@ def render_context_comment(
     machine block on purpose: the pack is resolved from the frozen Plan on every
     invocation (ADR-0010), so this is a record of a Run rather than a contract
     the next one reads back.
+
+    `publish_inventory` decides whether the resolved symbols and import graph
+    are named or only counted. Off by default: the Issue already carries this
+    pack's file paths in the frozen Plan, so the file list discloses nothing
+    new, while private symbol names and the graph between modules appear
+    nowhere else on the tracker (ADR-0024). The counts stay either way, because
+    a pack that resolved more or less than a reader expected is most of what
+    this comment is read for.
 
     `plugins` and `skipped` are the Plugins that answered for this Run and the
     ones that raised while being asked. Both are named for the same reason the
@@ -418,16 +427,29 @@ def render_context_comment(
     lines += [f"**Files ({len(context.files)}):**", ""]
     lines += [f"- `{path}`" for path in context.files]
 
-    for label, values in (("Symbols", context.symbols), ("Reaches for", context.references)):
-        if values:
-            lines += [
-                "",
-                f"<details><summary>{label} ({len(values)})</summary>",
-                "",
-                ", ".join(f"`{value}`" for value in values),
-                "",
-                "</details>",
-            ]
+    inventory = (("Symbols", context.symbols), ("Reaches for", context.references))
+    if publish_inventory:
+        for label, values in inventory:
+            if values:
+                lines += [
+                    "",
+                    f"<details><summary>{label} ({len(values)})</summary>",
+                    "",
+                    ", ".join(f"`{value}`" for value in values),
+                    "",
+                    "</details>",
+                ]
+    elif any(values for _, values in inventory):
+        lines += [
+            "",
+            (
+                "Symbol and reference counts are in the heading; the names are not "
+                "published. The Issue already carries this pack's file paths in the "
+                "frozen Plan, and a reader diagnosing a Run reads them against the "
+                "repository. Set `context.publish_inventory: true` where the tracker's "
+                "audience is the code's audience (ADR-0024)."
+            ),
+        ]
 
     if context.conventions:
         lines += ["", "**Conventions:**", ""]

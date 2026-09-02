@@ -17,6 +17,31 @@ def test_missing_config_uses_the_documented_provider_capability_defaults(tmp_pat
     assert not (tmp_path / ".agentforge").exists(), "the loader is read-only"
 
 
+def _config_file(tmp_path, text: str):
+    config_dir = tmp_path / ".agentforge"
+    config_dir.mkdir(exist_ok=True)
+    (config_dir / "config.yaml").write_text(text, encoding="utf-8")
+    return load_config(tmp_path)
+
+
+def test_the_pack_inventory_is_not_published_unless_the_project_says_so():
+    """ADR-0024. The safe direction is the default because the disclosure is
+    the unrecoverable half: a comment on a public tracker is published."""
+    assert load_config("/nowhere").publish_pack_inventory is False
+
+
+def test_a_project_whose_tracker_matches_its_code_publishes_the_inventory(tmp_path):
+    config = _config_file(tmp_path, "context:\n  publish_inventory: true\n")
+
+    assert config.publish_pack_inventory is True
+
+
+def test_a_project_can_say_no_as_explicitly_as_it_can_say_yes(tmp_path):
+    config = _config_file(tmp_path, "context:\n  publish_inventory: false\n")
+
+    assert config.publish_pack_inventory is False
+
+
 def test_capability_tiers_are_read_from_the_shared_config_file(tmp_path):
     config_dir = tmp_path / ".agentforge"
     config_dir.mkdir()

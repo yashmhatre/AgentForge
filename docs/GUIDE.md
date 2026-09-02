@@ -368,12 +368,16 @@ providers:
 gates:
   tests:
     suite: [pytest]
+
+context:
+  publish_inventory: false
 ```
 
 | Key | What it decides | Default |
 |---|---|---|
 | `providers.<name>.capability_tier` | `native` delivers a Role's skills through the CLI's own skill mechanism; `fragment` inlines the same text into the prompt. Declared, never discovered by probing ([ADR-0005](adr/0005-capability-tiers-declared-not-probed.md)) | `claude` native, everything else fragment |
 | `gates.tests.suite` | The argument vector the `tests` Gate runs. A string is split the way a shell would; a list is taken as written | `pytest` |
+| `context.publish_inventory` | Whether the Context Pack comment names the symbols and imports it resolved, or only counts them. A Run posts that comment to the Issue, and a tracker can have a wider audience than the code ([ADR-0024](adr/0024-the-issue-publishes-no-more-than-the-plan-does.md)) | `false` |
 
 There is no `plugins:` key: which Plugins answer is decided per Run from the frozen plan, so a
 repository-level list would be inert and misleading. The file is not a precondition either — without

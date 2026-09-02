@@ -721,21 +721,50 @@ def test_a_run_where_nobody_reported_anything_says_nobody_reported_anything():
 # --- the pack, recorded where a Run is diagnosed ---------------------------
 
 
+A_PACK = ContextPack(
+    files=("src/loader.py",),
+    symbols=("src/loader.py::fetch",),
+    references=("requests",),
+    conventions=("no new dependencies",),
+)
+
+
 def test_the_run_log_records_the_pack_the_agents_were_shown():
     """A Run that went wrong is diagnosed against what its Agents could see."""
-    comment = render_context_comment(
-        ContextPack(
-            files=("src/loader.py",),
-            symbols=("src/loader.py::fetch",),
-            references=("requests",),
-            conventions=("no new dependencies",),
-        )
-    )
+    comment = render_context_comment(A_PACK)
 
     assert "### Context Pack" in comment
     assert "`src/loader.py`" in comment
-    assert "`src/loader.py::fetch`" in comment
     assert "no new dependencies" in comment
+
+
+def test_the_counts_survive_the_names_not_being_published():
+    """What the comment is read for. A pack that resolved more or less than the
+    reader expected is visible without naming anything (ADR-0024)."""
+    comment = render_context_comment(A_PACK)
+
+    assert "1 file, 1 symbol, 1 reference" in comment
+    assert "src/loader.py::fetch" not in comment
+    assert "requests" not in comment
+    assert "publish_inventory" in comment, "a reader who wants the names is told how"
+
+
+def test_the_inventory_is_published_when_the_repository_asks_for_it():
+    """A tracker whose audience is the code's audience loses nothing by it."""
+    comment = render_context_comment(A_PACK, publish_inventory=True)
+
+    assert "`src/loader.py::fetch`" in comment
+    assert "`requests`" in comment
+    assert "<details><summary>Symbols (1)</summary>" in comment
+
+
+def test_a_pack_with_no_symbols_explains_nothing_it_withheld():
+    """The note is a disclosure about withheld names. A pack that resolved none
+    has nothing to withhold, and saying so would be noise."""
+    comment = render_context_comment(ContextPack(files=("src/loader.py",)))
+
+    assert "publish_inventory" not in comment
+    assert "`src/loader.py`" in comment
 
 
 def test_a_run_with_no_pack_says_that_it_is_the_control():
