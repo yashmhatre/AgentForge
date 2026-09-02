@@ -77,7 +77,7 @@ Everything a Run produces has a home, and none of it is on the machine that star
 ```console
 $ pip install agentforge-framework
 $ agentforge --version
-agentforge 0.2.2
+agentforge 0.2.3
 ```
 
 The distribution is `agentforge-framework` and it imports as `agentforge_framework`, because an
