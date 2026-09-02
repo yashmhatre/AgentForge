@@ -4,7 +4,13 @@ What changed in each release of AgentForge. Dates are the day the tag was cut.
 
 ## Unreleased
 
-Nothing yet.
+- **The release verification no longer races PyPI's index.** An index takes an
+  upload some seconds before it serves it, so the clean-environment install
+  check asked too early and failed the 0.2.1 release over a package that was
+  fine. Resolution is now retried against a five-minute deadline; a version
+  that resolves and then answers wrong still fails immediately, because that is
+  the failure the check exists to catch. The rehearsal pins the version it just
+  uploaded rather than installing whatever TestPyPI already had.
 
 ## 0.2.1 — 2026-09-02
 
