@@ -429,6 +429,13 @@ so a repository with a GitHub remote is a hard precondition. Add the remote, or 
 **"`origin` points at … which is not GitHub".** GitHub is the only tracker implemented, and no
 configuration changes that.
 
+**"another AgentForge Run holds …".** A Run is already going in that working tree, and this one
+stopped before invoking anything. The message names the other Run's Issue, its process id and how
+long it has been running. Wait for it, or run this Issue from a second clone — two Runs in one tree
+would each branch and commit over the other ([ADR-0026](adr/0026-a-run-holds-the-checkout-it-was-pointed-at.md)).
+A Run killed with the terminal window releases its hold immediately; there is no lock file to clean
+up by hand.
+
 **The Run suspended and I do not know what it wants.** The last comment on the Issue is the Gate
 verdict and says what it is waiting on. Fix that, then re-run the same Issue number.
 

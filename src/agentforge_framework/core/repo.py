@@ -50,6 +50,20 @@ class Repository:
     def remote_url(self) -> str:
         return self._git("remote", "get-url", "origin", check=False).stdout.strip()
 
+    @property
+    def git_dir(self) -> Path:
+        """This checkout's git directory, which is where the Run lock lives.
+
+        Asked of git rather than assembled as `root / ".git"`, because in a
+        linked worktree `.git` is a file pointing elsewhere and each worktree
+        gets its own directory. That is the behaviour ADR-0026 wants: two
+        worktrees of one repository are two checkouts, they do not branch over
+        each other, and they should not be made to queue behind each other.
+        """
+        answered = self._git("rev-parse", "--absolute-git-dir", check=False)
+        located = answered.stdout.strip()
+        return Path(located) if answered.ok and located else self.root / ".git"
+
     def is_dirty(self) -> bool:
         return bool(self._git("status", "--porcelain").stdout.strip())
 

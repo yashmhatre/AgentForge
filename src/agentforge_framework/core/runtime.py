@@ -71,6 +71,7 @@ from .repo import (
     open_repository,
     unclaimed,
 )
+from .runlock import LockError, RunLock
 from .workflow import Workflow, WorkflowError, load_workflow
 
 
@@ -379,6 +380,59 @@ class Forge:
         """
         repo, github, provider, config = self._prepare(allow_commands=allow_commands)
 
+        # Before the dirty-tree check rather than after it, because a second Run
+        # arriving mid-Run finds a tree the first one is actively writing to.
+        # Checked the other way round, the human is told to commit or stash the
+        # work of a Run they have forgotten is still going (ADR-0026).
+        try:
+            with RunLock(
+                repo.git_dir,
+                tree=repo.root,
+                issue=number,
+                command=f"implement {number}",
+            ):
+                return self._implement(
+                    repo,
+                    github,
+                    provider,
+                    config,
+                    number,
+                    tier_overrides=tier_overrides,
+                    tier=tier,
+                    allow_commands=allow_commands,
+                    resolve_context=resolve_context,
+                    use_plugins=use_plugins,
+                    ignore_blockers=ignore_blockers,
+                )
+        except LockError as exc:
+            # Only the acquisition raises this; nothing inside a Run does. It
+            # becomes a `RunFailed` because that is the one failure the CLI
+            # knows how to print, and a refused Run is exactly that: it could
+            # not proceed, and the message is written for the person reading it.
+            raise RunFailed(str(exc)) from exc
+
+    def _implement(
+        self,
+        repo: Repository,
+        github,
+        provider,
+        config,
+        number: int,
+        *,
+        tier_overrides: dict[str, ModelTier] | None,
+        tier: ModelTier | None,
+        allow_commands: bool,
+        resolve_context: bool,
+        use_plugins: bool,
+        ignore_blockers: bool,
+    ) -> RunState:
+        """The Run itself, with the checkout already held.
+
+        Split from `implement` so that every way out of a Run — Sign-off, a
+        Halt, a Suspend, a `RunFailed`, an exception nobody expected — releases
+        the lock by leaving one `with` block, rather than by a `finally` that
+        has to be kept correct as return statements are added.
+        """
         if repo.is_dirty():
             raise RunFailed(
                 f"{repo.root} has uncommitted changes. AgentForge commits whatever an Agent "

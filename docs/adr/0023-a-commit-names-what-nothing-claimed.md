@@ -44,3 +44,12 @@ answer for that Workflow and not a false alarm: nothing in the Run wrote them.
 Running two agents against one checkout is still not safe. This makes the
 damage legible at Sign-off rather than preventing it, and a human who reads the
 section and merges anyway has made a decision rather than an assumption.
+
+**Amended, 2026-09-03.** #110 took the further decision and this section stands.
+A worktree per Run would have prevented the hazard and was rejected on evidence:
+it relocates the code without the untracked environment the code is run in, so
+the Tester's suite passes against the checkout the Agent did not edit. Disclosure
+remains what is available against a foreign writer. What #110 did prevent is the
+case where both writers are AgentForge — a Run now holds an exclusive lock on its
+checkout, so a second Run is refused rather than committing over the first. See
+[ADR-0026](0026-a-run-holds-the-checkout-it-was-pointed-at.md).
