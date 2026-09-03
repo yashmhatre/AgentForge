@@ -396,11 +396,18 @@ one, every value falls back to the documented default.
 
 ## What a Run may touch
 
-**Agents run no commands unless you open the gate.** Every Provider runs default-deny. Without
-`--allow-commands` an Agent may edit files but not execute them, and a Role denied a command it
-needs reports that denial rather than substituting inspection. The posture is set in the adapter,
-never in prompt text, because a permission expressed as an instruction is one the model can talk
-itself out of. See [ADR-0007](adr/0007-command-execution-is-default-deny.md).
+**Agents run no commands unless you open the gate.** Without `--allow-commands` an Agent may edit
+files but not execute them, and a Role denied a command it needs reports that denial rather than
+substituting inspection. The posture is set in the adapter, never in prompt text, because a
+permission expressed as an instruction is one the model can talk itself out of. See
+[ADR-0007](adr/0007-command-execution-is-default-deny.md).
+
+**Not every Provider can hold that gate shut.** `claude` refuses a command and says so. `codex`
+cannot: `codex exec` discards its approval flag and always runs `never`, so a denied Run on that
+Provider is refused before it starts rather than run under a guarantee nothing enforces. Use
+`--allow-commands` to grant execution deliberately, or `--provider claude` to have it refused. On
+`codex` this is not a gap waiting to be closed — a file is written by running a command there, so
+"edit but do not execute" names nothing that CLI can be asked for.
 
 **A Run commits only what it declared.** Opening that gate is exactly what makes a Run produce files
 nobody asked for: running a suite writes `__pycache__`, coverage data, a cache directory. So

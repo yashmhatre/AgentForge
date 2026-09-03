@@ -40,18 +40,41 @@ class ClaudeProvider(CliProvider):
     }
 
     #: ADR-0007's two postures, mapped onto this CLI's permission modes.
-    #: `acceptEdits` lets an Agent write files and nothing else; commands still
-    #: need a confirmation that headless mode cannot give, which is the whole
-    #: bug in #18. `bypassPermissions` is the open gate. An Agent that has to
-    #: ask before every edit cannot run unattended at all, so there is no
-    #: third, stricter posture — the blast radius is bounded by the branch the
-    #: runtime creates before any Agent is invoked.
+    #: `bypassPermissions` is the open gate. `acceptEdits` is the closed one and
+    #: closes only half of it: it governs edits, and this CLI hands commands to
+    #: an auto-approving classifier, so a Role denied execution ran `touch` and
+    #: the file appeared (#115). The mode is kept for the edits it does accept
+    #: and the refusal is supplied separately.
     DENIED: ClassVar[str] = "acceptEdits"
     PERMITTED: ClassVar[str] = "bypassPermissions"
+
+    #: The tools this CLI offers that start a process, asked of it rather than
+    #: assumed: `Bash` and `PowerShell`. `BashOutput` and `KillShell` only
+    #: address a shell `Bash` already started, so denying the two that start one
+    #: is the whole surface.
+    COMMAND_TOOLS: ClassVar[tuple[str, ...]] = ("Bash", "PowerShell")
 
     @property
     def permission_mode(self) -> str:
         return self.PERMITTED if self.allow_commands else self.DENIED
+
+    @property
+    def denied_settings(self) -> str:
+        """The refusal, as the settings payload `--settings` takes inline.
+
+        `ask` rather than `deny`. A `deny` rule — and `--disallowedTools`, and
+        `--tools` without `Bash` — removes the tool, and a Role that never had a
+        tool reports that it has none, which is a story about its own
+        capabilities rather than the denial ADR-0007 wants reported. `ask` keeps
+        the tool, refuses the request headlessly because there is nobody to ask,
+        and puts the exact command in the envelope's `permission_denials` so the
+        refusal is legible to a reader of the Run Log and not only to the model.
+
+        Verified against the installed CLI: under this payload a Role asked to
+        run `echo` was refused and reported it, and a Role asked to write a file
+        with the `Write` tool still wrote it (#115).
+        """
+        return json.dumps({"permissions": {"ask": list(self.COMMAND_TOOLS)}})
 
     def build_argv(
         self,
@@ -83,6 +106,8 @@ class ClaudeProvider(CliProvider):
             "--permission-mode",
             self.permission_mode,
         )
+        if not self.allow_commands:
+            argv += ("--settings", self.denied_settings)
         if native_skills:
             argv += ("--plugin-dir", str(SKILLS_ROOT.parent))
         return argv

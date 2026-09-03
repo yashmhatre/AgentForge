@@ -81,7 +81,10 @@ ADR-0015.
 
 Without `--allow-commands`, the Implementer remains default-deny and the Tester
 reports that it could not run the suite; it never substitutes reading tests and
-claims completion. Security, the Reviewer, and the Architect need no such flag —
+claims completion. That gate is held by the `claude` adapter. The `codex` CLI
+cannot hold it — `codex exec` discards its approval flag — so a denied Run on
+`codex` is refused before it starts rather than run under a guarantee nothing
+enforces (ADR-0007, amended). Security, the Reviewer, and the Architect need no such flag —
 auditing, reviewing, and designing are reading. All six Roles `CONTEXT.md` names
 now run. Plugins have landed, and with them the data-engineering ones: a
 repository whose files import `pyspark` has its Roles told to write DataFrame

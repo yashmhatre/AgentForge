@@ -19,7 +19,7 @@ import pytest
 from agentforge_framework.core.contracts import ModelTier, Role
 from agentforge_framework.core.plan_format import render_result_block
 from agentforge_framework.core.runtime import Forge, RunFailed
-from agentforge_framework.providers import get_provider
+from agentforge_framework.providers import ProviderError, get_provider
 
 from .fakes import FakeRunner, github_repository
 from .test_runtime import BODY, ROOT, issue_json
@@ -63,18 +63,62 @@ def test_claude_denies_commands_by_default():
     assert argv[argv.index("--permission-mode") + 1] == "acceptEdits"
 
 
+def test_claude_refuses_commands_rather_than_only_accepting_edits():
+    """`acceptEdits` closes half the gate; the refusal is the other half.
+
+    The mode governs edits and this CLI hands commands to an auto-approving
+    classifier, so the denied posture ran `touch` and the file appeared (#115).
+    What denies is an `ask` rule on the tools that start a process, carried
+    inline to `--settings` — in the argument vector, per ADR-0007, not in the
+    prompt.
+    """
+    argv = _invoke("claude", allow_commands=False)
+
+    payload = json.loads(argv[argv.index("--settings") + 1])
+    assert payload["permissions"]["ask"] == ["Bash", "PowerShell"]
+
+
+def test_claude_refuses_the_request_rather_than_removing_the_tool():
+    """`ask`, not `deny`. A Role with no tool reports it has none; a Role that
+    was refused reports the denial, which is what ADR-0007 asks it to do."""
+    argv = _invoke("claude", allow_commands=False)
+    payload = json.loads(argv[argv.index("--settings") + 1])
+
+    assert "deny" not in payload["permissions"]
+    assert "--disallowedTools" not in argv
+    assert "--tools" not in argv
+
+
 def test_claude_opens_the_gate_when_asked():
     argv = _invoke("claude", allow_commands=True)
 
     assert argv[argv.index("--permission-mode") + 1] == "bypassPermissions"
 
 
-def test_codex_denies_commands_by_default():
-    """`untrusted` auto-runs only reads and escalates the rest — this CLI's
-    nearest analogue to the `claude` adapter's `acceptEdits`."""
-    argv = _invoke("codex", allow_commands=False)
+def test_claude_carries_no_refusal_when_the_gate_is_open():
+    assert "--settings" not in _invoke("claude", allow_commands=True)
 
-    assert argv[argv.index("--ask-for-approval") + 1] == "untrusted"
+
+def test_codex_refuses_to_run_a_denied_posture_it_cannot_enforce():
+    """`codex exec` prints `approval: never` whatever `--ask-for-approval` says,
+    so the flag this adapter used to send was discarded and a denied Role
+    executed commands (#115, ADR-0025). A Provider that cannot give ADR-0007's
+    guarantee says so rather than passing a flag the CLI ignores."""
+    provider = get_provider("codex", FakeRunner(), allow_commands=False)
+
+    with pytest.raises(ProviderError, match="cannot deny command execution"):
+        provider.preflight()
+
+
+def test_codex_names_the_two_ways_forward_when_it_refuses():
+    """A refusal a human cannot act on is an outage."""
+    provider = get_provider("codex", FakeRunner(), allow_commands=False)
+
+    with pytest.raises(ProviderError) as caught:
+        provider.preflight()
+
+    assert "--allow-commands" in str(caught.value)
+    assert "--provider claude" in str(caught.value)
 
 
 def test_codex_opens_the_gate_when_asked():
@@ -83,27 +127,35 @@ def test_codex_opens_the_gate_when_asked():
     assert argv[argv.index("--ask-for-approval") + 1] == "never"
 
 
+def test_codex_has_no_denied_approval_policy_to_name():
+    """The constant is gone rather than set to something inert."""
+    from agentforge_framework.providers.codex import CodexProvider
+
+    assert not hasattr(CodexProvider, "DENIED")
+
+
 def test_codex_pins_reasoning_effort_so_a_tier_moves_only_the_model():
     """`gpt-5.6-sol` defaults to `low` and the rest to `medium`. Unpinned, the
     deepest tier would be the shallowest-thinking one."""
-    for allow in (True, False):
-        argv = _invoke("codex", allow_commands=allow)
-        assert argv[argv.index("-c") + 1] == "model_reasoning_effort=medium"
+    argv = _invoke("codex", allow_commands=True)
+    assert argv[argv.index("-c") + 1] == "model_reasoning_effort=medium"
 
 
-def test_codex_stays_sandboxed_in_both_postures():
-    """ADR-0007 opens a gate; it does not remove the sandbox."""
-    for allow in (True, False):
-        argv = _invoke("codex", allow_commands=allow)
-        assert argv[argv.index("--sandbox") + 1] == "workspace-write"
-        assert "danger-full-access" not in argv
-        assert "--dangerously-bypass-approvals-and-sandbox" not in argv
+def test_codex_stays_sandboxed_in_the_only_posture_it_runs():
+    """ADR-0007 opens a gate; it does not remove the sandbox. The gate is now
+    the only posture this adapter has, which makes the sandbox the whole of the
+    bound on a codex Run rather than half of it."""
+    argv = _invoke("codex", allow_commands=True)
+    assert argv[argv.index("--sandbox") + 1] == "workspace-write"
+    assert "danger-full-access" not in argv
+    assert "--dangerously-bypass-approvals-and-sandbox" not in argv
+    assert "--dangerously-bypass-hook-trust" not in argv
 
 
 def test_codex_options_precede_the_subcommand():
     """`codex [OPTIONS] <COMMAND>`. Options after `exec` are rejected by the CLI,
     which is how the previous `--full-auto` placement failed."""
-    argv = _invoke("codex", allow_commands=False)
+    argv = _invoke("codex", allow_commands=True)
     exec_at = argv.index("exec")
 
     for flag in ("--model", "--sandbox", "--ask-for-approval"):
@@ -113,8 +165,7 @@ def test_codex_options_precede_the_subcommand():
 
 def test_codex_no_longer_passes_a_flag_the_cli_does_not_have():
     """`--full-auto` does not exist in the current CLI, in any position."""
-    for allow in (True, False):
-        assert "--full-auto" not in _invoke("codex", allow_commands=allow)
+    assert "--full-auto" not in _invoke("codex", allow_commands=True)
 
 
 def test_every_adapter_denies_by_default():
@@ -148,6 +199,17 @@ def _runner() -> FakeRunner:
         ),
     )
     return runner
+
+
+def test_a_run_on_codex_refuses_rather_than_pretending_to_deny():
+    """The refusal reaches the human as a failed Run, not a traceback."""
+    runner = _runner()
+    runner.script("codex", stdout="done")
+
+    with pytest.raises(RunFailed, match="cannot deny command execution"):
+        Forge(cwd=ROOT, provider="codex", runner=runner).implement(12)
+
+    assert not runner.ran("codex")
 
 
 def test_a_run_denies_commands_unless_asked():
