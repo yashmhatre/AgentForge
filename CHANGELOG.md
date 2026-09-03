@@ -2,7 +2,18 @@
 
 What changed in each release of AgentForge. Dates are the day the tag was cut.
 
-## Unreleased
+## 0.2.4 — 2026-09-03
+
+What a Run says about itself, made true. ADR-0007 has promised since 0.1 that an
+Agent runs no commands unless the gate is opened, and neither Provider was
+keeping that promise — so this release is one finding, its fix, and the tier
+work that came out of reading what the two adapters actually send.
+
+**Before upgrading:** a `codex` Run without `--allow-commands` is now refused
+before it spends anything, where it used to start and execute anyway. That is
+the point rather than a side effect, and it will stop invocations that worked
+yesterday. Pass `--allow-commands` deliberately, or run those Workflows on
+`claude`.
 
 - **Both denied postures now deny.** Neither did. `claude`'s `acceptEdits`
   governs edits and hands commands to an auto-approving classifier, and
