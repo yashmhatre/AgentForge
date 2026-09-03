@@ -2,6 +2,27 @@
 
 What changed in each release of AgentForge. Dates are the day the tag was cut.
 
+## Unreleased
+
+- **A Run holds the checkout it was pointed at.** Two `agentforge implement`
+  invocations in one working tree each `git checkout -b` and each commit, so the
+  second moved the branch out from under the first and neither pull request held
+  what it claimed. A Run now takes an exclusive lock on its checkout and a second
+  one is refused before it invokes anything, naming the Issue and process already
+  running. The lock is an OS file lock rather than a pid file, so a Run killed
+  with the terminal window releases it and there is nothing to clean up by hand.
+- **A worktree per Run was rejected, on evidence.** It was the candidate #110
+  expected to build: give the Run its own checkout and a concurrent IDE assistant
+  cannot reach the commit at all. A worktree carries the tracked files and not the
+  untracked environment the code runs in, so with an editable install the Tester's
+  suite passes against the checkout the Agent never edited — a green report over
+  code that was not executed — and a Role that repairs it by reinstalling leaves
+  the human's own environment pointing at a directory cleanup then deletes. Both
+  checked by invocation. ADR-0023's disclosure at Sign-off stands as the answer
+  for a writer that is not AgentForge. See
+  [ADR-0026](docs/adr/0026-a-run-holds-the-checkout-it-was-pointed-at.md), and
+  [ADR-0023](docs/adr/0023-a-commit-names-what-nothing-claimed.md), amended.
+
 ## 0.2.4 — 2026-09-03
 
 What a Run says about itself, made true. ADR-0007 has promised since 0.1 that an

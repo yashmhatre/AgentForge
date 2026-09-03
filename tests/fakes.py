@@ -13,11 +13,30 @@ implementation chooses.
 
 from __future__ import annotations
 
+import atexit
+import shutil
+import tempfile
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from agentforge_framework.core.process import CommandResult
+
+
+def fake_repository_root() -> Path:
+    """A directory that can stand in for a checkout, because it is one.
+
+    The fake repository used to be a path that did not exist -- every git call
+    is scripted, so nothing ever touched the disk. ADR-0026 ended that: a Run
+    takes a real file lock in the real git directory, and a `Path("/repo")`
+    that does not exist becomes a `G:/repo` that does, created by the suite
+    outside its own temporary space. #84 is the rule this breaks, so the fake
+    root is a real temporary directory and the lock lands inside it.
+    """
+    root = Path(tempfile.mkdtemp(prefix="agentforge-fake-repo-"))
+    (root / ".git").mkdir()
+    atexit.register(shutil.rmtree, root, ignore_errors=True)
+    return root
 
 
 @dataclass
@@ -157,7 +176,14 @@ class FakeRunner:
 
 
 def github_repository(runner: FakeRunner, root: Path) -> FakeRunner:
-    """Script the calls every Run makes before it does anything interesting."""
+    """Script the calls every Run makes before it does anything interesting.
+
+    Asking for a fake repository gives you a directory that is one. A Run takes
+    its lock in the git directory (ADR-0026), so a root without a `.git` is not
+    a checkout a Run can start in, and a test that wants one would otherwise
+    have to know that.
+    """
+    (root / ".git").mkdir(parents=True, exist_ok=True)
     runner.script("git", "rev-parse", "--show-toplevel", stdout=f"{root}\n")
     runner.script("git", "remote", "get-url", stdout="https://github.com/acme/pipelines.git\n")
     runner.script("git", "rev-parse", "--abbrev-ref", stdout="main\n")

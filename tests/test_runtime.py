@@ -32,9 +32,10 @@ from agentforge_framework.core.plan_format import (
     parse_issue_body,
     render_result_block,
 )
+from agentforge_framework.core.runlock import RunLock
 from agentforge_framework.core.runtime import Forge, RunFailed
 
-from .fakes import FakeRunner, github_repository
+from .fakes import FakeRunner, fake_repository_root, github_repository
 from .test_agents import (
     no_more_questions,
     orchestrator_output,
@@ -45,7 +46,7 @@ from .test_contracts import a_plan
 
 FIXTURES = Path(__file__).parent / "fixtures"
 BODY = (FIXTURES / "issue_body_v1.md").read_text(encoding="utf-8")
-ROOT = Path("/repo/pipelines")
+ROOT = fake_repository_root()
 
 
 def agent_says(outcome: str, summary: str, files=("src/loader.py",), findings=()) -> str:
@@ -813,6 +814,30 @@ def test_a_dirty_working_tree_is_refused_rather_than_swept_into_the_commit():
         forge(runner).implement(12)
 
     assert not runner.ran("claude")
+
+
+def test_a_second_run_on_the_same_checkout_is_refused_and_spends_nothing():
+    """ADR-0026. Two Runs in one working tree each `git checkout -b` and each
+    commit, so the second one moves the branch out from under the first and the
+    work of both lands somewhere nobody chose. The lock is taken before the
+    dirty-tree check, because a tree the other Run is mid-way through writing
+    is dirty, and "commit or stash first" is the wrong thing to tell a human
+    whose real problem is a Run they forgot is still going."""
+    runner = a_runner()
+    held = RunLock(ROOT / ".git", issue=99, command="implement 99")
+
+    with held, pytest.raises(RunFailed, match="another AgentForge Run holds"):
+        forge(runner).implement(12)
+
+    assert not runner.ran("claude")
+
+
+def test_a_run_that_has_finished_leaves_the_checkout_free_for_the_next_one():
+    runner = a_runner()
+    forge(runner).implement(12)
+
+    with RunLock(ROOT / ".git", issue=99, command="implement 99"):
+        pass
 
 
 def test_an_issue_with_no_plan_block_is_refused_with_a_reason():
