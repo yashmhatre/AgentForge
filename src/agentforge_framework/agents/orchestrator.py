@@ -38,6 +38,7 @@ from ..core.contracts import (
     DEFAULT_WORKFLOW,
     AgentResult,
     ContextPack,
+    Effort,
     ModelTier,
     Outcome,
     Plan,
@@ -239,6 +240,7 @@ repository itself uses them, and do not start a glossary during an interview.\
 ORCHESTRATOR = Role(
     name="orchestrator",
     tier=ModelTier.DEEP,
+    effort=Effort.HIGH,
     instructions=INSTRUCTIONS,
     #: What a planning pass works with: the project's vocabulary, the synthesis
     #: of a conversation into a spec, and the breakdown of that spec into work.

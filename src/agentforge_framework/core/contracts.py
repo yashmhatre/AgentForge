@@ -45,6 +45,28 @@ class ModelTier(StrEnum):
     CHEAP = "cheap"
 
 
+class Effort(StrEnum):
+    """How hard a Role thinks, named by intent and independent of its tier.
+
+    The second axis ADR-0004 originally folded into the first. A Model Tier
+    chooses which model runs; an Effort chooses how much reasoning it spends
+    getting there, and the two are not the same purchase -- the Security Role
+    is the case that proves it, auditing at `standard` and thinking at `high`.
+
+    The levels are the intersection of what the shipped adapters' CLIs accept:
+    `claude --effort` takes low through max, and every slug in a real codex
+    install takes the same five. `ultra` is offered by one codex model alone
+    and is deliberately absent -- a level a Role could declare and most
+    Providers could not honor is not an intent-named level.
+    """
+
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    XHIGH = "xhigh"
+    MAX = "max"
+
+
 class Outcome(StrEnum):
     """How an Agent finished.
 
@@ -278,10 +300,24 @@ class Role:
     tier: ModelTier
     instructions: str = ""
     skills: tuple[str, ...] = ()
+    #: How much reasoning the Role spends, independent of which model runs it.
+    #: `medium` rather than a tier-derived value: a Role that has not thought
+    #: about the question gets the level both CLIs already default most models
+    #: to, and the ones that have thought about it say so.
+    effort: Effort = Effort.MEDIUM
 
     def at_tier(self, tier: ModelTier) -> Role:
         """The same Role with its tier overridden, per user request or config."""
         return replace(self, tier=tier)
+
+    def at_effort(self, effort: Effort) -> Role:
+        """The same Role with its effort overridden, per config.
+
+        Separate from `at_tier` because the axes move separately -- overriding
+        one has never implied anything about the other, which is the whole
+        reason there are two.
+        """
+        return replace(self, effort=effort)
 
 
 @dataclass(frozen=True)

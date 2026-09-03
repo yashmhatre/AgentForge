@@ -8,9 +8,10 @@ from "did not audit", and a paragraph cannot be asked that question.
 import json
 from pathlib import Path
 
+from agentforge_framework.agents.implementer import IMPLEMENTER
 from agentforge_framework.agents.security import SECURITY, build_prompt
 from agentforge_framework.agents.security import Security as _SecurityRunner
-from agentforge_framework.core.contracts import ContextPack, ModelTier, Outcome
+from agentforge_framework.core.contracts import ContextPack, Effort, ModelTier, Outcome
 from agentforge_framework.core.plan_format import render_result_block
 from agentforge_framework.providers.claude import ClaudeProvider
 
@@ -30,10 +31,27 @@ def audit_says(summary: str, findings=()) -> str:
     )
 
 
-def test_security_runs_deep_because_a_missed_finding_is_silent():
-    """The one tier decision in the project that is not about cost. Nobody
-    reviews the audit that did not happen (ADR-0004)."""
-    assert SECURITY.tier is ModelTier.DEEP
+def test_security_thinks_deeply_without_running_deep():
+    """The one tier decision in the project that was not about cost, re-read.
+
+    ADR-0004 bought Security `deep` because a missed finding is silent — nobody
+    reviews the audit that did not happen. When effort became a Role's own axis
+    the argument split in two, and only half of it was ever about model size:
+    what a silent failure needs is reasoning, so Security keeps `high` and lets
+    the tier fall to `standard`.
+
+    Both halves are asserted together deliberately. Either one alone reads as a
+    plain cost cut, and the next person to see `standard` here should find the
+    line that says it was paid for elsewhere.
+    """
+    assert SECURITY.tier is ModelTier.STANDARD
+    assert SECURITY.effort is Effort.HIGH
+
+
+def test_security_out_thinks_the_role_whose_work_it_audits():
+    """The comparison that makes the tier move survivable: the audit is not
+    permitted to be a shallower pass than the code it is reading."""
+    assert list(Effort).index(SECURITY.effort) > list(Effort).index(IMPLEMENTER.effort)
 
 
 def test_the_prompt_asks_for_a_location_and_a_rationale_rather_than_a_category():

@@ -2,6 +2,33 @@
 
 What changed in each release of AgentForge. Dates are the day the tag was cut.
 
+## Unreleased
+
+- **Reasoning effort is a Role's to declare, not a tier's to imply.** A Role now
+  carries two axes: a Model Tier that picks the model and an Effort that picks
+  how hard it thinks. `claude --effort` had never been sent at all, so an Agent
+  reasoned as deeply as its model happened to default to; `codex` sent one
+  pinned value for every Role alike. Both now send what the Role asked for.
+- **Security audits at `standard` and thinks at `high`.** Its `deep` was bought
+  with the one argument in ADR-0004's table that is not about cost — a missed
+  finding is silent — and that argument was about reasoning, not model size. It
+  keeps the depth, above the Implementer whose work it reads, and stops paying
+  frontier prices for it. The row to move back if audits start missing things.
+- **Model identifiers are pinned rather than aliased.** `claude` ran on `opus` /
+  `sonnet` / `haiku`, which follow whatever the CLI currently calls latest — a
+  pinned tier mapping that silently re-points is the failure ADR-0004 exists to
+  prevent. The tiers now name `claude-opus-5`, `claude-sonnet-5` and
+  `claude-haiku-4-5`. `codex` moves to the same-generation spread its own
+  adapter named as the alternative it had declined: `gpt-5.6-sol`,
+  `gpt-5.6-terra`, `gpt-5.6-luna`.
+- **`.agentforge/config.yaml` overrides both axes, and the model table.** ADR-0004
+  promised in 0.1 that users could override the tier-to-model mapping without
+  touching Role definitions, and nothing ever read the key. `providers.<name>.models.<tier>`,
+  `roles.<name>.tier` and `roles.<name>.effort` are now read. `roles.<name>.model`
+  is refused with an error rather than ignored — a model named per Role does not
+  survive a release and does not port across Providers. See
+  [ADR-0004](docs/adr/0004-model-tiers-declared-not-named.md), amended.
+
 ## 0.2.3 — 2026-09-02
 
 Two disclosure decisions and the answers to a compatibility question. Nothing

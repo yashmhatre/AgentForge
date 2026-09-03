@@ -27,6 +27,7 @@ from ..core.config import CapabilityTier, Config
 from ..core.contracts import (
     AgentResult,
     ContextPack,
+    Effort,
     Finding,
     ModelTier,
     Outcome,
@@ -111,7 +112,8 @@ class CliProvider(Provider):
         self.runner = runner
         self.timeout = timeout
         self.allow_commands = allow_commands
-        self.capability_tier = (config or Config()).capability_for(self.name)
+        self.config = config or Config()
+        self.capability_tier = self.config.capability_for(self.name)
 
     def preflight(self) -> None:
         try:
@@ -125,6 +127,16 @@ class CliProvider(Provider):
             raise ProviderError(str(exc)) from exc
 
     def model_for(self, tier: ModelTier) -> str:
+        """The project's model for this tier, or the adapter's own.
+
+        Configuration wins, which is ADR-0004's first paragraph finally doing
+        something: a project whose account cannot reach the pinned model, or
+        which reads the three tiers differently, says so in a file rather than
+        editing an adapter it does not own.
+        """
+        configured = self.config.model_for(self.name, tier)
+        if configured:
+            return configured
         try:
             return self.models[tier]
         except KeyError as exc:
@@ -133,8 +145,19 @@ class CliProvider(Provider):
             ) from exc
 
     @abstractmethod
-    def build_argv(self, model: str, native_skills: tuple[str, ...] = ()) -> Sequence[str]:
-        """The invocation, without the prompt. See `invoke` for why it is absent."""
+    def build_argv(
+        self,
+        model: str,
+        effort: Effort,
+        native_skills: tuple[str, ...] = (),
+    ) -> Sequence[str]:
+        """The invocation, without the prompt. See `invoke` for why it is absent.
+
+        Both axes arrive resolved: `model` is what `model_for` made of the tier,
+        and `effort` is what the Role declared. An adapter whose CLI exposes no
+        effort flag drops it, the same way one with no model flag collapses the
+        tiers — ADR-0004's coarse-instrument consequence, on a second axis.
+        """
         ...
 
     @abstractmethod
@@ -161,7 +184,7 @@ class CliProvider(Provider):
         time a prompt landed the other side of it.
         """
         prompt, native_skills = self._deliver_skills(role, prompt)
-        argv = self.build_argv(self.model_for(tier), native_skills)
+        argv = self.build_argv(self.model_for(tier), role.effort, native_skills)
         completed = self.runner.run(argv, cwd=cwd, stdin=prompt, timeout=self.timeout)
         output = self.parse_output(completed)
         return to_agent_result(role=role, tier=tier, output=output)

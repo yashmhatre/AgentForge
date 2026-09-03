@@ -15,8 +15,15 @@ from typing import ClassVar
 import pytest
 
 from agentforge_framework.agents.implementer import IMPLEMENTER
+from agentforge_framework.agents.security import SECURITY
 from agentforge_framework.core.config import CapabilityTier, Config, load_config
-from agentforge_framework.core.contracts import ContextPack, ModelTier, Outcome, Role
+from agentforge_framework.core.contracts import (
+    ContextPack,
+    Effort,
+    ModelTier,
+    Outcome,
+    Role,
+)
 from agentforge_framework.core.process import CommandResult
 from agentforge_framework.core.skills import fragment_only, read_skill
 from agentforge_framework.providers import PROVIDERS, get_provider
@@ -31,6 +38,18 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 def recorded(name: str) -> str:
     return (FIXTURES / name).read_text(encoding="utf-8")
+
+
+def invoke_as(provider, role: Role, cwd=Path("/repo")):
+    """`invoke` fixes the Role at the Implementer; this one is for the tests
+    where which Role is asking is the thing under test."""
+    return provider.invoke(
+        role=role,
+        prompt="do the thing",
+        context=ContextPack(),
+        tier=role.tier,
+        cwd=cwd,
+    )
 
 
 def invoke(provider, tier=ModelTier.STANDARD, cwd=Path("/repo")):
@@ -325,7 +344,7 @@ def test_provider_selection_uses_the_capability_tier_from_the_shared_loader(tmp_
 
 @pytest.mark.parametrize(
     "tier,model",
-    [(ModelTier.DEEP, "opus"), (ModelTier.STANDARD, "sonnet"), (ModelTier.CHEAP, "haiku")],
+    [(ModelTier.DEEP, "claude-opus-5"), (ModelTier.STANDARD, "claude-sonnet-5"), (ModelTier.CHEAP, "claude-haiku-4-5")],
 )
 def test_a_tier_becomes_a_model_only_inside_the_adapter(tier, model):
     """ADR-0004: nothing above this line knows a model identifier."""
@@ -555,3 +574,52 @@ def test_a_transcript_with_no_token_line_reports_nothing():
     )
 
     assert result.usage is None
+
+
+# --- effort is the Role's axis, not the tier's (#112, ADR-0004 amended) -----
+
+
+def _effort_sent(runner: FakeRunner, binary: str) -> str:
+    """Each CLI spells the same axis its own way, which is the port's whole job."""
+    if binary == "claude":
+        return runner.argument_after("--effort", "claude")
+    setting = next(a for a in runner.only("codex") if a.startswith("model_reasoning_effort="))
+    return setting.split("=", 1)[1]
+
+
+@pytest.mark.parametrize("provider", [ClaudeProvider, CodexProvider])
+def test_the_roles_effort_reaches_the_cli(provider):
+    """`claude --effort` was available for as long as this adapter has existed
+    and went unsent, so an Agent thought as hard as its model happened to
+    default to. `codex` sent one pinned value for every Role alike."""
+    binary = provider.binary
+    runner = FakeRunner().script(binary, stdout=recorded(RECORDED[binary]))
+
+    invoke_as(provider(runner), SECURITY)
+
+    assert _effort_sent(runner, binary) == "high"
+
+
+@pytest.mark.parametrize("provider", [ClaudeProvider, CodexProvider])
+def test_two_roles_on_one_tier_can_think_differently(provider):
+    """The case the split exists for. Security and the Implementer both run at
+    `standard`, and the audit is not the shallower of the two — one axis could
+    not say that without also buying Security a bigger model."""
+    assert SECURITY.tier is IMPLEMENTER.tier, "the premise of this test"
+    binary = provider.binary
+
+    sent = []
+    for role in (IMPLEMENTER, SECURITY):
+        runner = FakeRunner().script(binary, stdout=recorded(RECORDED[binary]))
+        invoke_as(provider(runner), role)
+        sent.append((runner.argument_after("--model", binary), _effort_sent(runner, binary)))
+
+    models, efforts = zip(*sent)
+    assert efforts == ("medium", "high")
+    assert len(set(models)) == 1, "same tier, so the same model — only the depth moved"
+
+
+def test_an_effort_the_role_did_not_declare_is_not_invented():
+    """A Role that has said nothing about depth gets the level both CLIs already
+    default most models to, and never a value derived from its tier."""
+    assert Role("implementer", ModelTier.DEEP).effort is Effort.MEDIUM

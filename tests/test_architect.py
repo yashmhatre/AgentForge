@@ -96,7 +96,7 @@ def test_the_architect_reaches_its_provider_through_the_shared_port():
 
     assert result.outcome is Outcome.COMPLETED
     assert result.role == "architect"
-    assert runner.argument_after("--model", "claude") == "opus", "deep did not reach the CLI"
+    assert runner.argument_after("--model", "claude") == "claude-opus-5", "deep did not reach the CLI"
 
 
 def test_designing_needs_no_command_execution():

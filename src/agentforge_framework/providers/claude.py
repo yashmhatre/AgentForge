@@ -17,7 +17,7 @@ import json
 from collections.abc import Sequence
 from typing import ClassVar
 
-from ..core.contracts import ModelTier, Usage
+from ..core.contracts import Effort, ModelTier, Usage
 from ..core.process import CommandResult
 from ..core.skills import SKILLS_ROOT
 from .base import CliProvider, ProviderOutput
@@ -27,10 +27,16 @@ class ClaudeProvider(CliProvider):
     name: ClassVar[str] = "claude"
     binary: ClassVar[str] = "claude"
 
+    #: Full model names rather than the `opus` / `sonnet` / `haiku` aliases this
+    #: adapter used to carry. An alias follows whatever the CLI currently calls
+    #: latest, so a pinned tier mapping built on one silently re-points under a
+    #: release — which is the failure ADR-0004 exists to prevent, arriving by
+    #: the back door. `claude --help` documents both forms; these are the ones
+    #: that still mean the same model next month.
     models: ClassVar[dict[ModelTier, str]] = {
-        ModelTier.DEEP: "opus",
-        ModelTier.STANDARD: "sonnet",
-        ModelTier.CHEAP: "haiku",
+        ModelTier.DEEP: "claude-opus-5",
+        ModelTier.STANDARD: "claude-sonnet-5",
+        ModelTier.CHEAP: "claude-haiku-4-5",
     }
 
     #: ADR-0007's two postures, mapped onto this CLI's permission modes.
@@ -47,18 +53,31 @@ class ClaudeProvider(CliProvider):
     def permission_mode(self) -> str:
         return self.PERMITTED if self.allow_commands else self.DENIED
 
-    def build_argv(self, model: str, native_skills: tuple[str, ...] = ()) -> Sequence[str]:
+    def build_argv(
+        self,
+        model: str,
+        effort: Effort,
+        native_skills: tuple[str, ...] = (),
+    ) -> Sequence[str]:
         """`-p` carries no prompt argument: with none, the CLI reads stdin.
 
         Verified against the installed CLI rather than the help text, which
         documents `-p` as "print response and exit" and says nothing about where
         the prompt comes from.
+
+        `--effort` takes the same five levels `Effort` defines, so the Role's
+        declaration passes through untranslated. This adapter previously sent
+        none at all and took whatever the CLI defaulted each model to, which
+        made the Security Role's audit depth a property of the release rather
+        than of the Role.
         """
         argv = (
             self.binary,
             "-p",
             "--model",
             model,
+            "--effort",
+            str(effort),
             "--output-format",
             "json",
             "--permission-mode",

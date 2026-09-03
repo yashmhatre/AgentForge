@@ -27,7 +27,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..context.prompt import render_context_block
-from ..core.contracts import AgentResult, ContextPack, ModelTier, Plan, Role
+from ..core.contracts import AgentResult, ContextPack, Effort, ModelTier, Plan, Role
 from ..core.plan_format import RESULT_CLOSE, RESULT_OPEN
 from .implementer import render_steps
 
@@ -90,7 +90,12 @@ step and the mismatch in `summary`.\
 """
 
 #: The Architect runs `deep`: a boundary in the wrong place outlives the Run.
-ARCHITECT = Role(name="architect", tier=ModelTier.DEEP, instructions=INSTRUCTIONS)
+ARCHITECT = Role(
+    name="architect",
+    tier=ModelTier.DEEP,
+    effort=Effort.HIGH,
+    instructions=INSTRUCTIONS,
+)
 
 
 def build_prompt(

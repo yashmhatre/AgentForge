@@ -197,7 +197,7 @@ def test_a_tier_override_moves_the_orchestrator():
     # tier the human named moves the whole planning pass or none of it.
     invocations = runner.matching("claude")
     assert invocations
-    assert all(call[call.index("--model") + 1] == "haiku" for call in invocations)
+    assert all(call[call.index("--model") + 1] == "claude-haiku-4-5" for call in invocations)
 
 
 def test_planning_interviews_the_human_and_files_one_issue():
@@ -308,9 +308,11 @@ def test_each_result_is_posted_to_the_issue_before_the_run_moves_on():
     assert "### implementer — completed" in comments[0]
     assert "### tester — completed" in comments[1]
     assert "### security — completed" in comments[2]
-    # Each entry names what it cost: two standard Steps and one deep audit.
+    # Each entry names what it cost. The audit is `standard` now, and buys its
+    # depth on the effort axis instead — nothing in a Run Log entry says so,
+    # which is why the tier it does name has to be right.
     assert all("**Model Tier:**" in comment for comment in comments)
-    assert "**Model Tier:** `deep`" in comments[2]
+    assert "**Model Tier:** `standard`" in comments[2]
 
     first_agent, second_agent = [
         index for index, call in enumerate(runner.calls) if call[0] == "claude"
@@ -422,7 +424,7 @@ def test_a_role_can_be_moved_up_a_tier_for_a_task_the_user_knows_is_hard():
 
     forge(runner).implement(12, tier_overrides={"implementer": ModelTier.DEEP})
 
-    assert runner.argument_after("--model", "claude") == "opus"
+    assert runner.argument_after("--model", "claude") == "claude-opus-5"
 
 
 # --- every Run ends by saying how it ended ---------------------------------
@@ -893,7 +895,7 @@ def test_a_step_tier_override_moves_the_role_without_a_command_line_flag(tmp_pat
 
     forge(runner).implement(12)
 
-    assert runner.argument_after("--model", "claude") == "opus"
+    assert runner.argument_after("--model", "claude") == "claude-opus-5"
 
 
 def test_a_command_line_tier_still_beats_the_step_override(tmp_path, monkeypatch):
@@ -909,7 +911,7 @@ def test_a_command_line_tier_still_beats_the_step_override(tmp_path, monkeypatch
 
     forge(runner).implement(12, tier_overrides={"implementer": ModelTier.CHEAP})
 
-    assert runner.argument_after("--model", "claude") == "haiku"
+    assert runner.argument_after("--model", "claude") == "claude-haiku-4-5"
 
 
 def test_a_tester_step_override_leaves_the_roles_default_unchanged(tmp_path, monkeypatch):
@@ -925,8 +927,8 @@ def test_a_tester_step_override_leaves_the_roles_default_unchanged(tmp_path, mon
     forge(runner).implement(12, allow_commands=True)
 
     assert [call[call.index("--model") + 1] for call in runner.matching("claude")] == [
-        "sonnet",
-        "opus",
+        "claude-sonnet-5",
+        "claude-opus-5",
     ]
     comments = [
         call[call.index("--body") + 1]
@@ -1739,8 +1741,10 @@ def test_the_run_that_ends_says_what_the_whole_thing_cost():
 # --- the Roster names the tier that runs (#71, ADR-0014) --------------------
 
 #: The tier every Role in the shipped `feature` Workflow would run at if nobody
-#: said otherwise: ADR-0004's defaults, as `claude` spells them.
-BY_DEFAULT = ["sonnet", "haiku", "opus", "opus"]
+#: said otherwise: ADR-0004's defaults, as `claude` spells them. The Reviewer is
+#: the only `deep` Step left in it — Security moved to `standard` at `high`
+#: effort when the two axes split, and pays for depth without paying for size.
+BY_DEFAULT = ["claude-sonnet-5", "claude-haiku-4-5", "claude-sonnet-5", "claude-opus-5"]
 
 
 def body_with_roster(roster) -> str:
@@ -1767,9 +1771,12 @@ def a_run_of(roster) -> FakeRunner:
 MOVED = [
     {"role": "implementer", "tier": "standard"},
     {"role": "tester", "tier": "cheap"},
-    # The one the Orchestrator moved, and the one the smoke Run for #67 caught:
-    # the table said `standard` and the Run Log said `deep`.
-    {"role": "security", "tier": "standard"},
+    # The one the Orchestrator moved. This used to read `standard`, which was
+    # below the Role's default when that default was `deep` and is exactly the
+    # default now — so the fixture stopped moving anything the day the axes
+    # split, and every assertion below it would have passed on a Roster that
+    # changed nothing. It moves to `cheap` to go on being the thing it tests.
+    {"role": "security", "tier": "cheap"},
     {"role": "reviewer", "tier": "deep"},
 ]
 
@@ -1781,7 +1788,12 @@ def test_a_roster_tier_below_the_roles_default_is_the_tier_the_step_runs_at():
 
     forge(runner).implement(12, allow_commands=True)
 
-    assert models_used(runner) == ["sonnet", "haiku", "sonnet", "opus"]
+    assert models_used(runner) == [
+        "claude-sonnet-5",
+        "claude-haiku-4-5",
+        "claude-haiku-4-5",
+        "claude-opus-5",
+    ]
     assert models_used(runner) != BY_DEFAULT, "the Roster changed nothing"
 
 
@@ -1793,7 +1805,7 @@ def test_the_run_log_names_the_tier_the_roster_promised():
     forge(runner).implement(12, allow_commands=True)
 
     audit = next(c for c in comments_on(runner) if "### security" in c)
-    assert "**Model Tier:** `standard`" in audit
+    assert "**Model Tier:** `cheap`" in audit
 
 
 def test_a_named_tier_override_still_beats_the_roster():
@@ -1801,7 +1813,7 @@ def test_a_named_tier_override_still_beats_the_roster():
 
     forge(runner).implement(12, allow_commands=True, tier_overrides={"security": ModelTier.DEEP})
 
-    assert models_used(runner) == ["sonnet", "haiku", "opus", "opus"]
+    assert models_used(runner) == ["claude-sonnet-5", "claude-haiku-4-5", "claude-opus-5", "claude-opus-5"]
 
 
 def test_a_run_wide_tier_still_beats_the_roster():
@@ -1810,7 +1822,7 @@ def test_a_run_wide_tier_still_beats_the_roster():
 
     forge(runner).implement(12, allow_commands=True, tier=ModelTier.CHEAP)
 
-    assert models_used(runner) == ["haiku"] * 4
+    assert models_used(runner) == ["claude-haiku-4-5"] * 4
 
 
 def test_a_step_tier_in_the_workflow_still_beats_the_roster(tmp_path, monkeypatch):
@@ -1824,7 +1836,7 @@ def test_a_step_tier_in_the_workflow_still_beats_the_roster(tmp_path, monkeypatc
 
     forge(runner).implement(12, allow_commands=True)
 
-    assert models_used(runner) == ["haiku"]
+    assert models_used(runner) == ["claude-haiku-4-5"]
 
 
 def test_a_role_the_roster_does_not_name_falls_through_to_its_default():
@@ -1856,7 +1868,10 @@ def test_a_resumed_run_resolves_the_tier_the_first_invocation_would_have():
 
     forge(runner).implement(12, allow_commands=True)
 
-    assert models_used(runner) == ["sonnet", "opus"], "the security Step resumed at the wrong tier"
+    assert models_used(runner) == [
+        "claude-haiku-4-5",
+        "claude-opus-5",
+    ], "the security Step resumed at the wrong tier"
 
 
 # --- a Run commits what it declared (#72, ADR-0015) -------------------------
@@ -2082,3 +2097,60 @@ def test_a_new_package_the_plan_named_is_committed_file_by_file():
 
     assert staged(runner) == ["src/backoff/__init__.py", "src/backoff/policy.py"]
     assert "--untracked-files=all" in runner.matching("git", "status")[-1]
+
+
+# --- the configured Role reaches the Agent (#112) ---------------------------
+
+
+def a_run_rooted_at(root: Path) -> FakeRunner:
+    """`a_runner` roots a Run at a path that does not exist, which is what makes
+    the suite offline — and what makes `load_config` find nothing. A test about
+    configuration needs a root a config file can be written into."""
+    runner = github_repository(FakeRunner(), root)
+    runner.script("gh", "issue", "create", stdout="https://github.com/acme/pipelines/issues/12\n")
+    runner.script("gh", "pr", "create", stdout="https://github.com/acme/pipelines/pull/13\n")
+    runner.script("gh", "issue", "view", stdout=issue_json())
+    runner.script("git", "status", "--porcelain", stdout=["", " M src/loader.py\n"])
+    runner.script("claude", stdout=agent_says("completed", "done"))
+    return runner
+
+
+def _configured(root: Path, text: str) -> None:
+    (root / ".agentforge").mkdir(exist_ok=True)
+    (root / ".agentforge" / "config.yaml").write_text(text, encoding="utf-8")
+
+
+def test_a_configured_tier_reaches_the_agent(tmp_path):
+    """ADR-0004 promised this in prose in 0.1 and the Run never read it."""
+    _configured(tmp_path, "roles:\n  security:\n    tier: deep\n")
+    runner = a_run_rooted_at(tmp_path)
+
+    Forge(cwd=tmp_path, provider="claude", runner=runner).implement(12, allow_commands=True)
+
+    assert models_used(runner)[2] == "claude-opus-5", "the Security Step ignored the file"
+
+
+def test_a_configured_effort_reaches_the_agent_without_moving_the_tier(tmp_path):
+    """The two axes are overridden independently or the split means nothing."""
+    _configured(tmp_path, "roles:\n  security:\n    effort: max\n")
+    runner = a_run_rooted_at(tmp_path)
+
+    Forge(cwd=tmp_path, provider="claude", runner=runner).implement(12, allow_commands=True)
+
+    audit = [c for c in runner.matching("claude")][2]
+    assert audit[audit.index("--effort") + 1] == "max"
+    assert models_used(runner)[2] == "claude-sonnet-5", "effort moved the model too"
+
+
+def test_a_configured_model_reaches_the_agent(tmp_path):
+    """The other half of the override: the project disagrees with the adapter
+    about what `deep` should buy, and says so without editing the adapter."""
+    _configured(
+        tmp_path,
+        "providers:\n  claude:\n    models:\n      deep: claude-opus-4-1\n",
+    )
+    runner = a_run_rooted_at(tmp_path)
+
+    Forge(cwd=tmp_path, provider="claude", runner=runner).implement(12, allow_commands=True)
+
+    assert models_used(runner)[3] == "claude-opus-4-1", "the Reviewer runs deep"

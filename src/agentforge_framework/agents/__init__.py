@@ -12,7 +12,7 @@ would be the most expensive default in the project.
 
 from __future__ import annotations
 
-from ..core.contracts import ModelTier, Role
+from ..core.contracts import Effort, ModelTier, Role
 from .architect import ARCHITECT, Architect
 from .implementer import IMPLEMENTER, Implementer
 from .orchestrator import ORCHESTRATOR
@@ -53,10 +53,28 @@ RUNNERS: dict[str, type] = {
 KNOWN_TIERS: dict[str, ModelTier] = {
     "orchestrator": ModelTier.DEEP,
     "architect": ModelTier.DEEP,
-    "security": ModelTier.DEEP,
     "reviewer": ModelTier.DEEP,
     "implementer": ModelTier.STANDARD,
+    "security": ModelTier.STANDARD,
     "tester": ModelTier.CHEAP,
+}
+
+#: The second axis, keyed the same way. A tier says which model runs; this says
+#: how hard it thinks, and the two are set independently — see ADR-0004's
+#: 2026-09-03 amendment for why they were ever one thing.
+#:
+#: The Security row is the reason the axes split. It reads `standard` above and
+#: `high` here, which is not a demotion: ADR-0004 bought it `deep` because a
+#: missed finding is silent, and that argument was about reasoning depth. It
+#: keeps the depth — above the Implementer whose work it audits — and stops
+#: buying a frontier model to get it.
+KNOWN_EFFORTS: dict[str, Effort] = {
+    "orchestrator": Effort.HIGH,
+    "architect": Effort.HIGH,
+    "reviewer": Effort.HIGH,
+    "security": Effort.HIGH,
+    "implementer": Effort.MEDIUM,
+    "tester": Effort.MEDIUM,
 }
 
 
@@ -80,6 +98,7 @@ def resolve_role(name: str) -> Role:
 __all__ = [
     "ARCHITECT",
     "IMPLEMENTER",
+    "KNOWN_EFFORTS",
     "KNOWN_TIERS",
     "ORCHESTRATOR",
     "REVIEWER",

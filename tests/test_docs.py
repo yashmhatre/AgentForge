@@ -302,6 +302,11 @@ def test_the_glossary_defines_exactly_these_terms():
     general usage. A Spec is an intermediate nothing executes against, and a
     Slice stops existing the moment it is filed — which is the distinction that
     keeps "Ticket" out of the vocabulary, since what gets filed is an Issue.
+
+    Effort sits next to Model Tier because it is the half that used to be
+    folded into it. Both are named by intent and declared rather than computed;
+    what separates them is that one buys a model and the other buys reasoning,
+    and the Security Role needs to say those two things differently.
     """
     assert [t.name for t in _repo_terms()] == [
         "Task",
@@ -333,6 +338,7 @@ def test_the_glossary_defines_exactly_these_terms():
         "Command Runner",
         "Provider",
         "Model Tier",
+        "Effort",
         "Capability Tier",
         "Fragment",
         "Vendored Skill",
