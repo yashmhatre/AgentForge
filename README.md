@@ -264,13 +264,32 @@ defaults are Claude `native` and every other Provider `fragment`, and the
 providers:
   claude:
     capability_tier: native
+    # Optional. Overrides the adapter's own tier-to-model table; name only the
+    # tiers you disagree about, and the rest keep the shipped defaults.
+    models:
+      deep: claude-opus-5
   codex:
     capability_tier: fragment
+
+# Optional. A Role's two declared axes: which class of model runs it, and how
+# hard that model thinks. Both default to the table in ADR-0004.
+roles:
+  security:
+    tier: deep
+    effort: max
 
 gates:
   tests:
     suite: pytest
 ```
+
+There is no `roles.<name>.model` key, and naming one is an error rather than a
+line that gets ignored. A Role declares a tier; the Provider maps that tier onto
+a model. A model named per Role does not survive the next CLI release and does
+not port to another Provider, which is what
+[ADR-0004](docs/adr/0004-model-tiers-declared-not-named.md) exists to prevent --
+override `providers.<name>.models.<tier>` if the mapping is what you disagree
+with.
 
 There is no `plugins:` key. Which Plugins answer for a repository is decided per
 Run from the frozen plan's blast radius (ADR-0016), so a repository-level list

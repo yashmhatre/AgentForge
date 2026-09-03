@@ -33,7 +33,7 @@ The Role that turns a Task into Issues — grilling the human, synthesizing a Sp
 _Avoid_: Planner, coordinator, manager, dispatcher
 
 **Role**:
-A named specialization with a fixed job, a Model Tier, and a prompt. A Role is a definition, not a running thing; AgentForge ships six — Architect, Implementer, Tester, Security, Reviewer, and the Orchestrator.
+A named specialization with a fixed job, a Model Tier, an Effort, and a prompt. A Role is a definition, not a running thing; AgentForge ships six — Architect, Implementer, Tester, Security, Reviewer, and the Orchestrator.
 _Avoid_: Agent, persona, worker, specialist
 
 **Agent**:
@@ -127,8 +127,12 @@ An adapter over one coding-agent CLI — `claude`, `codex`, `aider` — that kno
 _Avoid_: Backend, driver, client, engine
 
 **Model Tier**:
-The class of model a Role runs on, named by intent — `deep`, `standard`, `cheap` — and declared in configuration rather than in code. Each Provider maps a tier onto whatever flag its CLI accepts. See ADR-0004.
+The class of model a Role runs on, named by intent — `deep`, `standard`, `cheap` — and declared in configuration rather than in code. Each Provider maps a tier onto whatever flag its CLI accepts. Says which model runs and nothing about how hard it thinks; that is the Effort. See ADR-0004.
 _Avoid_: Model, size, level, strength
+
+**Effort**:
+How much reasoning a Role spends, named by intent — `low`, `medium`, `high`, `xhigh`, `max` — and declared beside its Model Tier rather than derived from it. The second axis: a Role can run on a mid-sized model and still think hard, which is what the Security Role does. Each Provider maps it onto its own CLI's flag. See ADR-0004, amended 2026-09-03.
+_Avoid_: Reasoning level, thinking budget, depth, temperature
 
 **Capability Tier**:
 What a Provider's CLI can be relied on to support, declared in configuration rather than discovered by probing. It decides whether a skill reaches an Agent natively or as a Fragment. See ADR-0005.

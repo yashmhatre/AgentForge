@@ -121,7 +121,7 @@ def test_the_review_is_written_deep_and_the_rewrites_are_not():
 
     models = [call[call.index("--model") + 1] for call in runner.matching("claude")]
 
-    assert models == ["opus", "haiku", "haiku"]
+    assert models == ["claude-opus-5", "claude-haiku-4-5", "claude-haiku-4-5"]
 
 
 def prompts_of(runner) -> list[str]:

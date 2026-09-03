@@ -29,7 +29,7 @@ import re
 from collections.abc import Sequence
 from typing import ClassVar
 
-from ..core.contracts import ModelTier, Usage
+from ..core.contracts import Effort, ModelTier, Usage
 from ..core.process import CommandResult
 from .base import CliProvider, ProviderOutput
 
@@ -39,15 +39,17 @@ class CodexProvider(CliProvider):
     binary: ClassVar[str] = "codex"
 
     #: Slugs read out of a real install's `~/.codex/models_cache.json` rather
-    #: than guessed. The tiers step back a generation at a time: the current
-    #: frontier model for `deep`, then the two preceding releases. The
-    #: same-generation alternatives (`gpt-5.6-terra`, `gpt-5.6-luna`) are the
-    #: obvious other reading of ADR-0004's three tiers; this mapping is the
-    #: maintainer's choice, and overriding it is a configuration line.
+    #: than guessed. This is the same-generation reading of ADR-0004's three
+    #: tiers, which the previous mapping named as the obvious alternative to
+    #: itself and then declined. It was taken on 2026-09-03: stepping back a
+    #: generation per tier bought older models on every axis at once, where the
+    #: three 5.6 slugs differ in the one dimension a tier is supposed to name.
+    #: Overriding it is a configuration line — now literally, under
+    #: `providers.codex.models`.
     models: ClassVar[dict[ModelTier, str]] = {
         ModelTier.DEEP: "gpt-5.6-sol",
-        ModelTier.STANDARD: "gpt-5.5",
-        ModelTier.CHEAP: "gpt-5.4",
+        ModelTier.STANDARD: "gpt-5.6-terra",
+        ModelTier.CHEAP: "gpt-5.6-luna",
     }
 
     #: ADR-0007's two postures, on the two axes `codex --help` documents.
@@ -66,15 +68,26 @@ class CodexProvider(CliProvider):
     DENIED: ClassVar[str] = "untrusted"
     PERMITTED: ClassVar[str] = "never"
 
-    #: Pinned across every tier, because the per-model defaults disagree —
-    #: `gpt-5.6-sol` starts at `low`, the others at `medium`. Setting it here
-    #: keeps a Model Tier meaning one thing: it picks the model, and the
-    #: reasoning depth stays where the maintainer put it. `low` through `ultra`
-    #: are available; raising it is a configuration change under ADR-0004
-    #: rather than an edit here.
-    REASONING_EFFORT: ClassVar[str] = "medium"
+    #: This adapter used to pin one effort across every tier, because the
+    #: per-model defaults disagree — `gpt-5.6-sol` starts at `low`, the others
+    #: at `medium` — and pinning kept a Model Tier meaning one thing.
+    #:
+    #: The objection was right and the fix was the wrong half. A tier still
+    #: means one thing; effort is simply no longer part of it, because it is
+    #: now the Role's to declare (ADR-0004, amended 2026-09-03). What survives
+    #: is the reason the constant existed: nothing is left to a per-model
+    #: default, so an Agent's reasoning depth is what a Role asked for and
+    #: never what a slug happened to ship with.
+    #:
+    #: `ultra` is available on `gpt-5.6-sol` alone and `Effort` does not offer
+    #: it; a level one Provider can honor is not an intent-named level.
 
-    def build_argv(self, model: str, native_skills: tuple[str, ...] = ()) -> Sequence[str]:
+    def build_argv(
+        self,
+        model: str,
+        effort: Effort,
+        native_skills: tuple[str, ...] = (),
+    ) -> Sequence[str]:
         """Options precede the subcommand: `codex [OPTIONS] <COMMAND> [ARGS]`.
 
         The prompt argument is `-`, which `codex exec --help` documents as "read
@@ -87,16 +100,18 @@ class CodexProvider(CliProvider):
         twice over: that flag does not exist in the current CLI, and options
         placed after the subcommand are rejected regardless.
 
-        Reasoning effort is pinned rather than derived from the tier, which is
-        what lets it be set here at all: a per-tier value would need the Model
-        Tier, and the port hands that to `model_for` and not to this method.
+        Reasoning effort arrives as an argument rather than being read off a
+        class constant. The old docstring noted that a per-tier value could not
+        be set here, because the port hands the Model Tier to `model_for` and
+        not to this method. That is still true and no longer matters: effort is
+        not derived from the tier, so it travels on its own.
         """
         return (
             self.binary,
             "--model",
             model,
             "-c",
-            f"model_reasoning_effort={self.REASONING_EFFORT}",
+            f"model_reasoning_effort={effort}",
             "--sandbox",
             self.SANDBOX,
             "--ask-for-approval",

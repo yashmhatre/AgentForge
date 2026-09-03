@@ -19,7 +19,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..context.prompt import render_context_block
-from ..core.contracts import AgentResult, ContextPack, ModelTier, Plan, Role
+from ..core.contracts import AgentResult, ContextPack, Effort, ModelTier, Plan, Role
 from ..core.plan_format import RESULT_CLOSE, RESULT_OPEN
 
 INSTRUCTIONS = """\
@@ -77,7 +77,12 @@ actually contains. Change no files when you escalate.\
 """
 
 #: The Implementer runs at `standard`: it executes a plan it did not write.
-IMPLEMENTER = Role(name="implementer", tier=ModelTier.STANDARD, instructions=INSTRUCTIONS)
+IMPLEMENTER = Role(
+    name="implementer",
+    tier=ModelTier.STANDARD,
+    effort=Effort.MEDIUM,
+    instructions=INSTRUCTIONS,
+)
 
 
 def render_steps(plan: Plan) -> str:

@@ -7,6 +7,7 @@ from agentforge_framework.core.config import (
     CapabilityTier,
     load_config,
 )
+from agentforge_framework.core.contracts import Effort, ModelTier
 
 
 def test_missing_config_uses_the_documented_provider_capability_defaults(tmp_path):
@@ -100,3 +101,62 @@ def test_a_declared_suite_that_names_nothing_is_refused_rather_than_defaulted(tm
 
     with pytest.raises(ValueError, match="gates.tests.suite"):
         load_config(tmp_path)
+
+
+# --- ADR-0004's override, finally read (#112) -------------------------------
+
+
+def test_a_project_pins_the_model_a_tier_means(tmp_path):
+    """The sentence ADR-0004 opened with in 2026-08 and nothing read until now:
+    users override the mapping without touching Role definitions."""
+    config = _config_file(
+        tmp_path,
+        "providers:\n  claude:\n    models:\n      deep: claude-opus-4-1\n",
+    )
+
+    assert config.model_for("claude", ModelTier.DEEP) == "claude-opus-4-1"
+
+
+def test_an_unnamed_tier_keeps_the_adapters_own_model(tmp_path):
+    """A project pins the one tier it disagrees about rather than restating all
+    three, so a later adapter bump still reaches it on the other two."""
+    config = _config_file(
+        tmp_path,
+        "providers:\n  claude:\n    models:\n      deep: claude-opus-4-1\n",
+    )
+
+    assert config.model_for("claude", ModelTier.CHEAP) is None
+    assert config.model_for("codex", ModelTier.DEEP) is None
+
+
+def test_naming_models_does_not_disturb_the_capability_tier(tmp_path):
+    """Two unrelated keys under one provider. The capability default survived
+    being read from a block that never mentions it."""
+    config = _config_file(
+        tmp_path,
+        "providers:\n  claude:\n    models:\n      deep: claude-opus-4-1\n",
+    )
+
+    assert config.capability_for("claude") is CapabilityTier.NATIVE
+
+
+def test_a_project_overrides_either_axis_of_a_role(tmp_path):
+    config = _config_file(
+        tmp_path,
+        "roles:\n  security:\n    tier: deep\n    effort: max\n  tester:\n    effort: low\n",
+    )
+
+    assert config.role_tiers == {"security": ModelTier.DEEP}
+    assert config.role_efforts == {"security": Effort.MAX, "tester": Effort.LOW}
+
+
+def test_a_role_that_names_a_model_is_refused_rather_than_ignored(tmp_path):
+    """The shape everybody reaches for, and the one ADR-0004 exists to stop. A
+    model named per Role does not survive a release and does not port across
+    Providers — and dropping the key quietly would leave a project believing it
+    had pinned something, which reads as working until a Provider changes."""
+    with pytest.raises(ValueError) as exc:
+        _config_file(tmp_path, "roles:\n  security:\n    model: claude-opus-5\n")
+
+    assert "roles.security.model" in str(exc.value)
+    assert "ADR-0004" in str(exc.value), "the refusal names the decision it enforces"

@@ -33,6 +33,7 @@ from ..context.prompt import render_context_block
 from ..core.contracts import (
     AgentResult,
     ContextPack,
+    Effort,
     ModelTier,
     Outcome,
     Plan,
@@ -158,6 +159,7 @@ End your reply with this block and nothing after it:
 REVIEWER = Role(
     name="reviewer",
     tier=ModelTier.DEEP,
+    effort=Effort.HIGH,
     instructions=INSTRUCTIONS,
     skills=WRITING_SKILLS,
 )

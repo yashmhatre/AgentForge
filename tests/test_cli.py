@@ -137,7 +137,7 @@ def test_a_tier_override_reaches_the_provider(runner):
 
     run(["implement", "12", "--tier", "deep"], runner)
 
-    assert runner.argument_after("--model", "claude") == "opus"
+    assert runner.argument_after("--model", "claude") == "claude-opus-5"
 
 
 def test_a_bare_tier_moves_every_role():

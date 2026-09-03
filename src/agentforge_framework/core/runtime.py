@@ -482,9 +482,18 @@ class Forge:
                         ),
                     )
                 role = resolve_role(step.role)
+                # Effort is the Role's own axis, so it is settled here once and
+                # never enters the tier precedence chain below — the two are
+                # overridden independently or the split means nothing.
+                if role.name in config.role_efforts:
+                    role = role.at_effort(config.role_efforts[role.name])
                 at = overrides.get(
                     role.name,
-                    tier or step.tier or chosen.get(role.name) or role.tier,
+                    tier
+                    or step.tier
+                    or chosen.get(role.name)
+                    or config.role_tiers.get(role.name)
+                    or role.tier,
                 )
                 # Derived from the Run Log rather than enumerated, because a
                 # resumed Run starts partway through and would otherwise tell a

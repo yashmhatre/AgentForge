@@ -249,30 +249,41 @@ the repository — outside a Run, that is what its root markers say. See
 
 ## Roles and Model Tiers
 
-Six Roles ship. A Role is a definition — a fixed job, a Model Tier, and a prompt — and an Agent is
-one Role in execution. Agents never talk to each other: they read the Issue and write to the Run Log.
+Six Roles ship. A Role is a definition — a fixed job, a Model Tier, an Effort, and a prompt — and an
+Agent is one Role in execution. Agents never talk to each other: they read the Issue and write to the
+Run Log.
 
-| Role | Tier | Its job |
-|---|---|---|
-| `orchestrator` | `deep` | Turns a Task into an Issue: assembles the Context Pack, picks the Roster, drafts the plan. The only Role that reasons about what to do |
-| `architect` | `deep` | Designs an approach when a Task needs one before code is written |
-| `implementer` | `standard` | Writes the change the plan describes, and nothing the plan does not |
-| `tester` | `cheap` | Writes and runs tests. Reports that it could not run the suite rather than reading tests and claiming success |
-| `security` | `deep` | Audits the change against production standards and reports Findings it does not fix |
-| `reviewer` | `deep` | Speaks last: reports on what everything before it did, and rewrites its own prose against the unslop scan |
+| Role | Tier | Effort | Its job |
+|---|---|---|---|
+| `orchestrator` | `deep` | `high` | Turns a Task into an Issue: assembles the Context Pack, picks the Roster, drafts the plan. The only Role that reasons about what to do |
+| `architect` | `deep` | `high` | Designs an approach when a Task needs one before code is written |
+| `implementer` | `standard` | `medium` | Writes the change the plan describes, and nothing the plan does not |
+| `tester` | `cheap` | `medium` | Writes and runs tests. Reports that it could not run the suite rather than reading tests and claiming success |
+| `security` | `standard` | `high` | Audits the change against production standards and reports Findings it does not fix |
+| `reviewer` | `deep` | `high` | Speaks last: reports on what everything before it did, and rewrites its own prose against the unslop scan |
 
-A Role declares a tier by intent, never a model name. Each Provider adapter maps the three tiers
-onto whatever its CLI accepts:
+Two axes, set independently. The **Model Tier** picks which class of model runs; the **Effort** picks
+how much reasoning it spends. A Role declares both by intent and neither as a model name.
+
+Security is the row that shows why they are separate. It audits at `standard` and thinks at `high` —
+deliberately harder than the Implementer whose work it reads, on the same size of model. A missed
+finding is silent, and what prevents one is reasoning rather than a bigger model.
+
+Each Provider adapter maps the three tiers onto whatever its CLI accepts:
 
 | Tier | `claude` | `codex` |
 |---|---|---|
-| `deep` | `opus` | `gpt-5.6-sol` |
-| `standard` | `sonnet` | `gpt-5.5` |
-| `cheap` | `haiku` | `gpt-5.4` |
+| `deep` | `claude-opus-5` | `gpt-5.6-sol` |
+| `standard` | `claude-sonnet-5` | `gpt-5.6-terra` |
+| `cheap` | `claude-haiku-4-5` | `gpt-5.6-luna` |
+
+Effort maps the same way — `claude --effort`, and codex's `model_reasoning_effort` — across `low`,
+`medium`, `high`, `xhigh`, `max`.
 
 The tier beside a Role in the Issue's Roster table is the tier that Step runs at — the Orchestrator's
 judgement about how hard this Task is, frozen with the rest of the plan, so a resumed Run costs what
-the first invocation would have. A `--tier` flag beats it.
+the first invocation would have. A `--tier` flag beats it. Effort has no command-line flag: it is set
+per Role in `.agentforge/config.yaml` under `roles.<name>.effort`, or left at the table above.
 
 ## Workflows
 

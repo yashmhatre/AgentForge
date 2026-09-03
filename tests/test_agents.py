@@ -312,7 +312,7 @@ def test_the_orchestrator_runs_deep_by_default():
     Orchestrator(ClaudeProvider(runner)).plan(Task("add a retry"), Path("/repo"))
 
     assert ORCHESTRATOR.tier is ModelTier.DEEP
-    assert runner.argument_after("--model", "claude") == "opus"
+    assert runner.argument_after("--model", "claude") == "claude-opus-5"
 
 
 def test_the_two_tier_tables_agree():
@@ -449,5 +449,5 @@ def test_the_implementer_runs_at_standard_by_default():
     )
 
     assert IMPLEMENTER.tier is ModelTier.STANDARD
-    assert runner.argument_after("--model", "claude") == "sonnet"
+    assert runner.argument_after("--model", "claude") == "claude-sonnet-5"
     assert result.outcome is Outcome.COMPLETED

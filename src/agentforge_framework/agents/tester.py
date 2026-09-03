@@ -5,7 +5,15 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..context.prompt import render_context_block
-from ..core.contracts import AgentResult, ContextPack, ModelTier, Outcome, Plan, Role
+from ..core.contracts import (
+    AgentResult,
+    ContextPack,
+    Effort,
+    ModelTier,
+    Outcome,
+    Plan,
+    Role,
+)
 from ..core.plan_format import RESULT_CLOSE, RESULT_OPEN
 from .implementer import render_steps
 
@@ -66,7 +74,12 @@ from verifying. Reading tests is not a substitute for running them.\
 #: recorded in ADR-0004 — reasoning about an edge case nobody wrote a test for is
 #: the part that gets worse here, and it is the part a human reads the findings
 #: for anyway.
-TESTER = Role(name="tester", tier=ModelTier.CHEAP, instructions=INSTRUCTIONS)
+TESTER = Role(
+    name="tester",
+    tier=ModelTier.CHEAP,
+    effort=Effort.MEDIUM,
+    instructions=INSTRUCTIONS,
+)
 
 
 def build_prompt(

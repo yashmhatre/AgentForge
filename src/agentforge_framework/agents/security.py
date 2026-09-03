@@ -1,9 +1,15 @@
 """The Security Role: audits the change, and fixes nothing.
 
-It runs at `deep` per ADR-0004, which is the one tier decision in the project
-that is not about cost. A missed finding is silent — nobody reviews the audit
-that did not happen — so the Role that looks for what nobody asked about is the
-Role that cannot be run cheaply.
+It runs at `standard` and thinks at `high` (ADR-0004, amended 2026-09-03). The
+tier used to be `deep`, on the one argument in the table that was not about
+cost: a missed finding is silent — nobody reviews the audit that did not happen
+— so the Role that looks for what nobody asked about cannot be run cheaply.
+
+That argument survives; it was only ever about reasoning. When effort became a
+Role's own axis, the depth it was really buying became purchasable on its own,
+and Security kept it — `high`, above the Implementer whose work it reads —
+while the tier came down. If audits start missing what a human then finds at
+Sign-off, the tier is the half to move back.
 
 Its output is a list of Findings rather than prose, because the Gate downstream
 of it has to tell "audited, nothing found" from "did not audit", and a paragraph
@@ -16,7 +22,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..context.prompt import render_context_block
-from ..core.contracts import AgentResult, ContextPack, ModelTier, Plan, Role
+from ..core.contracts import AgentResult, ContextPack, Effort, ModelTier, Plan, Role
 from ..core.plan_format import RESULT_CLOSE, RESULT_OPEN
 from .implementer import render_steps
 
@@ -86,8 +92,14 @@ Use `"outcome": "escalated"` only when the Plan does not match the repository, \
 or when you could not audit the change at all. Say which in `summary`.\
 """
 
-#: Security runs `deep`: a finding nobody makes is a finding nobody reviews.
-SECURITY = Role(name="security", tier=ModelTier.DEEP, instructions=INSTRUCTIONS)
+#: A finding nobody makes is a finding nobody reviews — bought as depth rather
+#: than as model size. See the module docstring and ADR-0004.
+SECURITY = Role(
+    name="security",
+    tier=ModelTier.STANDARD,
+    effort=Effort.HIGH,
+    instructions=INSTRUCTIONS,
+)
 
 
 def build_prompt(
