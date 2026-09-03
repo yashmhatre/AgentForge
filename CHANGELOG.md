@@ -4,6 +4,19 @@ What changed in each release of AgentForge. Dates are the day the tag was cut.
 
 ## Unreleased
 
+- **Neither CLI's denied posture denies, and neither expresses a bounded command
+  set.** The M5 allowlist ADR-0007 deferred was unblocked, so #108 went to ask
+  the two CLIs whether they could carry a project's declared suite in the
+  argument vector. Checked by invocation against `claude` 2.1.251 and
+  `codex-cli` 0.147.0, not from help text. `--allowedTools` is additive rather
+  than exclusive, `codex exec` discards `--ask-for-approval` and always runs
+  `never`, and the approval policy that reads execpolicy rules is unreachable
+  from the CLI. Both adapters' `DENIED` posture executed an arbitrary shell
+  command on a Run that had not been granted one, which means ADR-0007's
+  default-deny has not been in force on either Provider. Nothing is fixed here:
+  the spike changed no code, and the postures are now a defect to file rather
+  than an enhancement to build. See
+  [ADR-0025](docs/adr/0025-neither-cli-expresses-a-bounded-command-set.md).
 - **Reasoning effort is a Role's to declare, not a tier's to imply.** A Role now
   carries two axes: a Model Tier that picks the model and an Effort that picks
   how hard it thinks. `claude --effort` had never been sent at all, so an Agent
