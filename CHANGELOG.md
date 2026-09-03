@@ -4,6 +4,20 @@ What changed in each release of AgentForge. Dates are the day the tag was cut.
 
 ## Unreleased
 
+- **Both denied postures now deny.** Neither did. `claude`'s `acceptEdits`
+  governs edits and hands commands to an auto-approving classifier, and
+  `codex exec` discards `--ask-for-approval` and always runs `never` — so a Run
+  without `--allow-commands` executed arbitrary shell commands on both
+  Providers while the Run Log said it could not, and ADR-0007's default-deny
+  had never been in force. `claude` now carries an `ask` rule on `Bash` and
+  `PowerShell` inline to `--settings`, which refuses the command, tells the
+  Role, records it in `permission_denials`, and outranks a permissive rule in
+  the user's own settings file. `codex` has no denied posture to carry: the
+  approval policy that would consult an allowlist is rejected by its CLI, and
+  editing and executing are the same channel there, so a denied Run is refused
+  before it spends anything and names both ways forward. Verified by
+  invocation. See [ADR-0007](docs/adr/0007-command-execution-is-default-deny.md),
+  amended.
 - **Neither CLI's denied posture denies, and neither expresses a bounded command
   set.** The M5 allowlist ADR-0007 deferred was unblocked, so #108 went to ask
   the two CLIs whether they could carry a project's declared suite in the

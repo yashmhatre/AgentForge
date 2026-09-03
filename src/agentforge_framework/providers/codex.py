@@ -31,7 +31,7 @@ from typing import ClassVar
 
 from ..core.contracts import Effort, ModelTier, Usage
 from ..core.process import CommandResult
-from .base import CliProvider, ProviderOutput
+from .base import CliProvider, ProviderError, ProviderOutput
 
 
 class CodexProvider(CliProvider):
@@ -52,20 +52,27 @@ class CodexProvider(CliProvider):
         ModelTier.CHEAP: "gpt-5.6-luna",
     }
 
-    #: ADR-0007's two postures, on the two axes `codex --help` documents.
-    #:
     #: The sandbox never changes: an Agent writes in the workspace and nowhere
-    #: else, in both postures. What the gate moves is the approval policy.
-    #: `untrusted` auto-runs only reads (`ls`, `cat`, `sed`) and escalates
-    #: anything else, which is this CLI's nearest analogue to the `claude`
-    #: adapter's `acceptEdits`. `never` stops asking.
-    #:
-    #: `danger-full-access` and `--dangerously-bypass-approvals-and-sandbox`
+    #: else. `danger-full-access` and `--dangerously-bypass-approvals-and-sandbox`
     #: are deliberately unused. ADR-0007 opens a gate; it does not remove the
     #: sandbox, and an unattended Role is the last thing that should be outside
     #: one.
     SANDBOX: ClassVar[str] = "workspace-write"
-    DENIED: ClassVar[str] = "untrusted"
+
+    #: The only approval policy `codex exec` runs. There is no `DENIED` beside
+    #: it, because this CLI has no denied posture to name.
+    #:
+    #: `untrusted` used to be here, on the reading that it escalates anything
+    #: that is not a read. It never reached the CLI: `codex exec` prints
+    #: `approval: never` whatever `--ask-for-approval` says, and does the same
+    #: for `-c approval_policy="untrusted"`, because a non-interactive run has
+    #: nobody to escalate to. Under the old denied posture an Agent asked to
+    #: create a file did (#115).
+    #:
+    #: The policy that consults an execpolicy allowlist, `AskForApproval::Granular`,
+    #: is in the binary and rejected by the CLI (ADR-0025). Hooks could refuse,
+    #: and are gated behind `--dangerously-bypass-hook-trust`, which is not a
+    #: foundation to build default-deny on.
     PERMITTED: ClassVar[str] = "never"
 
     #: This adapter used to pin one effort across every tier, because the
@@ -81,6 +88,37 @@ class CodexProvider(CliProvider):
     #:
     #: `ultra` is available on `gpt-5.6-sol` alone and `Effort` does not offer
     #: it; a level one Provider can honor is not an intent-named level.
+
+    def preflight(self) -> None:
+        """The CLI has to exist, and the Run has to be one this adapter can hold.
+
+        ADR-0007's posture is a guarantee, and a Provider that cannot give it
+        should say so rather than pass a flag the CLI discards. Refusing here
+        costs nothing — `_prepare` runs it before a Run spends anything — and
+        leaves the human the choice ADR-0007 wanted them to make knowingly.
+
+        Here rather than in `build_argv`, which is the other place every
+        invocation passes through. A posture is a fact about a Run, not about
+        assembling an argument vector, and putting it there makes a codex
+        invocation unconstructible for the tests that exercise the port itself —
+        stdin handling, usage parsing, skill delivery — none of which is asking
+        anything about permissions. `preflight` is the seam the runtime gates
+        every Run on, the same one that catches an absent CLI.
+        """
+        super().preflight()
+        self._refuse_if_denied()
+
+    def _refuse_if_denied(self) -> None:
+        if self.allow_commands:
+            return
+        raise ProviderError(
+            "the codex CLI cannot deny command execution in a headless Run: "
+            "`codex exec` discards --ask-for-approval and always runs `never` "
+            "(ADR-0025), so a Role would execute commands while the Run Log "
+            "said it could not. Re-run with --allow-commands to accept that a "
+            "Role may run commands inside the workspace sandbox, or use "
+            "--provider claude, whose denied posture refuses them."
+        )
 
     def build_argv(
         self,
@@ -115,7 +153,7 @@ class CodexProvider(CliProvider):
             "--sandbox",
             self.SANDBOX,
             "--ask-for-approval",
-            self.PERMITTED if self.allow_commands else self.DENIED,
+            self.PERMITTED,
             "exec",
             "-",
         )
