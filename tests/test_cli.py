@@ -439,6 +439,31 @@ def test_init_prints_the_plugins_and_says_they_are_not_written(tmp_path, capsys)
     assert "sql" not in written, "a key nothing reads is a lie told to whoever edits it"
 
 
+def test_init_pins_the_suite_to_the_virtualenv_it_found(tmp_path, capsys):
+    """The end of #120, at the level a user meets it: a repository with a venv
+    gets a suite that runs under the venv rather than under whichever `pytest`
+    PATH answers with."""
+    interpreter = tmp_path / ".venv" / "bin" / "python"
+    interpreter.parent.mkdir(parents=True)
+    interpreter.write_text("", encoding="utf-8")
+
+    assert init(tmp_path) == 0
+
+    assert load_config(tmp_path).test_suite == (".venv/bin/python", "-m", "pytest")
+    assert ".venv/bin/python" in capsys.readouterr().out
+
+
+def test_init_says_what_it_doubts_about_the_suite_it_wrote(tmp_path, capsys):
+    """A machine with no pytest on it still gets a config; it gets the doubt
+    with it, on the terminal and in the file, because init runs once and the
+    file is read for as long as the repository lives."""
+    assert init(tmp_path) == 0
+
+    assert "not on PATH" in capsys.readouterr().out
+    written = (tmp_path / ".agentforge" / "config.yaml").read_text(encoding="utf-8")
+    assert "not on PATH" in written
+
+
 def test_init_reports_the_languages_git_knows_about(tmp_path, capsys):
     init(tmp_path, fake=a_repository(tmp_path, "a.py\nb.py\nmodels/orders.sql\n"))
 

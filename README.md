@@ -261,9 +261,21 @@ if the repository has no GitHub remote, because ADR-0002 makes that a
 precondition for every Run. Re-running never clobbers a config you have edited:
 it reports what differs and writes nothing, and `--force` replaces it.
 
+A Python suite is written pinned to the interpreter that will run it —
+`[".venv/bin/python", "-m", "pytest"]` rather than `pytest` — whenever the
+repository has a virtualenv to pin it to, and init checks that the interpreter
+can run pytest before writing the line. Bare `pytest` is whichever one PATH
+answers with, which in a project with a venv is the one the project does not
+use: the suite then fails on imports that are installed and reads as a broken
+repository rather than a misconfigured one. The interpreter is named relative to
+the repository root, so the file is still right on somebody else's clone, and
+init looks up to two directories down for the project — a suite that lives in
+`subproject/tests/` is found, and named.
+
 The file is not a precondition. Without one, the documented Provider capability
 defaults are Claude `native` and every other Provider `fragment`, and the
-`tests` Gate runs `pytest`.
+`tests` Gate runs `pytest` — the case the pinning above exists to avoid, so a
+repository with a venv is better off with a file.
 
 ```yaml
 providers:

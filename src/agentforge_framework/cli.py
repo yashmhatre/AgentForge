@@ -512,7 +512,7 @@ def _run_init(args: argparse.Namespace, runner=None) -> int:
     from .core.config import load_config
     from .core.contracts import Plan
     from .core.process import SubprocessRunner
-    from .core.project import config_path, detect, differences, render_config
+    from .core.project import config_path, detect, differences, render_config, verified
     from .core.registry import activate
     from .core.repo import PreconditionFailed, open_repository
     from .providers import DEFAULT_PROVIDER, PROVIDERS
@@ -531,11 +531,14 @@ def _run_init(args: argparse.Namespace, runner=None) -> int:
         return 2
 
     active = activate(Plan(summary=""), repo.root)
-    context = detect(
-        repo.root,
-        provider,
-        tracked=repo.tracked_files(),
-        plugins=tuple(plugin.name for plugin in active.plugins),
+    context = verified(
+        detect(
+            repo.root,
+            provider,
+            tracked=repo.tracked_files(),
+            plugins=tuple(plugin.name for plugin in active.plugins),
+        ),
+        runner,
     )
 
     print(f"Repository: {repo.root}")
@@ -544,6 +547,8 @@ def _run_init(args: argparse.Namespace, runner=None) -> int:
     suite = " ".join(context.test_suite)
     where = context.suite_detected or "not detected, so this is the documented default"
     print(f"  Suite:     `{suite}` — {where}")
+    if context.suite_note:
+        print(f"             {context.suite_note}")
     print(f"  Plugins:   {', '.join(context.plugins) or 'none by root marker'}")
     print(
         "             printed, not written: which Plugins answer is decided per Run\n"

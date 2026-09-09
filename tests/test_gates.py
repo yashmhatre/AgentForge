@@ -343,6 +343,80 @@ def test_the_clean_pass_gate_runs_nothing():
     assert runner.calls == []
 
 
+def a_pinned_suite(tmp_path, **scripted) -> tuple[FakeRunner, str]:
+    """A repository whose config pins the suite to its own virtualenv, as
+    `agentforge init` writes it: the interpreter relative to the root."""
+    interpreter = tmp_path / ".venv" / "bin" / "python"
+    interpreter.parent.mkdir(parents=True)
+    interpreter.write_text("", encoding="utf-8")
+
+    config = tmp_path / ".agentforge"
+    config.mkdir()
+    (config / "config.yaml").write_text(
+        'gates:\n  tests:\n    suite: [".venv/bin/python", "-m", "pytest"]\n',
+        encoding="utf-8",
+    )
+
+    runner = FakeRunner().install(str(interpreter))
+    runner.script(str(interpreter), **scripted)
+    return runner, str(interpreter)
+
+
+def test_an_interpreter_named_relative_to_the_repository_is_resolved_against_it(tmp_path):
+    """init writes that path relative to the root because the file gets
+    committed. A relative program name resolves against the child's directory on
+    POSIX and the parent's on Windows, so the Gate resolves it rather than the OS."""
+    runner, interpreter = a_pinned_suite(tmp_path, stdout="24 passed")
+
+    entry = evaluate_gate("tests", a_context("tests", runner=runner, root=tmp_path))
+
+    assert runner.only(interpreter) == (interpreter, "-m", "pytest")
+    assert entry.verdict is GateVerdict.CLEARED
+
+
+def test_the_run_log_names_the_suite_the_project_declared_rather_than_this_machines_path(
+    tmp_path,
+):
+    """The verdict is read on an Issue by whoever did not run it. An absolute
+    path off somebody's laptop is noise there; the declared line is the thing
+    they can go and look at."""
+    runner, interpreter = a_pinned_suite(tmp_path, stdout="24 passed")
+
+    entry = evaluate_gate("tests", a_context("tests", runner=runner, root=tmp_path))
+
+    assert ".venv/bin/python -m pytest" in entry.summary
+    assert interpreter not in entry.summary
+
+
+def test_an_interpreter_with_no_pytest_in_it_halts_rather_than_reporting_a_red_suite(tmp_path):
+    """`python -m pytest` with no pytest exits 1, which is the status a suite
+    spends on real failures. Blocking on it would tell a human their tests
+    failed, and waiting would clear nothing: the thing to fix is the machine."""
+    runner, _ = a_pinned_suite(
+        tmp_path, returncode=1, stderr="python.exe: No module named pytest"
+    )
+
+    entry = evaluate_gate("tests", a_context("tests", runner=runner, root=tmp_path))
+
+    assert entry.verdict is GateVerdict.ERRORED
+    assert "no test runner installed" in entry.summary
+
+
+def test_a_suite_that_fails_on_an_import_is_still_a_failing_suite(tmp_path):
+    """The near miss: a test that fails with `ModuleNotFoundError` reports it on
+    standard output, where pytest puts what it found out about the code. Only
+    the interpreter's own complaint arrives on standard error."""
+    runner, _ = a_pinned_suite(
+        tmp_path,
+        returncode=1,
+        stdout="E   ModuleNotFoundError: No module named 'orders'\n1 failed, 23 passed",
+    )
+
+    entry = evaluate_gate("tests", a_context("tests", runner=runner, root=tmp_path))
+
+    assert entry.verdict is GateVerdict.BLOCKED
+
+
 def test_the_suite_a_project_declares_is_the_one_that_runs(tmp_path):
     """A repository that does not run pytest says so in its Project Context. The
     Gate reads it rather than guessing from the shape of the tree."""
