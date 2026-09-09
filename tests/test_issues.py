@@ -90,7 +90,7 @@ def test_filing_an_issue_sends_the_body_verbatim():
 
     issue = github(runner).create_issue("add a retry", BODY, labels=("agentforge:planned",))
 
-    assert runner.argument_after("--body", "gh", "issue", "create") == BODY
+    assert runner.prompt_to("gh", "issue", "create") == BODY
     assert issue.number == 41
     assert issue.url.endswith("/41")
 
@@ -774,3 +774,56 @@ def test_a_run_with_no_pack_says_that_it_is_the_control():
 
     assert "Context Pack — none" in comment
     assert "--no-context-pack" in comment
+
+
+# --- what travels in the argv, and what does not ---------------------------
+
+
+WINDOWS_COMMAND_LINE_CAP = 32767
+
+
+def _a_body_too_long_for_a_command_line() -> str:
+    """Bigger than Windows will spawn, and no bigger than a real plan."""
+    return "x" * (WINDOWS_COMMAND_LINE_CAP + 1000)
+
+
+def test_a_body_larger_than_a_command_line_still_files():
+    """The failure in #128: a frozen plan exceeds the 32,767-character cap
+    Windows puts on a whole command line, so a body in the argv could not be
+    spawned at all -- after the Run had already paid for every model call."""
+    runner = FakeRunner().script(
+        "gh", "issue", "create", stdout="https://github.com/acme/pipelines/issues/41\n"
+    )
+    body = _a_body_too_long_for_a_command_line()
+
+    issue = github(runner).create_issue("add a retry", body)
+
+    assert issue.number == 41
+    assert runner.prompt_to("gh", "issue", "create") == body
+    spawned = runner.only("gh", "issue", "create")
+    assert sum(len(part) + 1 for part in spawned) < WINDOWS_COMMAND_LINE_CAP
+    assert body not in spawned
+
+
+@pytest.mark.parametrize(
+    "send, prefix",
+    [
+        (lambda tracker, body: tracker.create_issue("a title", body), ("gh", "issue", "create")),
+        (lambda tracker, body: tracker.post_comment(41, body), ("gh", "issue", "comment")),
+        (
+            lambda tracker, body: tracker.open_draft_pr(title="a title", body=body, head="topic"),
+            ("gh", "pr", "create"),
+        ),
+    ],
+    ids=["issue", "comment", "pull request"],
+)
+def test_no_body_is_ever_an_argument(send, prefix):
+    runner = FakeRunner().script(*prefix, stdout="https://github.com/acme/pipelines/issues/41\n")
+    body = _a_body_too_long_for_a_command_line()
+
+    send(github(runner), body)
+
+    spawned = runner.only(*prefix)
+    assert "--body" not in spawned, "the body would travel in the argv"
+    assert "--body-file" in spawned and "-" in spawned
+    assert runner.prompt_to(*prefix) == body

@@ -105,7 +105,7 @@ def test_planning_files_an_issue_a_human_can_judge_before_any_code_is_written():
 
     assert len(outcome.filed) == 1
     assert outcome.filed[0].issue.number == 12
-    body = runner.argument_after("--body", "gh", "issue", "create")
+    body = runner.prompt_to("gh", "issue", "create")
     assert "> Add a retry to the loader, end to end." in body
     assert "| 1 | implementer | `standard` |" in body
 
@@ -118,7 +118,7 @@ def test_the_filed_body_is_the_body_implement_will_parse_back():
 
     forge(runner).plan("add a retry to the loader", approver=_yes)
 
-    body = runner.argument_after("--body", "gh", "issue", "create")
+    body = runner.prompt_to("gh", "issue", "create")
     document = parse_issue_body(body)
     assert document.roster.names() == ("implementer", "tester", "security", "reviewer")
     assert document.workflow == "feature"
@@ -150,7 +150,7 @@ def test_the_workflow_the_orchestrator_chose_survives_to_the_run():
 
     forge(runner).plan("review the incoming branch", approver=_yes)
 
-    body = runner.argument_after("--body", "gh", "issue", "create")
+    body = runner.prompt_to("gh", "issue", "create")
     assert "Running the `review` Workflow" in body
     assert parse_issue_body(body).workflow == "review"
 
@@ -392,7 +392,7 @@ def test_the_run_ends_in_a_draft_pull_request_and_never_a_merge():
 
     assert "--draft" in runner.only("gh", "pr", "create")
     assert not runner.ran("gh", "pr", "merge")
-    body = runner.argument_after("--body", "gh", "pr", "create")
+    body = runner.prompt_to("gh", "pr", "create")
     assert "Closes #12." in body
 
 
@@ -414,7 +414,7 @@ def test_a_run_log_entry_names_the_tier_it_cost():
 
     forge(runner).implement(12)
 
-    comments = [c[c.index("--body") + 1] for c in runner.matching("gh", "issue", "comment")]
+    comments = runner.prompts_to("gh", "issue", "comment")
     assert any("**Model Tier:** `standard`" in c for c in comments)
 
 
@@ -432,7 +432,7 @@ def test_a_role_can_be_moved_up_a_tier_for_a_task_the_user_knows_is_hard():
 
 
 def comments_on(runner: FakeRunner) -> list[str]:
-    return [c[c.index("--body") + 1] for c in runner.matching("gh", "issue", "comment")]
+    return runner.prompts_to("gh", "issue", "comment")
 
 
 def test_a_run_that_reaches_sign_off_ends_with_a_terminal_comment():
@@ -956,9 +956,7 @@ def test_a_tester_step_override_leaves_the_roles_default_unchanged(tmp_path, mon
         "claude-opus-5",
     ]
     comments = [
-        call[call.index("--body") + 1]
-        for call in runner.matching("gh", "issue", "comment")
-        if "### tester" in call[call.index("--body") + 1]
+        body for body in runner.prompts_to("gh", "issue", "comment") if "### tester" in body
     ]
     assert "**Model Tier:** `deep`" in comments[0]
     assert TESTER.tier is ModelTier.CHEAP
@@ -1938,7 +1936,7 @@ def test_the_pull_request_lists_only_what_was_committed():
 
     forge(runner).implement(12, allow_commands=True)
 
-    body = runner.argument_after("--body", "gh", "pr", "create")
+    body = runner.prompt_to("gh", "pr", "create")
     assert "- `src/loader.py`" in body
     assert "loader.cpython-311.pyc" not in body.split("## Left uncommitted")[0]
 
@@ -1961,7 +1959,7 @@ def test_a_committed_file_no_agent_claimed_is_named_in_the_pull_request():
     forge(runner).implement(12, allow_commands=True)
 
     assert "src/telemetry.py" in staged(runner), "ADR-0015 still commits it"
-    body = runner.argument_after("--body", "gh", "pr", "create")
+    body = runner.prompt_to("gh", "pr", "create")
     unclaimed_section = body.split("## Committed, but no Agent claimed them")[1]
     assert "- `src/telemetry.py`" in unclaimed_section
     assert "- `src/loader.py`" not in unclaimed_section, (
@@ -1978,7 +1976,7 @@ def test_a_run_whose_every_file_was_declared_says_nothing_about_unclaimed_ones()
 
     forge(runner).implement(12, allow_commands=True)
 
-    body = runner.argument_after("--body", "gh", "pr", "create")
+    body = runner.prompt_to("gh", "pr", "create")
     assert "no Agent claimed" not in body
 
 
@@ -1995,7 +1993,7 @@ def test_a_role_that_spelled_its_path_the_windows_way_still_claimed_the_file():
 
     forge(runner).implement(12, allow_commands=True)
 
-    body = runner.argument_after("--body", "gh", "pr", "create")
+    body = runner.prompt_to("gh", "pr", "create")
     assert "no Agent claimed" not in body
 
 
@@ -2008,7 +2006,7 @@ def test_what_was_left_behind_is_named_rather_than_dropped():
 
     forge(runner).implement(12, allow_commands=True)
 
-    body = runner.argument_after("--body", "gh", "pr", "create")
+    body = runner.prompt_to("gh", "pr", "create")
     left = body.split("## Left uncommitted")[1]
     assert "- `src/__pycache__/loader.cpython-311.pyc`" in left
     assert "- `tests/__pycache__/test_loader.cpython-311-pytest-9.1.1.pyc`" in left

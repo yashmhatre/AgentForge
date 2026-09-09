@@ -1,3 +1,3 @@
 """AgentForge — coordination of specialized software agents through reusable workflows."""
 
-__version__ = "0.2.6"
+__version__ = "0.2.7"

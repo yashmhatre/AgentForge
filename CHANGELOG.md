@@ -2,6 +2,27 @@
 
 What changed in each release of AgentForge. Dates are the day the tag was cut.
 
+## 0.2.7 — 2026-09-10
+
+Planning could not file anything on Windows, and said the wrong thing about why.
+
+- **An Issue body travels on stdin, never in the argument vector.** Windows caps
+  a whole command line at 32,767 characters. A frozen plan is larger than that on
+  its own, so `gh issue create --body <the plan>` failed inside `CreateProcess`
+  before `gh` was reached — and it failed at the first Slice, after the Run had
+  already paid for the grill, the synthesis, the cut, and a planning pass per
+  Slice. Nothing was filed and none of that work survived. Bodies now go to
+  `--body-file -` on standard input, for Issues, for Run Log comments, and for
+  the draft pull request alike. POSIX's much larger `ARG_MAX` hid all of this,
+  which is why it reached a release. See #128.
+- **An over-long command line no longer reports itself as a missing binary.**
+  Windows spends one errno on two unrelated failures, and the Command Runner
+  read every `FileNotFoundError` as "not installed or not on PATH" — telling
+  whoever hit this to go and check a `gh` install that `preflight` had proved
+  was fine earlier in the same Run. `winerror` 206 is now its own
+  `CommandLineTooLong`, which names the length and says where the argument
+  belongs instead.
+
 ## 0.2.6 — 2026-09-10
 
 One release, one bug: what the CLI prints was in the wrong encoding on Windows

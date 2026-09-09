@@ -80,7 +80,7 @@ def _prompts(runner: FakeRunner) -> list[str]:
 
 
 def bodies(runner: FakeRunner) -> list[str]:
-    return [call[call.index("--body") + 1] for call in runner.matching("gh", "issue", "create")]
+    return runner.prompts_to("gh", "issue", "create")
 
 
 def titles(runner: FakeRunner) -> list[str]:
