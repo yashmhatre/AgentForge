@@ -8,9 +8,9 @@ A human states a Task. The Orchestrator grills them on it, writes a spec, cuts t
 
 ## Status
 
-The Workflow runtime now runs multiple Roles in order. The default `feature`
-Workflow invokes the Implementer, the Tester, Security, and then the Reviewer,
-posting each Agent Result to the Issue before starting the next Step.
+A Workflow runs its Roles in order. The default `feature` Workflow invokes the
+Implementer, the Tester, Security, and then the Reviewer, posting each Agent
+Result to the Issue before starting the next Step.
 
 ```console
 $ agentforge plan "add a retry to the loader"
@@ -86,13 +86,15 @@ cannot hold it — `codex exec` discards its approval flag — so a denied Run o
 `codex` is refused before it starts rather than run under a guarantee nothing
 enforces (ADR-0007, amended). Security, the Reviewer, and the Architect need no such flag —
 auditing, reviewing, and designing are reading. All six Roles `CONTEXT.md` names
-now run. Plugins have landed, and with them the data-engineering ones: a
+run. Plugins carry the data-engineering conventions: a
 repository whose files import `pyspark` has its Roles told to write DataFrame
 expressions rather than RDDs, and a Databricks workspace gets Unity Catalog
 naming and the Delta MERGE idioms in the prompts that write code and the
 workspace's own posture in the one that audits it. A repository that matches
-neither hears neither. `agentforge init` is still to come. See
-[`docs/PLAN.md`](docs/PLAN.md).
+neither hears neither. `agentforge init` inspects a repository and writes its
+`.agentforge/config.yaml`; the file is optional, and
+[Project configuration](#project-configuration) below says what it holds. What
+is still to come is in [`docs/PLAN.md`](docs/PLAN.md).
 
 Before the first Role is invoked, AgentForge resolves a Context Pack from the
 frozen plan — the files it names, the symbols and imports inside them, the
