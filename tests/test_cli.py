@@ -9,6 +9,10 @@ without a single patch.
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -606,3 +610,92 @@ class _a_terminal:
 
     def isatty(self) -> bool:
         return True
+
+
+class _no_reconfigure:
+    """A substituted stream, of the kind a test or an embedder hands in."""
+
+    def __init__(self) -> None:
+        self.written: list[str] = []
+
+    def write(self, text: str) -> int:
+        self.written.append(text)
+        return len(text)
+
+
+class _refuses:
+    """A stream that looks reconfigurable and is not, the way a detached one does."""
+
+    def __init__(self, error: Exception) -> None:
+        self.error = error
+        self.asked = False
+
+    def reconfigure(self, **kwargs) -> None:
+        self.asked = True
+        raise self.error
+
+
+class _records:
+    def __init__(self) -> None:
+        self.asked: dict | None = None
+
+    def reconfigure(self, **kwargs) -> None:
+        self.asked = kwargs
+
+
+def test_the_streams_are_told_they_are_utf8():
+    out, err = _records(), _records()
+
+    cli.use_utf8(out, err)
+
+    assert out.asked == {"encoding": "utf-8"}
+    assert err.asked == {"encoding": "utf-8"}
+
+
+@pytest.mark.parametrize(
+    "stream",
+    [
+        _no_reconfigure(),
+        _refuses(ValueError("underlying buffer has been detached")),
+        _refuses(OSError("not a stream")),
+        None,
+    ],
+    ids=["substituted", "detached", "unopenable", "absent"],
+)
+def test_a_stream_that_will_not_be_told_is_left_alone(stream):
+    """The output is worth less than the Run, so this never raises."""
+    cli.use_utf8(stream)
+
+
+def test_redirected_output_is_utf8_whatever_the_platform_would_have_picked(tmp_path):
+    """The bug in #126: on Windows a redirect got cp1252, so an em dash became
+    the single byte 0x97 and the capture was not valid UTF-8.
+
+    `PYTHONIOENCODING` is what makes this fail everywhere rather than only on a
+    Windows runner: it asks the child for the codepage the Windows default
+    would have handed us anyway, and `use_utf8` has to overrule it on every
+    platform for the bytes below to decode.
+    """
+    script = "from agentforge_framework import cli; cli.use_utf8(sys.stdout); print('\u2014')"
+    environment = dict(os.environ)
+    environment["PYTHONIOENCODING"] = "cp1252"
+    package_parent = Path(__file__).resolve().parents[1] / "src"
+    if package_parent.is_dir():
+        existing = environment.get("PYTHONPATH")
+        environment["PYTHONPATH"] = (
+            f"{package_parent}{os.pathsep}{existing}" if existing else str(package_parent)
+        )
+
+    written = tmp_path / "out.txt"
+    with written.open("wb") as capture:
+        subprocess.run(
+            [sys.executable, "-c", f"import sys; {script}"],
+            stdout=capture,
+            stderr=subprocess.PIPE,
+            env=environment,
+            check=True,
+        )
+
+    raw = written.read_bytes()
+    assert b"\x97" not in raw, "the em dash was written in the ANSI codepage"
+    assert raw.decode("utf-8").strip() == "—"
