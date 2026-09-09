@@ -387,7 +387,7 @@ context:
 | Key | What it decides | Default |
 |---|---|---|
 | `providers.<name>.capability_tier` | `native` delivers a Role's skills through the CLI's own skill mechanism; `fragment` inlines the same text into the prompt. Declared, never discovered by probing ([ADR-0005](adr/0005-capability-tiers-declared-not-probed.md)) | `claude` native, everything else fragment |
-| `gates.tests.suite` | The argument vector the `tests` Gate runs. A string is split the way a shell would; a list is taken as written | `pytest` |
+| `gates.tests.suite` | The argument vector the `tests` Gate runs, from the repository root. A string is split the way a shell would; a list is taken as written. A first word with a path in it — the interpreter `init` pins a Python suite to — is resolved against the root, so it stays right on a clone that lives somewhere else | `pytest` |
 | `context.publish_inventory` | Whether the Context Pack comment names the symbols and imports it resolved, or only counts them. A Run posts that comment to the Issue, and a tracker can have a wider audience than the code ([ADR-0024](adr/0024-the-issue-publishes-no-more-than-the-plan-does.md)) | `false` |
 
 There is no `plugins:` key: which Plugins answer is decided per Run from the frozen plan, so a
@@ -445,6 +445,11 @@ about the plan rather than a crash. Correct the plan block in the Issue body and
 **The Tester says it could not run the suite.** Either `--allow-commands` was not passed, or
 `gates.tests.suite` names something this machine does not have. The distinction matters: a suite
 that ran and failed suspends the Run, and a suite that could not run at all halts it.
+
+**The suite fails on imports that are installed.** The suite is running under the wrong interpreter:
+bare `pytest` is whichever one PATH answers with, not the one in the project's virtualenv. Run
+`agentforge init --force` and it writes the interpreter it finds; or name it yourself, relative to
+the repository root — `suite: [".venv/bin/python", "-m", "pytest"]`.
 
 **A Workflow was refused for naming a Gate kind.** The message lists the kinds that Run has. A
 Plugin's Gate exists only where that Plugin answers for the repository, so a Workflow naming `dbt` is

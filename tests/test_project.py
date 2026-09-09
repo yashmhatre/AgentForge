@@ -2,7 +2,9 @@
 
 Detection is a pure function of the repository path and the files git reports,
 so everything here is called directly with a `tmp_path` and a tuple of paths —
-no process, no repository, no network. The CLI half, including the ADR-0002
+no process, no repository, no network. Verification is the one part that asks
+the machine anything, and it asks through the Command Runner, so it is a fake
+runner here rather than a process. The CLI half, including the ADR-0002
 precondition and the refusal to clobber, is in `tests/test_cli.py`, because that
 is where a command exists.
 """
@@ -24,7 +26,10 @@ from agentforge_framework.core.project import (
     detect,
     differences,
     render_config,
+    verified,
 )
+
+from .fakes import FakeRunner
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -99,6 +104,183 @@ def test_the_provider_decides_the_capability_tier_that_is_written():
     Provider and `claude` the native one."""
     assert detect("/repo", "codex").capability_tier is CapabilityTier.FRAGMENT
     assert detect("/repo", "claude").capability_tier is CapabilityTier.NATIVE
+
+
+def a_virtualenv(root: Path, where: str = "", interpreter: str = "bin/python") -> str:
+    """A virtualenv on disk, as detection finds it: by the interpreter in it.
+
+    Untracked deliberately. A venv is the thing git does not know about, which is
+    why detection stats for this one rather than reading it off `tracked`.
+    """
+    relative = "/".join(part for part in (where, ".venv", interpreter) if part)
+    path = root / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("", encoding="utf-8")
+    return relative
+
+
+def test_a_virtualenv_beside_the_tests_is_what_the_suite_runs_under(tmp_path):
+    """Bare `pytest` is whichever one PATH answers with, and in a project with a
+    venv that is the interpreter the project does not use: the suite fails on
+    imports that are installed and reads as a broken repository (#120)."""
+    a_virtualenv(tmp_path)
+
+    context = detect(tmp_path, "claude", tracked=("src/app.py", "tests/test_app.py"))
+
+    assert context.test_suite == (".venv/bin/python", "-m", "pytest")
+    assert ".venv/bin/python" in context.suite_note
+
+
+def test_the_interpreter_is_named_relative_to_the_repository(tmp_path):
+    """The file this goes into gets committed. An absolute path is correct on
+    the machine init ran on and wrong on every clone of it."""
+    a_virtualenv(tmp_path, interpreter="Scripts/python.exe")
+
+    context = detect(tmp_path, "claude", tracked=("tests/test_app.py",))
+
+    assert not Path(context.test_suite[0]).is_absolute()
+    assert str(tmp_path) not in context.test_suite[0]
+
+
+def test_a_project_in_a_subdirectory_is_found_and_named(tmp_path):
+    """Root-marker detection reported a repository whose whole suite lives one
+    directory down as having no suite at all."""
+    a_virtualenv(tmp_path, where="subproject", interpreter="Scripts/python.exe")
+
+    context = detect(tmp_path, "claude", tracked=("subproject/tests/test_app.py",))
+
+    assert context.test_suite == (
+        "subproject/.venv/Scripts/python.exe",
+        "-m",
+        "pytest",
+        "subproject",
+    )
+    assert "`subproject/`" in context.suite_detected
+
+
+def test_a_subdirectory_runs_under_its_own_virtualenv_before_the_repositorys(tmp_path):
+    a_virtualenv(tmp_path)
+    a_virtualenv(tmp_path, where="subproject")
+
+    context = detect(tmp_path, "claude", tracked=("subproject/tests/test_app.py",))
+
+    assert context.test_suite[0] == "subproject/.venv/bin/python"
+
+
+def test_the_repositorys_own_evidence_wins_over_a_subdirectorys(tmp_path):
+    context = detect(
+        tmp_path, "claude", tracked=("tests/test_app.py", "sub/tests/test_other.py")
+    )
+
+    assert context.test_suite == ("pytest",)
+    assert "at the repository root" in context.suite_detected
+
+
+def test_a_project_buried_deeper_than_two_directories_is_not_guessed_at(tmp_path):
+    """A repository that buries a project that deep is telling us it has more
+    than one, and picking between them would be guessing rather than detecting."""
+    context = detect(tmp_path, "claude", tracked=("services/orders/api/tests/test_app.py",))
+
+    assert context.test_suite == DEFAULT_TEST_SUITE
+    assert context.suite_detected == ""
+
+
+def test_a_setup_cfg_pytest_section_is_evidence(tmp_path):
+    (tmp_path / "setup.cfg").write_text("[tool:pytest]\naddopts = -q\n", encoding="utf-8")
+
+    context = detect(tmp_path, "claude", tracked=("setup.cfg",))
+
+    assert context.test_suite == ("pytest",)
+    assert "setup.cfg" in context.suite_detected
+
+
+def test_a_dot_directory_is_not_a_project(tmp_path):
+    """Detection reads tracked paths rather than walking the tree, and a
+    `.github/` full of workflow files is not a Python project."""
+    context = detect(tmp_path, "claude", tracked=(".github/workflows/ci.yml",))
+
+    assert context.test_suite == DEFAULT_TEST_SUITE
+
+
+def test_a_suite_with_nothing_to_pin_it_to_says_so(tmp_path):
+    """The bare vector is deliberate — `python -m pytest` without pytest exits
+    the way a failing suite does — but a human reading the file should know
+    which `pytest` this is."""
+    context = detect(tmp_path, "claude", tracked=("tests/test_app.py",))
+
+    assert context.test_suite == ("pytest",)
+    assert "on PATH" in context.suite_note
+    assert "on PATH" in render_config(context)
+
+
+# --- verification ----------------------------------------------------------
+
+
+def test_an_interpreter_that_answers_keeps_the_suite_it_was_pinned_to(tmp_path):
+    a_virtualenv(tmp_path)
+    context = detect(tmp_path, "claude", tracked=("tests/test_app.py",))
+    runner = FakeRunner()
+
+    checked = verified(context, runner)
+
+    assert checked.test_suite == context.test_suite
+    assert runner.calls[-1] == (str(tmp_path / ".venv/bin/python"), "-m", "pytest", "--version")
+
+
+def test_the_probe_names_the_interpreter_absolutely_rather_than_leaving_it_to_the_os(tmp_path):
+    """A relative program name resolves against the child's directory on POSIX
+    and the parent's on Windows. A probe that ran on one of those would be
+    proving something about the machine it was written on."""
+    a_virtualenv(tmp_path)
+    runner = FakeRunner()
+
+    verified(detect(tmp_path, "claude", tracked=("tests/test_app.py",)), runner)
+
+    assert Path(runner.calls[-1][0]).is_absolute()
+
+
+def test_a_virtualenv_without_pytest_falls_back_rather_than_writing_a_suite_that_exits_one(
+    tmp_path,
+):
+    """The venv exists and the runner is not in it. Left pinned, the Gate would
+    run `python -m pytest`, take the 1 it exits for a failing suite, and tell a
+    human their tests are red."""
+    a_virtualenv(tmp_path)
+    runner = FakeRunner().install("pytest")
+    runner.script(str(tmp_path / ".venv/bin/python"), returncode=1, stderr="No module named pytest")
+
+    checked = verified(detect(tmp_path, "claude", tracked=("tests/test_app.py",)), runner)
+
+    assert checked.test_suite == ("pytest",)
+    assert "falls back" in checked.suite_note
+
+
+def test_the_fallback_keeps_the_directory_the_suite_was_pointed_at(tmp_path):
+    a_virtualenv(tmp_path, where="subproject")
+    runner = FakeRunner().install("pytest")
+    runner.script(str(tmp_path / "subproject/.venv/bin/python"), returncode=1)
+
+    checked = verified(detect(tmp_path, "claude", tracked=("subproject/tests/t.py",)), runner)
+
+    assert checked.test_suite == ("pytest", "subproject")
+
+
+def test_a_default_suite_this_machine_cannot_run_is_written_with_the_doubt_on_it(tmp_path):
+    """Verifying the default is what the fallback is worth: init already knows
+    whether the command it just wrote exists, and saying nothing leaves that to
+    be discovered by a Gate halting a Run."""
+    checked = verified(detect(tmp_path, "claude", tracked=("tests/t.py",)), FakeRunner())
+
+    assert checked.test_suite == ("pytest",)
+    assert "not on PATH" in checked.suite_note
+
+
+def test_verification_corrects_the_file_and_never_refuses_to_write_one(tmp_path):
+    """Whoever runs init knows this repository better than detection does."""
+    checked = verified(detect(tmp_path, "claude", tracked=("tests/t.py",)), FakeRunner())
+
+    assert "not on PATH" in render_config(checked)
+    assert yaml.safe_load(render_config(checked))["gates"]["tests"]["suite"] == ["pytest"]
 
 
 # --- what gets written -----------------------------------------------------

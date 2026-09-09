@@ -110,6 +110,11 @@ def human(context: GateContext) -> GateEntry:
 #: nothing collected; none of those say anything about the repository.
 SUITE_FAILED = 1
 
+#: What `python -m` prints when the runner it was asked for is not installed in
+#: that interpreter. It exits 1 doing it, which is the one status that otherwise
+#: means the suite ran and reported on the code.
+MODULE_MISSING = "No module named"
+
 #: How much of a failing suite reaches the Run Log. The end of it: a test runner
 #: puts its summary last, and a comment nobody scrolls to the bottom of is a
 #: comment nobody reads.
@@ -138,11 +143,12 @@ def tests(context: GateContext) -> GateEntry:
     runs. A Gate is not an Agent: the suite is the one the project declared, its
     exit status is read rather than interpreted, and no model chose either.
     """
-    suite = load_config(context.root).test_suite
-    rendered = " ".join(suite)
+    declared = load_config(context.root).test_suite
+    rendered = " ".join(declared)
+    suite = _resolved(declared, context.root)
 
     if not context.runner.has_binary(suite[0]):
-        return _cannot_run(rendered, f"{suite[0]!r} is not installed or not on PATH")
+        return _cannot_run(rendered, f"{declared[0]!r} is not installed or not on PATH")
 
     try:
         result = context.runner.run(suite, cwd=context.root)
@@ -159,6 +165,13 @@ def tests(context: GateContext) -> GateEntry:
             verdict=GateVerdict.CLEARED,
             summary=f"`{rendered}` passed.",
         )
+
+    if result.returncode == SUITE_FAILED and MODULE_MISSING in result.stderr:
+        # An interpreter that has no pytest exits 1, which is the status a suite
+        # spends on real failures. The interpreter says so on standard error and
+        # a failing suite reports its failures on standard output, so the two are
+        # told apart there rather than by the status they share.
+        return _cannot_run(rendered, f"{declared[0]!r} has no test runner installed")
 
     if result.returncode == SUITE_FAILED:
         return GateEntry(
@@ -179,6 +192,25 @@ def tests(context: GateContext) -> GateEntry:
             f"later Run to clear.\n\n{command_tail(result)}"
         ),
     )
+
+
+def _resolved(suite: tuple[str, ...], root: Path) -> tuple[str, ...]:
+    """A suite whose first word is a path, resolved against the repository.
+
+    `agentforge init` pins a Python suite to the project's own virtualenv and
+    writes that interpreter relative to the root, because the file it writes gets
+    committed and an absolute path is right on one machine only. Resolving it
+    here is what makes the relative form work at all: a relative program name is
+    resolved against the child process's directory on POSIX and the parent's on
+    Windows, so leaving it to the OS would run on one platform and not the other.
+
+    A suite naming a plain command is returned untouched, PATH lookup and all.
+    """
+    program = Path(suite[0])
+    if program.is_absolute() or len(program.parts) == 1:
+        return suite
+    candidate = root / program
+    return (str(candidate), *suite[1:]) if candidate.is_file() else suite
 
 
 def _cannot_run(rendered: str, reason: str) -> GateEntry:

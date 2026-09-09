@@ -4,6 +4,30 @@ What changed in each release of AgentForge. Dates are the day the tag was cut.
 
 ## Unreleased
 
+- **`agentforge init` pins a Python suite to the interpreter that will run it.**
+  The documented default is bare `pytest`, which is whichever one PATH answers
+  with — in a project with a virtualenv, the one the project does not use. The
+  suite then fails on imports that are installed, and the Tester reports a broken
+  repository where nothing is broken. init now writes
+  `[".venv/bin/python", "-m", "pytest"]` when the repository has a virtualenv to
+  pin to, having first asked that interpreter whether it can run pytest at all,
+  and falls back to the bare vector with the doubt written into the file when it
+  cannot. The interpreter is named relative to the root, because the file gets
+  committed and an absolute path is right on one machine only — and the `tests`
+  Gate resolves it against the root rather than leaving a relative program name
+  to an OS that resolves it against the child's directory on POSIX and the
+  parent's on Windows.
+- **Detection finds a project one or two directories down.** A repository whose
+  suite lives in `subproject/tests/` read as having no suite at all, because every
+  marker was looked for at the root. It is now found and named, `setup.cfg`
+  counts as evidence alongside `pyproject.toml`, and anything buried deeper is
+  still reported as not detected: a repository that hides a project that far down
+  has more than one, and picking would be guessing.
+- **An interpreter with no pytest in it halts the Run instead of failing it.**
+  `python -m pytest` without pytest exits 1, the status a suite spends on real
+  failures, so the Gate would have told a human their tests were red. The
+  interpreter says so on standard error and a failing suite reports on standard
+  output, which is what tells the two apart. See #120.
 - **A Run holds the checkout it was pointed at.** Two `agentforge implement`
   invocations in one working tree each `git checkout -b` and each commit, so the
   second moved the branch out from under the first and neither pull request held
