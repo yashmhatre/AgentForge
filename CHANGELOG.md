@@ -2,7 +2,15 @@
 
 What changed in each release of AgentForge. Dates are the day the tag was cut.
 
-## Unreleased
+## 0.2.5 — 2026-09-09
+
+Two ways a Run could report on something other than the code in front of it.
+`agentforge init` wrote a suite that ran under whichever interpreter PATH
+answered with, so a repository whose tests were green came back red and the
+Tester blamed the code; and two Runs started in one working tree each took the
+branch out from under the other, so neither pull request held what it claimed.
+Both were found by running the tool on somebody's real repository, and neither
+was reachable from the test suite that ships with it.
 
 - **`agentforge init` pins a Python suite to the interpreter that will run it.**
   The documented default is bare `pytest`, which is whichever one PATH answers
