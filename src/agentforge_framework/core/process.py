@@ -19,6 +19,26 @@ from pathlib import Path
 from typing import Protocol
 
 
+class CommandLineTooLong(RuntimeError):
+    """The command line exceeded what the OS will spawn.
+
+    Windows caps an entire command line at 32,767 characters and reports the
+    overflow as `FileNotFoundError` with `winerror` 206 -- indistinguishable,
+    without asking, from the executable genuinely being absent. Reporting it as
+    a missing binary sends whoever hit it to check a PATH that is fine. See
+    #128.
+    """
+
+    def __init__(self, binary: str, length: int) -> None:
+        super().__init__(
+            f"the command line for {binary!r} is {length} characters, which is "
+            "longer than this OS will spawn (Windows caps it at 32,767). This is "
+            "not a missing binary: pass the long argument on stdin instead."
+        )
+        self.binary = binary
+        self.length = length
+
+
 class MissingBinary(RuntimeError):
     """A required external tool is not on PATH.
 
@@ -110,6 +130,14 @@ class SubprocessRunner:
                 check=False,
             )
         except FileNotFoundError as exc:
+            # Windows spends one errno on two unrelated failures. 206 is an
+            # over-long command line, and `preflight` has usually already proved
+            # the binary exists by the time one is built, so answering "not
+            # installed" here contradicts a check that passed.
+            if getattr(exc, "winerror", None) == 206:
+                raise CommandLineTooLong(
+                    argv[0], sum(len(part) + 1 for part in argv)
+                ) from exc
             raise MissingBinary(argv[0]) from exc
         except subprocess.TimeoutExpired as exc:
             return CommandResult(

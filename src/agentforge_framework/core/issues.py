@@ -104,8 +104,16 @@ class GitHub:
         except MissingBinary as exc:
             raise IssueError(str(exc)) from exc
 
-    def _gh(self, *args: str, check: bool = True):
-        result = self.runner.run(("gh", *args), cwd=self.cwd)
+    def _gh(self, *args: str, check: bool = True, stdin: str | None = None):
+        """`stdin` is how a body travels, and it is never an argument.
+
+        Windows caps a whole command line at 32,767 characters, and a frozen
+        plan is bigger than that on its own -- so a body in the argv fails in
+        `CreateProcess` before `gh` is reached at all, and it fails as a
+        `FileNotFoundError`, which reads as a missing binary. POSIX hides this
+        behind a far larger `ARG_MAX`. See #128.
+        """
+        result = self.runner.run(("gh", *args), cwd=self.cwd, stdin=stdin)
         if check and not result.ok:
             detail = (result.stderr or result.stdout or "").strip()
             raise IssueError(f"`gh {' '.join(args)}` failed: {detail[:600]}")
@@ -145,16 +153,16 @@ class GitHub:
     # --- writing -----------------------------------------------------------
 
     def create_issue(self, title: str, body: str, labels: tuple[str, ...] = ()) -> Issue:
-        args = ["issue", "create", "--title", title, "--body", body]
+        args = ["issue", "create", "--title", title, "--body-file", "-"]
         for label in labels:
             self.ensure_label(label)
             args += ["--label", label]
 
-        url = self._gh(*args).stdout.strip().splitlines()[-1].strip()
+        url = self._gh(*args, stdin=body).stdout.strip().splitlines()[-1].strip()
         return Issue(number=_number_from_url(url), title=title, body=body, url=url, labels=labels)
 
     def post_comment(self, number: int, body: str) -> None:
-        self._gh("issue", "comment", str(number), "--body", body)
+        self._gh("issue", "comment", str(number), "--body-file", "-", stdin=body)
 
     def database_id(self, number: int) -> int | None:
         """An Issue's numeric database id, which is not its `#number`.
@@ -244,12 +252,13 @@ class GitHub:
             "--draft",
             "--title",
             title,
-            "--body",
-            body,
+            "--body-file",
+            "-",
             "--head",
             head,
             "--base",
             base,
+            stdin=body,
         )
         return result.stdout.strip().splitlines()[-1].strip()
 
