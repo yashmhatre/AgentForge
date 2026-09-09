@@ -576,9 +576,44 @@ def _run_init(args: argparse.Namespace, runner=None) -> int:
     return 0
 
 
+def use_utf8(*streams) -> None:
+    """Say what encoding the output is in, rather than inheriting an answer.
+
+    Python picks a text encoding for the standard streams from the platform,
+    and on Windows that is the ANSI codepage whenever the stream is not a
+    console — so a redirect, a pipe, or a CI capture gets cp1252 while the
+    same command in a terminal gets something readable. The messages carry
+    typography that codepage cannot represent as UTF-8: `agentforge init`
+    prints an em dash, and redirected it lands as the single byte 0x97, which
+    is not valid UTF-8 and reads back as a replacement character.
+
+    Every file this CLI reads or writes already names `encoding="utf-8"`
+    explicitly. The streams were the one place left taking whatever the
+    platform offered, which is why only the redirected case was wrong. See
+    #126.
+
+    A stream a test or an embedder substituted need not be reconfigurable, and
+    a stream can be absent entirely under a windowed interpreter, so this asks
+    before telling and leaves anything that says no alone.
+    """
+    for stream in streams:
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8")
+        except (AttributeError, OSError, ValueError):
+            # Detached, closed, or a wrapper that only looks the part. The
+            # output is worth less than the Run: a stream that will not be
+            # told keeps whatever it had.
+            continue
+
+
 def main(argv: list[str] | None = None, runner=None) -> int:
     """`runner` is the Command Runner seam: leave it unset and the real one is
     built. Tests pass a fake and the whole CLI runs offline."""
+    use_utf8(sys.stdout, sys.stderr)
+
     parser = build_parser()
     args = parser.parse_args(argv)
 

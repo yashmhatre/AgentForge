@@ -2,6 +2,24 @@
 
 What changed in each release of AgentForge. Dates are the day the tag was cut.
 
+## 0.2.6 — 2026-09-10
+
+One release, one bug: what the CLI prints was in the wrong encoding on Windows
+the moment anybody captured it.
+
+- **The standard streams are told they are UTF-8.** Python takes the text
+  encoding for stdout and stderr from the platform, and on Windows that is the
+  ANSI codepage whenever the stream is not a console. So the same command read
+  correctly in a terminal and arrived as mojibake in a redirect, a pipe, or a CI
+  capture: `agentforge init` prints an em dash, and captured it was the single
+  byte 0x97, which is not valid UTF-8. Every file the CLI reads or writes had
+  already named `encoding="utf-8"` explicitly; the streams were the one place
+  still taking whatever the platform offered, which is why only the redirected
+  case was ever wrong. `main` now says so before it prints anything, and a
+  stream that cannot be told — substituted by a test, detached, absent under a
+  windowed interpreter — is left as it was rather than ending the Run over its
+  own output. See #126.
+
 ## 0.2.5 — 2026-09-09
 
 Two ways a Run could report on something other than the code in front of it.
