@@ -5,6 +5,9 @@ __pycache__/
 venv/
 env/
 .pytest_cache/
+# Left behind by tests that create deliberately unreadable dirs; on Windows
+# the ACL can outlive the run and git then warns it cannot read the path.
+.pytest-tmp/
 .ruff_cache/
 .mypy_cache/
 dist/
