@@ -15,6 +15,7 @@ is the authority — it is what every Role parses.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Sequence
 
 from .contracts import (
@@ -259,6 +260,55 @@ def extract_spec(text: str) -> str:
     if not spec.strip():
         raise PlanFormatError("the spec block is empty")
     return spec.strip()
+
+
+#: A numbered user story in the Spec's `## User Stories` section. `to-spec`
+#: writes that section as a numbered list and the Spec prompt requires it, so the
+#: numbers are the one part of a model-written document with a shape worth
+#: parsing.
+_STORY = re.compile(r"^\s*(\d+)[.)]\s+\S")
+
+
+def user_stories(spec: str) -> tuple[str, ...]:
+    """The numbers of the user stories the Spec lists, in the order it lists them.
+
+    Only the `## User Stories` section counts. Numbered lists elsewhere in a Spec
+    are steps, options, and acceptance criteria, and claiming those would be
+    asking the cut to account for things that are not work.
+
+    An empty result means the Spec numbered nothing -- a short Task earns a short
+    Spec, and there is then nothing for a cut to be held to.
+    """
+    lines = spec.splitlines()
+    inside = False
+    found: list[str] = []
+    for line in lines:
+        heading = line.strip()
+        if heading.startswith("#"):
+            inside = heading.lstrip("#").strip().lower() == "user stories"
+            continue
+        if not inside:
+            continue
+        match = _STORY.match(line)
+        if match:
+            found.append(match.group(1))
+    return tuple(found)
+
+
+def unclaimed_stories(spec: str, slices: Sequence[Slice]) -> tuple[str, ...]:
+    """The Spec's user stories that no Slice says it carries.
+
+    The invariant the breakdown prompt has always stated -- together the Slices
+    are the whole spec -- made checkable. Before #130 it was only asked for, so a
+    cut that dropped most of a plan document and a Spec that genuinely was one
+    Slice's work produced identical output and the runtime could not tell them
+    apart.
+    """
+    stories = user_stories(spec)
+    if not stories:
+        return ()
+    claimed = {number for one in slices for number in one.covers}
+    return tuple(number for number in stories if number not in claimed)
 
 
 def extract_slices(text: str) -> tuple[Slice, ...]:

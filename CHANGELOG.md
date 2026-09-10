@@ -2,6 +2,28 @@
 
 What changed in each release of AgentForge. Dates are the day the tag was cut.
 
+## 0.2.8 — 2026-09-10
+
+The cut is held to the invariant the prompt has always stated.
+
+- **A Slice says which of the spec's user stories it carries, and a story no
+  Slice claims fails the cut.** The breakdown prompt has always asked that
+  "together the Slices are the whole spec", and nothing verified it — so a cut
+  that dropped most of a plan document and a spec that was genuinely one Slice's
+  work produced identical output, and the runtime could not tell them apart. A
+  25,000-character document describing four phases of work cut to a single Slice
+  covering one function, and was filed without comment; the Issue it produced
+  then told its implementer to skip work belonging to a sibling Issue the same
+  Run had never created. `Slice.covers` now carries the story numbers, the cut
+  is asked for them, and a Run stops before filing anything when the spec has
+  stories nobody claimed. `MAX_SLICES` had guarded the same failure from above,
+  where a list cut off at the cap silently drops the end of the plan; this is
+  the floor of it. See #130.
+- **A spec that numbered no user stories is held to nothing.** A one-sentence
+  Task earns a short spec, and there is then nothing for a cut to claim. The
+  check fires only where the spec actually lists numbered stories, so the short
+  path is unchanged.
+
 ## 0.2.7 — 2026-09-10
 
 Planning could not file anything on Windows, and said the wrong thing about why.

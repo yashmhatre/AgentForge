@@ -92,6 +92,7 @@ def slices_output(*slices: dict) -> str:
                 "delivers": one.get("delivers", f"{one['title']}, end to end."),
                 "acceptance": one.get("acceptance", ["The loader retries."]),
                 "blocked_by": one.get("blocked_by", []),
+                "covers": one.get("covers", []),
             }
             for one in cut
         ]
