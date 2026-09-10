@@ -19,6 +19,7 @@ from agentforge_framework.core.contracts import (
     ModelTier,
     PlanDocument,
     Roster,
+    Slice,
     Task,
 )
 from agentforge_framework.core.plan_format import (
@@ -32,6 +33,8 @@ from agentforge_framework.core.plan_format import (
     render_issue_body,
     render_issue_title,
     render_result_block,
+    unclaimed_stories,
+    user_stories,
 )
 
 from .test_contracts import a_plan
@@ -216,3 +219,54 @@ def test_the_body_says_which_workflow_will_run():
 
     assert "Running the `feature` Workflow" in body
     assert parse_issue_body(body, resolve_role).workflow == "feature"
+
+
+# --- which user stories a Spec lists ---------------------------------------
+
+
+def test_only_the_user_stories_section_is_counted():
+    """Numbered lists elsewhere in a Spec are steps, options and acceptance
+    criteria. Asking the cut to claim those would be asking it to account for
+    things that are not work."""
+    spec = """\
+## Problem Statement
+
+1. This is not a user story, it is a numbered sentence.
+
+## User Stories
+
+1. As a maintainer, I want the list
+2. As a maintainer, I want the detail pane
+
+## Implementation Decisions
+
+1. Use SQLite
+2. Cache on disk
+"""
+
+    assert user_stories(spec) == ("1", "2")
+
+
+def test_a_spec_with_no_numbered_stories_lists_none():
+    assert user_stories("## Problem Statement\n\nIt gives up.") == ()
+
+
+def test_unclaimed_names_the_stories_no_slice_carries():
+    spec = "## User Stories\n\n1. One\n2. Two\n3. Three\n"
+    slices = (
+        Slice(id="a", title="A", covers=("1",)),
+        Slice(id="b", title="B", covers=("3",)),
+    )
+
+    assert unclaimed_stories(spec, slices) == ("2",)
+
+
+def test_nothing_is_unclaimed_when_the_spec_numbered_nothing():
+    """The guard that keeps a one-sentence Task working."""
+    assert unclaimed_stories("## Problem Statement\n\nIt gives up.", ()) == ()
+
+
+def test_covers_survives_the_round_trip():
+    one = Slice(id="a", title="A", covers=("1", "2"))
+
+    assert Slice.from_dict(one.to_dict()).covers == ("1", "2")

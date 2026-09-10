@@ -267,6 +267,12 @@ class Slice:
     delivers: str = ""
     acceptance: tuple[str, ...] = ()
     blocked_by: tuple[str, ...] = ()
+    #: The Spec's user stories this Slice carries, by number. What makes "the
+    #: Slices are the whole spec" checkable rather than merely asked for: a
+    #: story no Slice claims is work that will not be built, and saying which
+    #: Slice carries which story is the only way the cut can be held to it.
+    #: Empty where the Spec numbered no stories to claim. See #130.
+    covers: tuple[str, ...] = ()
 
     def to_dict(self) -> dict:
         return {
@@ -275,6 +281,7 @@ class Slice:
             "delivers": self.delivers,
             "acceptance": list(self.acceptance),
             "blocked_by": list(self.blocked_by),
+            "covers": list(self.covers),
         }
 
     @classmethod
@@ -285,6 +292,7 @@ class Slice:
             delivers=str(data.get("delivers") or ""),
             acceptance=tuple(str(a) for a in data.get("acceptance") or ()),
             blocked_by=tuple(str(b) for b in data.get("blocked_by") or ()),
+            covers=tuple(str(c).strip() for c in data.get("covers") or ()),
         )
 
 

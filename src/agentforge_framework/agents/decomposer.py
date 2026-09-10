@@ -55,6 +55,8 @@ from ..core.plan_format import (
     extract_slices,
     extract_spec,
     order_slices,
+    unclaimed_stories,
+    user_stories,
 )
 from .orchestrator import (
     ORCHESTRATOR,
@@ -164,7 +166,10 @@ by an Agent that has never seen this spec, starting from nothing and stopping \
 when it opens a pull request. A Slice it cannot finish in one sitting is one it \
 finishes badly.
 - **Together the Slices are the whole spec.** Every user story lands in exactly \
-one. Anything the spec put out of scope stays out.
+one, and each Slice names the ones it carries in `covers`. This is checked: a \
+user story no Slice claims fails the cut and nothing is filed, so cover the \
+spec rather than the part of it you cut first. Anything the spec put out of \
+scope stays out.
 
 A wide refactor is the exception to cutting vertically. Where one mechanical \
 change fans across the codebase and no vertical slice can land green, sequence \
@@ -214,7 +219,8 @@ First the cut:
       "title": "what a human reads in a list of thirty issues",
       "delivers": "the end-to-end behaviour this Slice makes work, from the user's perspective, not a layer-by-layer implementation list",
       "acceptance": ["how this Slice is known to be done, checkable by reading the repository"],
-      "blocked_by": ["the ids of the Slices that must finish first, or an empty list"]
+      "blocked_by": ["the ids of the Slices that must finish first, or an empty list"],
+      "covers": ["the numbers of the spec's user stories this Slice carries, as strings: 1, 2, 7"]
     }}
   ]
 }}
@@ -401,6 +407,23 @@ class Decomposer:
                 interview=exchanges,
                 failure=_failed(
                     self.tier, f"the breakdown pass wrote no usable slices: {exc}", cut_result
+                ),
+            )
+
+        unclaimed = unclaimed_stories(spec, slices)
+        if unclaimed:
+            listed = ", ".join(unclaimed[:10]) + ("..." if len(unclaimed) > 10 else "")
+            return Decomposed(
+                results=results,
+                spec=spec,
+                interview=exchanges,
+                failure=_failed(
+                    self.tier,
+                    f"the breakdown pass cut {len(slices)} Slice(s) leaving "
+                    f"{len(unclaimed)} of the spec's {len(user_stories(spec))} user "
+                    f"stories unclaimed ({listed}); a story no Slice carries is work "
+                    "that does not get built",
+                    cut_result,
                 ),
             )
 

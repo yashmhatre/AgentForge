@@ -573,3 +573,101 @@ def test_a_stage_that_answers_with_only_its_own_block_is_the_bug_that_shipped():
 
     assert outcome.failure is not None
     assert "without reporting a result block" in outcome.failure.summary
+
+
+# --- the cut covers the spec, or it is not a cut ---------------------------
+
+
+A_SPEC_WITH_STORIES = """\
+## Problem Statement
+
+The deck shows nothing useful.
+
+## User Stories
+
+1. As a maintainer, I want the issue list, so that I can see what is open
+2. As a maintainer, I want a detail pane, so that I can read one
+3. As a maintainer, I want an attention score, so that I can triage
+
+## Out of Scope
+
+Anything to do with billing.
+"""
+
+
+def test_a_cut_that_leaves_user_stories_unclaimed_files_nothing():
+    """#130: a cut that dropped most of a plan document and a spec that was
+    genuinely one Slice's work produced identical output, so the runtime could
+    not tell them apart and filed the truncated one without comment."""
+    runner = a_runner()
+    runner.script(
+        "claude",
+        stdout=[
+            spec_output(A_SPEC_WITH_STORIES),
+            slices_output({"id": "score", "title": "Attention score", "covers": ["3"]}),
+        ],
+    )
+
+    outcome = forge(runner).plan("build the deck", approver=_yes)
+
+    assert outcome.failure is not None
+    assert "unclaimed" in outcome.failure.summary
+    assert "1, 2" in outcome.failure.summary
+    assert not runner.ran("gh", "issue", "create")
+
+
+def test_a_cut_that_claims_every_story_files_as_before():
+    runner = a_runner(issues=(12, 13))
+    runner.script(
+        "claude",
+        stdout=[
+            spec_output(A_SPEC_WITH_STORIES),
+            slices_output(
+                {"id": "list", "title": "Issue list", "covers": ["1", "2"]},
+                {"id": "score", "title": "Attention score", "covers": ["3"]},
+            ),
+            *([orchestrator_output([{"role": "implementer"}])] * 2),
+        ],
+    )
+
+    outcome = forge(runner).plan("build the deck", approver=_yes)
+
+    assert outcome.failure is None
+    assert len(outcome.filed) == 2
+
+
+def test_a_spec_that_numbered_no_stories_is_not_held_to_any():
+    """A one-sentence Task earns a short spec, and there is then nothing to
+    claim. The check must not turn that into a failure."""
+    runner = a_runner()
+    runner.script(
+        "claude",
+        stdout=[
+            spec_output("## Problem Statement\n\nThe loader gives up."),
+            slices_output({"id": "retry", "title": "Add a retry"}),
+            orchestrator_output([{"role": "implementer"}]),
+        ],
+    )
+
+    outcome = forge(runner).plan("add a retry", approver=_yes)
+
+    assert outcome.failure is None
+    assert len(outcome.filed) == 1
+
+
+def test_the_breakdown_pass_is_asked_which_stories_each_slice_carries():
+    runner = a_runner()
+    runner.script(
+        "claude",
+        stdout=[
+            spec_output(A_SPEC_WITH_STORIES),
+            slices_output({"id": "all", "title": "Everything", "covers": ["1", "2", "3"]}),
+            orchestrator_output([{"role": "implementer"}]),
+        ],
+    )
+
+    forge(runner).plan("build the deck", approver=_yes)
+
+    cut_prompt = next(p for p in _prompts(runner) if "cutting a spec into the Slices" in p)
+    assert '"covers"' in cut_prompt
+    assert "fails the cut" in cut_prompt
