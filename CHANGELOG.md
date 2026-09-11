@@ -2,6 +2,26 @@
 
 What changed in each release of AgentForge. Dates are the day the tag was cut.
 
+## 0.2.9 — 2026-09-11
+
+Dart/Flutter project auto-detection and first-class Antigravity provider integration.
+
+- **`agentforge init` detects Flutter and Dart projects and configures their test suite.**
+  A repository with `pubspec.yaml` declaring Flutter dependencies now automatically
+  selects `flutter test` instead of defaulting to `pytest`. Standalone Dart projects
+  select `dart test`. The `.dart` file extension is now recognized by the language census.
+  If the detected runner binary is not installed on PATH, `verified()` attaches a clear
+  caveat note rather than silently failing. See #132.
+- **Antigravity (`agy`) is supported as a first-class coding-agent Provider with in-IDE auto-detection.**
+  Users working inside Antigravity environments (`ANTIGRAVITY_AGENT`, `AI_AGENT=antigravity`, or
+  `ANTIGRAVITY_AGENTAPI_EXE`) now have `antigravity` automatically selected as the default provider
+  during `agentforge init`, removing the unwanted default to external `claude` CLI. The adapter
+  maps Deep, Standard, and Cheap model tiers to Gemini frontier models (`gemini-3.1-pro-high`,
+  `gemini-3.8-flash-high`, `gemini-3.8-flash-low`), supports reasoning effort levels, and respects
+  per-Run execution permissions (`--dangerously-skip-permissions` vs `--mode accept-edits`).
+  Repositories configured with `providers.antigravity` now automatically drive `agy` across
+  all subsequent workflow steps. See #133.
+
 ## 0.2.8 — 2026-09-10
 
 The cut is held to the invariant the prompt has always stated.

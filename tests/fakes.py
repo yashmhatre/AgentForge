@@ -61,7 +61,7 @@ class _Script:
 class FakeRunner:
     """A Command Runner that answers from a script and records every call."""
 
-    binaries: set[str] = field(default_factory=lambda: {"git", "gh", "claude", "codex"})
+    binaries: set[str] = field(default_factory=lambda: {"git", "gh", "claude", "codex", "agy", "antigravity"})
     calls: list[tuple[str, ...]] = field(default_factory=list)
     cwds: list[str | None] = field(default_factory=list)
     #: What each call was fed on stdin, positionally aligned with `calls`. A

@@ -515,15 +515,14 @@ def _run_init(args: argparse.Namespace, runner=None) -> int:
     from .core.project import config_path, detect, differences, render_config, verified
     from .core.registry import activate
     from .core.repo import PreconditionFailed, open_repository
-    from .providers import DEFAULT_PROVIDER, PROVIDERS
+    from .providers import PROVIDERS, detect_default_provider
 
-    provider = (args.provider or DEFAULT_PROVIDER).strip().lower()
+    runner = runner if runner is not None else SubprocessRunner()
+    provider = (args.provider or detect_default_provider(runner)).strip().lower()
     if provider not in PROVIDERS:
         known = ", ".join(sorted(PROVIDERS))
         print(f"agentforge: unknown provider {provider!r}; available: {known}", file=sys.stderr)
         return 2
-
-    runner = runner if runner is not None else SubprocessRunner()
     try:
         repo = open_repository(runner, args.directory)
     except PreconditionFailed as exc:

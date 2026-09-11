@@ -392,3 +392,45 @@ def test_the_config_init_wrote_for_agentforge_itself_reads_back(tmp_path):
 
     assert config.test_suite == ("pytest",)
     assert config.capability_for("claude") is CapabilityTier.NATIVE
+
+
+# --- Flutter & Dart detection (#132) --------------------------------------
+
+
+def test_dart_files_are_recognised_in_the_language_census(tmp_path):
+    context = detect(tmp_path, "claude", tracked=("lib/main.dart", "lib/app.dart", "test/app_test.dart"))
+
+    assert "Dart" in context.languages
+
+
+def test_a_pubspec_declaring_flutter_selects_the_flutter_suite(tmp_path):
+    (tmp_path / "pubspec.yaml").write_text(
+        "name: storm_sync\nenvironment:\n  sdk: '>=3.0.0 <4.0.0'\ndependencies:\n  flutter:\n    sdk: flutter\n",
+        encoding="utf-8",
+    )
+
+    context = detect(tmp_path, "claude", tracked=("pubspec.yaml", "lib/main.dart"))
+
+    assert context.test_suite == ("flutter", "test")
+    assert "Flutter" in context.suite_detected
+
+
+def test_a_pubspec_without_flutter_selects_the_dart_suite(tmp_path):
+    (tmp_path / "pubspec.yaml").write_text(
+        "name: pure_dart_tool\nenvironment:\n  sdk: '>=3.0.0 <4.0.0'\ndependencies:\n  args: ^2.4.0\n",
+        encoding="utf-8",
+    )
+
+    context = detect(tmp_path, "claude", tracked=("pubspec.yaml", "lib/main.dart"))
+
+    assert context.test_suite == ("dart", "test")
+    assert "pubspec.yaml" in context.suite_detected
+
+
+def test_a_flutter_suite_without_flutter_on_path_notes_the_doubt(tmp_path):
+    fake = FakeRunner().uninstall("flutter")
+    context = a_context(test_suite=("flutter", "test"))
+
+    verified_context = verified(context, fake)
+
+    assert "not on PATH" in verified_context.suite_note
