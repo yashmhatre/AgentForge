@@ -1,0 +1,12 @@
+{
+  "conversation_id": "3f6c1f4a-2b7e-4a51-9a0e-1c2d3e4f5a6b",
+  "status": "SUCCESS",
+  "response": "I read the plan and made the change.\n\n<!-- agentforge:result -->\n```json\n{\n  \"outcome\": \"completed\",\n  \"summary\": \"Wrapped the fetch in a bounded retry and covered the exhausted path.\",\n  \"detail\": \"Retries are capped at three with exponential backoff.\",\n  \"files_changed\": [\"src/loader.py\", \"tests/test_loader.py\"]\n}\n```\n<!-- /agentforge:result -->",
+  "duration_seconds": 4.213,
+  "num_turns": 1,
+  "usage": {
+    "input_tokens": 18422,
+    "output_tokens": 2317,
+    "total_tokens": 20739
+  }
+}

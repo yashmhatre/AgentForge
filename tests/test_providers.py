@@ -26,7 +26,8 @@ from agentforge_framework.core.contracts import (
 )
 from agentforge_framework.core.process import CommandResult
 from agentforge_framework.core.skills import fragment_only, read_skill
-from agentforge_framework.providers import PROVIDERS, get_provider
+from agentforge_framework.providers import PROVIDERS, detect_default_provider, get_provider
+from agentforge_framework.providers.antigravity import AntigravityProvider
 from agentforge_framework.providers.base import Provider, ProviderError
 from agentforge_framework.providers.claude import ClaudeProvider
 from agentforge_framework.providers.codex import CodexProvider
@@ -243,7 +244,12 @@ def test_a_role_declaring_both_kinds_gets_both_deliveries():
 #: died on the author's own machine.
 WINDOWS_COMMAND_LINE_CAP = 32767
 
-RECORDED = {"claude": "claude_completed.json", "codex": "codex_completed.txt"}
+RECORDED = {
+    "claude": "claude_completed.json",
+    "codex": "codex_completed.txt",
+    "antigravity": "antigravity_completed.json",
+    "agy": "antigravity_completed.json",
+}
 
 
 def a_provider_of(name, runner):
@@ -252,7 +258,8 @@ def a_provider_of(name, runner):
 
 @pytest.mark.parametrize("name", sorted(PROVIDERS))
 def test_the_prompt_reaches_the_cli_on_stdin_and_never_in_argv(name):
-    runner = FakeRunner().script(name, stdout=recorded(RECORDED[name]))
+    binary = PROVIDERS[name].binary
+    runner = FakeRunner().script(binary, stdout=recorded(RECORDED[name]))
     role = Role("implementer", ModelTier.STANDARD)
 
     a_provider_of(name, runner).invoke(
@@ -263,8 +270,8 @@ def test_the_prompt_reaches_the_cli_on_stdin_and_never_in_argv(name):
         cwd=Path("/repo"),
     )
 
-    assert runner.prompt_to(name) == "a distinctive instruction"
-    assert not any("a distinctive instruction" in part for part in runner.only(name))
+    assert runner.prompt_to(binary) == "a distinctive instruction"
+    assert not any("a distinctive instruction" in part for part in runner.only(binary))
 
 
 @pytest.mark.parametrize("name", sorted(PROVIDERS))
@@ -273,7 +280,8 @@ def test_a_prompt_past_the_windows_cap_still_leaves_a_short_command_line(name):
     32,767 characters and `decompose` died as `[WinError 206]`; the prompt is
     now the one thing in an invocation that cannot grow the command line."""
     huge = "x" * (WINDOWS_COMMAND_LINE_CAP * 2)
-    runner = FakeRunner().script(name, stdout=recorded(RECORDED[name]))
+    binary = PROVIDERS[name].binary
+    runner = FakeRunner().script(binary, stdout=recorded(RECORDED[name]))
     role = Role("implementer", ModelTier.STANDARD)
 
     a_provider_of(name, runner).invoke(
@@ -284,12 +292,12 @@ def test_a_prompt_past_the_windows_cap_still_leaves_a_short_command_line(name):
         cwd=Path("/repo"),
     )
 
-    argv = runner.only(name)
+    argv = runner.only(binary)
     command_line = sum(len(part) + 1 for part in argv)
     assert command_line < WINDOWS_COMMAND_LINE_CAP, (
         f"{name} builds a {command_line}-character command line, which Windows refuses"
     )
-    assert runner.prompt_to(name) == huge
+    assert runner.prompt_to(binary) == huge
 
 
 @pytest.mark.parametrize("name", sorted(PROVIDERS))
@@ -581,13 +589,13 @@ def test_a_transcript_with_no_token_line_reports_nothing():
 
 def _effort_sent(runner: FakeRunner, binary: str) -> str:
     """Each CLI spells the same axis its own way, which is the port's whole job."""
-    if binary == "claude":
-        return runner.argument_after("--effort", "claude")
+    if binary in ("claude", "agy"):
+        return runner.argument_after("--effort", binary)
     setting = next(a for a in runner.only("codex") if a.startswith("model_reasoning_effort="))
     return setting.split("=", 1)[1]
 
 
-@pytest.mark.parametrize("provider", [ClaudeProvider, CodexProvider])
+@pytest.mark.parametrize("provider", [ClaudeProvider, CodexProvider, AntigravityProvider])
 def test_the_roles_effort_reaches_the_cli(provider):
     """`claude --effort` was available for as long as this adapter has existed
     and went unsent, so an Agent thought as hard as its model happened to
@@ -600,7 +608,7 @@ def test_the_roles_effort_reaches_the_cli(provider):
     assert _effort_sent(runner, binary) == "high"
 
 
-@pytest.mark.parametrize("provider", [ClaudeProvider, CodexProvider])
+@pytest.mark.parametrize("provider", [ClaudeProvider, CodexProvider, AntigravityProvider])
 def test_two_roles_on_one_tier_can_think_differently(provider):
     """The case the split exists for. Security and the Implementer both run at
     `standard`, and the audit is not the shallower of the two — one axis could
@@ -623,3 +631,78 @@ def test_an_effort_the_role_did_not_declare_is_not_invented():
     """A Role that has said nothing about depth gets the level both CLIs already
     default most models to, and never a value derived from its tier."""
     assert Role("implementer", ModelTier.DEEP).effort is Effort.MEDIUM
+
+
+# --- Antigravity provider (#133) -------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "tier,model",
+    [
+        (ModelTier.DEEP, "gemini-3.1-pro-high"),
+        (ModelTier.STANDARD, "gemini-3.8-flash-high"),
+        (ModelTier.CHEAP, "gemini-3.8-flash-low"),
+    ],
+)
+def test_antigravity_model_mapping(tier, model):
+    provider = AntigravityProvider(FakeRunner())
+    assert provider.model_for(tier) == model
+
+
+def test_antigravity_build_argv_respects_permissions():
+    runner = FakeRunner()
+    provider_open = AntigravityProvider(runner, allow_commands=True)
+    provider_closed = AntigravityProvider(runner, allow_commands=False)
+
+    argv_open = provider_open.build_argv("gemini-3.8-flash-high", Effort.MEDIUM)
+    argv_closed = provider_closed.build_argv("gemini-3.8-flash-high", Effort.MEDIUM)
+
+    assert "--dangerously-skip-permissions" in argv_open
+    assert "--dangerously-skip-permissions" not in argv_closed
+    assert "--mode" in argv_closed and "accept-edits" in argv_closed
+
+
+def test_antigravity_parses_json_output_and_usage():
+    runner = FakeRunner().script("agy", stdout=recorded("antigravity_completed.json"))
+    provider = AntigravityProvider(runner)
+
+    result = invoke(provider)
+
+    assert result.outcome is Outcome.COMPLETED
+    assert result.usage is not None
+    assert result.usage.provider == "antigravity"
+    assert result.usage.input_tokens == 18422
+    assert result.usage.output_tokens == 2317
+    assert result.usage.total_tokens == 20739
+
+
+def test_antigravity_handles_error_envelope():
+    error_payload = '{"status": "ERROR", "response": "quota exceeded", "usage": {}}'
+    runner = FakeRunner().script("agy", stdout=error_payload)
+    provider = AntigravityProvider(runner)
+
+    result = invoke(provider)
+
+    assert result.outcome is Outcome.FAILED
+    assert "quota exceeded" in result.summary
+
+
+def test_detect_default_provider_picks_antigravity_from_environment(monkeypatch):
+    monkeypatch.setenv("ANTIGRAVITY_AGENT", "1")
+    assert detect_default_provider() == "antigravity"
+
+    monkeypatch.delenv("ANTIGRAVITY_AGENT", raising=False)
+    monkeypatch.setenv("AI_AGENT", "antigravity")
+    assert detect_default_provider() == "antigravity"
+
+
+def test_detect_default_provider_checks_runner_binaries(monkeypatch):
+    monkeypatch.delenv("ANTIGRAVITY_AGENT", raising=False)
+    monkeypatch.delenv("AI_AGENT", raising=False)
+    monkeypatch.delenv("ANTIGRAVITY_AGENTAPI_EXE", raising=False)
+
+    runner = FakeRunner().uninstall("claude").install("codex")
+    assert detect_default_provider(runner) == "codex"
+
+    runner_agy = FakeRunner().uninstall("claude", "codex").install("agy")
+    assert detect_default_provider(runner_agy) == "antigravity"

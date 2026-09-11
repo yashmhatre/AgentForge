@@ -69,6 +69,7 @@ LANGUAGES = {
     ".jsx": "JavaScript",
     ".go": "Go",
     ".rs": "Rust",
+    ".dart": "Dart",
     ".sh": "Shell",
     ".md": "Markdown",
 }
@@ -295,6 +296,12 @@ def _suite(root: Path, tracked: tuple[str, ...]) -> tuple[tuple[str, ...], str, 
 
     if "Cargo.toml" in files:
         return ("cargo", "test"), "a Cargo.toml at the repository root", ""
+
+    if "pubspec.yaml" in files:
+        pubspec = _read(root / "pubspec.yaml")
+        if "flutter:" in pubspec or "sdk: flutter" in pubspec:
+            return ("flutter", "test"), "a Flutter project in pubspec.yaml", ""
+        return ("dart", "test"), "a pubspec.yaml at the repository root", ""
 
     return DEFAULT_TEST_SUITE, "", ""
 

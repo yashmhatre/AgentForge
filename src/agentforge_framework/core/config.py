@@ -22,6 +22,7 @@ class CapabilityTier(StrEnum):
 DEFAULT_CAPABILITIES = {
     "claude": CapabilityTier.NATIVE,
     "codex": CapabilityTier.FRAGMENT,
+    "antigravity": CapabilityTier.NATIVE,
 }
 
 #: What a `tests` Gate runs when the project declares nothing. `pytest` rather
@@ -63,6 +64,7 @@ class Config:
     #: and does not port across Providers, which is the whole of ADR-0004.
     role_tiers: dict[str, ModelTier] = field(default_factory=dict)
     role_efforts: dict[str, Effort] = field(default_factory=dict)
+    declared_providers: tuple[str, ...] = ()
 
     def capability_for(self, provider: str) -> CapabilityTier:
         return self.provider_capabilities.get(provider, CapabilityTier.FRAGMENT)
@@ -81,6 +83,7 @@ def load_config(root: Path | str) -> Config:
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     capabilities = dict(DEFAULT_CAPABILITIES)
     models: dict[str, dict[ModelTier, str]] = {}
+    declared = tuple(str(name) for name in (data.get("providers") or {}).keys())
     for name, provider in (data.get("providers") or {}).items():
         if "capability_tier" in provider:
             capabilities[str(name)] = CapabilityTier(provider["capability_tier"])
@@ -99,6 +102,7 @@ def load_config(root: Path | str) -> Config:
         provider_models=models,
         role_tiers=tiers,
         role_efforts=efforts,
+        declared_providers=declared,
     )
 
 

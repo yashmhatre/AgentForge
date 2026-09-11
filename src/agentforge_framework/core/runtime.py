@@ -167,8 +167,11 @@ class Forge:
 
         github = GitHub(self.runner, repo.root)
         config = load_config(repo.root)
+        provider_name = self.provider_name
+        if provider_name == DEFAULT_PROVIDER and config.declared_providers:
+            provider_name = config.declared_providers[0]
         provider = get_provider(
-            self.provider_name,
+            provider_name,
             self.runner,
             allow_commands=allow_commands,
             config=config,
